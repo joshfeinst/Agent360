@@ -233,6 +233,8 @@ body.touch #touch.on{display:block}
       <p class="hint">Lost? The corner radar (<b>N</b>) marks objectives, and the watch (<b>Tab</b>) shows the whole floor
       plan with every outstanding objective lettered on it and its range in metres.</p>
       <p class="hint">Aim mode narrows your spread and zooms in — the only way the <b>KB-Klobb</b> hits anything past four metres.</p>
+      <p class="hint"><b>Keep moving.</b> Hostile aim tracks a sprinting agent badly — worst on AGENT clearance — and crouching
+      makes you harder to hit again. Standing still is how you get shot.</p>
       <div class="row"><button class="btn ghost" data-act="back">◀ BACK</button></div>
     </div>
 
@@ -1374,7 +1376,7 @@ const LEVELS = [
   map:[
     '################################',
     '#..P.....#.....................#',
-    '#...v....#..................4..#',
+    '#...v....#........m.........4..#',
     '#...z....+.....................#',
     '#........#...==........==...a..#',
     '%%%%%+%%%%.....................#',
@@ -1383,7 +1385,7 @@ const LEVELS = [
     '#........#...==....a...==......#',
     '#####+####.......b.............#',
     '#..1..N..#.....................#',
-    '#...z....+.....................#',
+    '#...z....+..................v..#',
     '#...a....#..4..................#',
     '#####+##########################',
     '#..m.a....................<....#',
@@ -1454,6 +1456,32 @@ const ESPEC = {
   drone : { hp:26,  spd:3.05, dmg:5,  rof:.60, acc:.50, sight:19, size:.50, r:.28, zoff:.44, drop:0 },
   boss  : { hp:1250,spd:1.10, dmg:17, rof:.95, acc:.85, sight:34, size:1.18, r:.8, drop:-1 }
 };
+
+/* The M03 duel, tuned by clearance — ordered AGENT, SECRET AGENT, 00 AGENT.
+   AGENT faces ONE slug slow enough to sidestep at a run, lighter drone
+   pressure, half the rack's plating and a longer fuse out; 00 AGENT keeps the
+   original triple fan. The upper two rows of `hp` reproduce the old
+   (d.hp*.9+.1) formula exactly. */
+const BOSSTUNE = {
+  /* SECRET's pair sits at ±.35 so each slug can still connect on a STANDING
+     player at keep range — a wider pair straddled the hit radius and made
+     holding still the best dodge, the exact opposite of the design. */
+  fan:      [[0], [-.35,.35], [-1,0,1]], // projectiles per volley
+  pspd:     [4.6, 5.8, 6.6],             // projectile speed, u/s (run speed is 3.48)
+  rof:      [1.8, 1.25, 1.0],            // fire-period multiplier
+  keep:     [8, 6.5, 5.5],               // range the rack tries to hold: farther = longer slug flight
+  droneCap: [1, 2, 4],                   // rogue APs alive at once
+  droneCd:  [16, 10, 8],                 // seconds between spawns
+  melt:     [50, 40, 35],                // thermal shutdown fuse, seconds
+  hp:       [.5, 1.0, 1.36]              // rack plating multiplier
+};
+/* Hostile aim tracks a MOVING agent imperfectly, GoldenEye-style: sprinting
+   and crouching are real evasion, and lower clearances track worst. P.speed is
+   1 at a walk, 1.48 at a sprint. */
+const MOVE_DODGE = [.35, .22, .12];
+function aimPenalty(){
+  return (1 - clamp(P.speed, 0, 1.6) * MOVE_DODGE[G.diff]) * (1 - P.crouch * .25);
+}
 
 /* ------------------------------ level loading --------------------------- */
 function idx(x,y){ return y*G.W + x; }
@@ -1595,7 +1623,7 @@ function spawnEnemy(sub, x, y){
   const s = ESPEC[sub], d = DIFFS[G.diff];
   return ent({
     kind:'enemy', sub, x, y, ang:rnd(6.28),
-    hp: Math.round(s.hp * (sub==='boss' ? (d.hp*.9+.1) : d.hp)), max: s.hp,
+    hp: Math.round(s.hp * (sub==='boss' ? BOSSTUNE.hp[G.diff] : d.hp)), max: s.hp,
     size:s.size, r:s.r, zoff:s.zoff||0,
     state:'idle', alert:0, cd:rr(.3,1.2), walk:0, moving:false, pain:0, fireFlash:0,
     dying:0, dead2:false, deadFrame:0, strafe: Math.random()<.5?1:-1, retarget:0
@@ -1707,8 +1735,8 @@ function hurtEnemy(e, dmg, splash){
     sfx('die'); G.heat = Math.min(1, G.heat+.2);
     if (e.sub==='boss'){
       boom(e.x,e.y,.2,3.2,60,false); bump('boss');
-      G.bossAlive=false; G.meltdown = 35;
-      toast('THERMAL SHUTDOWN IN 35 SECONDS — GET OUT', 'red', 5000);
+      G.bossAlive=false; G.meltdown = BOSSTUNE.melt[G.diff];
+      toast('THERMAL SHUTDOWN IN '+BOSSTUNE.melt[G.diff]+' SECONDS — GET OUT', 'red', 5000);
       sfx('boss');
     } else if (ESPEC[e.sub].drop > 0 && Math.random() < .8){
       ent({kind:'item', sub:'wpn'+ESPEC[e.sub].drop, x:e.x, y:e.y, size:.4, r:.55});
@@ -1772,6 +1800,7 @@ const AIM_CONE  = .14;                  // half-width of the cone, in half-scree
 const AIM_RANGE = 18;                   // world units; beyond this you are on your own
 const AIM_PULL  = 1.7;                  // rad/s the view eases onto a target in FULL mode
 function acquireTarget(){
+  const prev = P.lockT;
   P.lockT = null;
   if (!AIM_ASSIST || !P.alive) return;
   const zoom = 1 - P.aim*.42;
@@ -1785,6 +1814,7 @@ function acquireTarget(){
      mid-air. Projectiles fly until they hit something, so they keep the cone. */
   const wRange = WEAPS[P.w].proj ? AIM_RANGE : Math.min(AIM_RANGE, WEAPS[P.w].range);
   let best = null, bestScore = 1e9, bsx = 0, bsy = 0;
+  let prevScore = 1e9, prevSX = 0, prevSY = 0;
   for (const e of G.ents){
     if (e.kind!=='enemy' || e.state==='dead' || e.dead2) continue;
     const ox = e.x-P.x, oy = e.y-P.y;
@@ -1798,12 +1828,26 @@ function acquireTarget(){
     if (Math.abs(off) > cone || Math.abs(sx) > 1) continue;   // centre must be on screen
     if (!los(P.x,P.y,e.x,e.y)) continue;
     const score = Math.abs(off) + ty*.004;           // nearest the reticle, then nearest
+    if (e === prev){
+      prevScore = score;
+      const pinv = PROJ/ty;
+      prevSX = (RW*.5)*(1+sx);
+      prevSY = HALFH + P.pitch + pinv*P.camZ - pinv*(e.zoff||0) - pinv*(e.size||1)*.5;
+    }
     if (score < bestScore){
       bestScore = score; best = e;
       const inv = PROJ/ty;
       bsx = (RW*.5)*(1+sx);
       bsy = HALFH + P.pitch + inv*P.camZ - inv*(e.zoff||0) - inv*(e.size||1)*.5;
     }
+  }
+  /* Sticky lock: the held target keeps the lock while it stays a valid
+     candidate, unless a rival is CLEARLY better (30%+) — two goons side by
+     side used to trade the amber crosshair every few frames mid-burst. A prev
+     that failed the filters above (left the cone, died, lost sight) has
+     prevScore 1e9 and is dropped instantly. */
+  if (best && prev && best !== prev && prevScore < 1e8 && bestScore > prevScore * .7){
+    best = prev; bsx = prevSX; bsy = prevSY;
   }
   if (best){ P.lockT = best; P.lockSX = bsx; P.lockSY = bsy; }
 }
@@ -1841,8 +1885,18 @@ function playerFire(){
   /* A locked shot goes to the body's centre with most of the spread taken off;
      the shotgun keeps its pattern, it just centres it. */
   const sp = w.spread * (1 - P.aim*.62) * (1 + P.speed*.28) * (tgt ? .3 : 1);
-  const aim = tgt ? Math.atan2(tgt.y-P.y, tgt.x-P.x) : aimAngle();
+  let aim = tgt ? Math.atan2(tgt.y-P.y, tgt.x-P.x) : aimAngle();
   if (w.proj){
+    /* A rocket takes d/11 seconds to arrive; a locked shot leads the body by
+       its tracked velocity over that flight, one intercept iteration. Only if
+       the led point is still in the clear, though — leading a strafer into a
+       doorframe would slam the wall and splash the shooter, a self-damage
+       path the direct locked shot never had. */
+    if (tgt){
+      const t = Math.sqrt(dist2(tgt.x, tgt.y, P.x, P.y)) / 11;
+      const ix = tgt.x + (tgt.vx||0)*t, iy = tgt.y + (tgt.vy||0)*t;
+      if (los(P.x, P.y, ix, iy)) aim = Math.atan2(iy - P.y, ix - P.x);
+    }
     ent({kind:'proj', sub:'patch', x:P.x, y:P.y, ang:aim + rr(-sp,sp),
          spd:11, life:0, size:.24, zoff:.48, mine:true, dmg:w.dmg});
   } else {
@@ -1932,7 +1986,7 @@ function updateEnemy(e, dt){
     if (see && e.cd <= 0 && dd < s.sight){
       e.cd = s.rof * rr(.8,1.3);
       e.fireFlash = .12;
-      const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)), .06, .95);
+      const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)) * aimPenalty(), .06, .95);
       const spread = (1-acc) * .44;
       const pel = s.pellets || 1;
       const fall = clamp(1 - dd/(s.sight*1.5), .34, 1);      // range falloff
@@ -1956,7 +2010,7 @@ function updateBoss(e, dt, dd, see){
   const toP = Math.atan2(P.y-e.y, P.x-e.x);
   e.ang += clamp(angDiff(e.ang, toP), -2.2*dt, 2.2*dt);
   e.walk += dt*2; e.moving = true;
-  const want = 5.5;
+  const want = BOSSTUNE.keep[G.diff];
   const mv = dd > want ? 1 : (dd < want*.7 ? -.6 : 0);
   const ax = Math.cos(e.ang)*mv + Math.cos(e.ang+1.57)*e.strafe*.75;
   const ay = Math.sin(e.ang)*mv + Math.sin(e.ang+1.57)*e.strafe*.75;
@@ -1966,18 +2020,18 @@ function updateBoss(e, dt, dd, see){
 
   e.cd -= dt;
   if (see && e.cd <= 0){
-    e.cd = s.rof * (G.shieldDown ? .8 : 1.15);
+    e.cd = s.rof * (G.shieldDown ? .8 : 1.15) * BOSSTUNE.rof[G.diff];
     e.fireFlash = .18;
     sfx('cannon');
-    for (let i=-1;i<=1;i++)
+    for (const i of BOSSTUNE.fan[G.diff])
       ent({kind:'proj', sub:'boss', x:e.x, y:e.y, ang:toP + i*.16 + rr(-.05,.05),
-           spd:6.6, life:0, size:.30, zoff:.56, mine:false, dmg:s.dmg});
+           spd:BOSSTUNE.pspd[G.diff], life:0, size:.30, zoff:.56, mine:false, dmg:s.dmg});
   }
   e.spawnCd = (e.spawnCd||6) - dt;
   if (e.spawnCd <= 0){
-    e.spawnCd = 8;
+    e.spawnCd = BOSSTUNE.droneCd[G.diff];
     const alive = G.ents.filter(o=>o.kind==='enemy'&&o.sub==='drone'&&o.state!=='dead').length;
-    if (alive < 4){
+    if (alive < BOSSTUNE.droneCap[G.diff]){
       const a = rnd(6.28), nx = e.x+Math.cos(a)*1.6, ny = e.y+Math.sin(a)*1.6;
       if (!isSolid(nx,ny)){ const d2 = spawnEnemy('drone', nx, ny); d2.spawned = true; wake(d2);
         toast('LEGACY-DC01 SPAWNED A ROGUE AP', 'red', 1800); }
@@ -2132,7 +2186,13 @@ function step(dt){
   /* entities */
   for (const e of G.ents){
     if (e.dead2) continue;
-    if (e.kind==='enemy'){ updateEnemy(e, dt); continue; }
+    if (e.kind==='enemy'){
+      const evx = e.x, evy = e.y;
+      updateEnemy(e, dt);
+      /* smoothed body velocity, so the patch cannon can lead a mover */
+      if (dt > 0){ e.vx = lerp(e.vx||0, (e.x-evx)/dt, .3); e.vy = lerp(e.vy||0, (e.y-evy)/dt, .3); }
+      continue;
+    }
     if (e.kind==='fx'){
       e.life += dt;
       if (e.sub==='boom'){ e.size = .8 + e.life*2.0; if (e.life>.42) e.dead2=true; }
@@ -2775,7 +2835,7 @@ function drawHUD(horizon){
   const boss = G.ents.find(e=>e.kind==='enemy'&&e.sub==='boss'&&e.state!=='dead');
   if (boss && dist2(boss.x,boss.y,P.x,P.y) < 400 && los(boss.x,boss.y,P.x,P.y)){
     txt('LEGACY-DC01', RW>>1, RH-40, G.shieldDown?'#ff3b30':'#35d0ff', 6, 'center');
-    bar((RW>>1)-70, RH-36, 140, 5, boss.hp/(ESPEC.boss.hp*(DIFFS[G.diff].hp*.9+.1)),
+    bar((RW>>1)-70, RH-36, 140, 5, boss.hp/(ESPEC.boss.hp*BOSSTUNE.hp[G.diff]),
         G.shieldDown?'#ff3b30':'#35d0ff');
     if (!G.shieldDown) txt('ICS SHIELD ACTIVE', RW>>1, RH-27, '#35d0ff', 6, 'center');
   }
@@ -3286,6 +3346,42 @@ function selfTest(runSim){
         step(0.016);
         ok('aim assist: never locks beyond the weapon\'s range', P.lockT !== e);
         WEAPS[0].range = savedRange;
+        /* a locked patch-cannon shot leads the body by its tracked velocity */
+        acquireTarget();
+        if (P.lockT === e){
+          const saveW = P.w, saveHas3 = P.has[3], saveMag3 = P.mag[3];
+          P.has[3] = true; P.w = 3; P.mag[3] = 3; P.fireCd = 0; P.reload = 0;
+          e.vx = 0; e.vy = 0; playerFire();
+          const straight = G.ents.filter(o => o.kind==='proj' && o.mine).pop();
+          e.vx = Math.cos(spot.a+1.5708)*3; e.vy = Math.sin(spot.a+1.5708)*3;
+          P.fireCd = 0; playerFire();
+          const led = G.ents.filter(o => o.kind==='proj' && o.mine).pop();
+          ok('aim assist: rockets lead a moving body', angDiff(straight.ang, led.ang) > .1,
+             (angDiff(straight.ang, led.ang)*57.3).toFixed(1)+'deg');
+          G.ents = G.ents.filter(o => !(o.kind==='proj' && o.mine));
+          e.vx = 0; e.vy = 0;
+          P.w = saveW; P.has[3] = saveHas3; P.mag[3] = saveMag3; P.reload = 0;
+        } else ok('aim assist: rockets lead a moving body (no lock to test)', true);
+        /* the lock must not flicker to a marginally better rival, but a
+           clearly better one takes it. Pin e back to its spawn point first:
+           the chase steps above walked it a few centimetres, which could put
+           it INSIDE the rival's margin and pass this test without ever
+           reaching the hysteresis branch. */
+        e.x = spot.px; e.y = spot.py; e.vx = 0; e.vy = 0;
+        acquireTarget();
+        if (P.lockT === e){
+          const lat = k => [P.x + Math.cos(spot.a)*spot.d + Math.cos(spot.a+1.5708)*k,
+                            P.y + Math.sin(spot.a)*spot.d + Math.sin(spot.a+1.5708)*k];
+          const p2 = lat(.20);
+          const e2 = spawnEnemy('goon', p2[0], p2[1]);
+          acquireTarget();
+          ok('aim assist: lock sticks against a marginal rival', P.lockT === e);
+          const p3 = lat(0); e2.x = p3[0]; e2.y = p3[1];
+          acquireTarget();
+          ok('aim assist: a clearly better target takes the lock', P.lockT === e2);
+          e2.dead2 = true; G.ents = G.ents.filter(o => o !== e2); P.lockT = null;
+        } else { ok('aim assist: lock sticks (no lock to test)', true);
+                 ok('aim assist: better target takes the lock (no lock to test)', true); }
         e.dead2 = true; G.ents = G.ents.filter(o => o !== e); P.lockT = null;
       }
       AIM_ASSIST = saveAA; M.locked = false; clearInput();
@@ -3332,6 +3428,49 @@ function selfTest(runSim){
       ok('wheel: two notches step two weapons', P.w === 2, 'w='+P.w);
       P.has = savedHas; P.w = 0;
     }
+
+    /* the M03 duel is clearance-tuned: AGENT faces one slow slug, 00 AGENT
+       keeps the triple fan, and the escape fuse is longest where needed */
+    {
+      let bspot = null;
+      for (let a = 0; a < 6.28 && !bspot; a += .4) for (let d2 = 4; d2 <= 6 && !bspot; d2 += .5){
+        const bx = P.x + Math.cos(a)*d2, by = P.y + Math.sin(a)*d2;
+        if (!isSolid(bx,by) && los(P.x,P.y,bx,by)) bspot = { x:bx, y:by };
+      }
+      if (bspot){
+        const volley = di => {
+          const dsave = G.diff; G.diff = di;
+          const b = spawnEnemy('boss', bspot.x, bspot.y);
+          b.cd = 0; b.spawnCd = 99;
+          const n0 = G.ents.filter(o => o.kind==='proj' && !o.mine).length;
+          updateBoss(b, .016, Math.sqrt(dist2(b.x,b.y,P.x,P.y)), true);
+          const list = G.ents.filter(o => o.kind==='proj' && !o.mine);
+          const made = list.length - n0, spd = list.length ? list[list.length-1].spd : 0;
+          b.dead2 = true;
+          G.ents = G.ents.filter(o => o !== b && !(o.kind==='proj' && !o.mine));
+          G.diff = dsave;
+          return { made, spd };
+        };
+        const easy = volley(0), hard = volley(2);
+        ok('boss: AGENT volley is a single slug', easy.made === 1, 'made '+easy.made);
+        ok('boss: the AGENT slug is dodgeably slow', Math.abs(easy.spd - BOSSTUNE.pspd[0]) < 1e-9, 'spd '+easy.spd);
+        ok('boss: 00 AGENT keeps the triple fan', hard.made === 3, 'made '+hard.made);
+        ok('boss: the escape fuse is longest on AGENT', BOSSTUNE.melt[0] > BOSSTUNE.melt[2]);
+      } else ok('boss: (no open floor to test on)', true);
+    }
+
+    /* hostile aim tracks a moving or crouching agent imperfectly */
+    { const s0 = P.speed, c0 = P.crouch, d0 = G.diff;
+      G.diff = 0; P.speed = 0; P.crouch = 0;
+      const still = aimPenalty();
+      P.speed = 1.48; const run = aimPenalty();
+      P.crouch = 1; const runCrouch = aimPenalty();
+      G.diff = 2; P.crouch = 0; const runHard = aimPenalty();
+      ok('enemy aim: a still agent is fully tracked', Math.abs(still - 1) < 1e-9);
+      ok('enemy aim: a sprinting agent is tracked worse', run < .6, run.toFixed(2));
+      ok('enemy aim: crouching evades further', runCrouch < run, runCrouch.toFixed(2));
+      ok('enemy aim: 00 AGENT tracks better than AGENT', runHard > run, runHard.toFixed(2));
+      P.speed = s0; P.crouch = c0; G.diff = d0; }
 
     /* clicking another window (blur without hide) pauses like tab-hide does */
     dispatchEvent(new Event('blur'));

@@ -3,7 +3,7 @@
    as the offline fallback; Google Fonts are cached stale-while-revalidate so the
    installed app keeps its faces with no network. Bump CACHE on every release —
    activate() deletes the old one. */
-const CACHE = 'agent360-v1.03';
+const CACHE = 'agent360-v1.04';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'

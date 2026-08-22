@@ -101,6 +101,11 @@ alone:
 - `tools/verify.js` runs the same suite headlessly plus a 5,400-frame
   randomized-input soak across all nine mission/difficulty combinations:
   `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
+- `tools/playtest.js` pits a deliberately mediocre scripted bot (bounded turn
+  rate, aim jitter, no cheats, no cover play) against the M03 boss and then the
+  meltdown escape: `node tools/playtest.js "$(pwd)/index.html" 0 30`. Balance
+  changes are judged by its win rate — the AGENT duel is tuned so this bot wins
+  ~93% of runs; on SECRET AGENT and 00 AGENT it dies, as it should.
 - The game survived three adversarial review rounds (independent finder agents
   cross-examined by paired skeptics); regressions found there become new F4
   assertions.
