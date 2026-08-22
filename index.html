@@ -432,19 +432,32 @@ function clearInput(){
      script block, so reach it through a hook rather than a bare reference. */
   if (typeof resetLookState === 'function') resetLookState();
 }
-addEventListener('blur', clearInput);
+/* Losing focus without losing visibility — a click on another window — is the
+   same loss of control as tab-hide or Esc-unlock: never leave the sim running
+   while the player cannot act. (typeof: these fire before G's block parses.) */
+addEventListener('blur', () => {
+  clearInput();
+  if (typeof G !== 'undefined' && G.state === 'play') pause();
+});
 addEventListener('focus', () => { M.dx = 0; M.dy = 0; M.lx = null; M.ly = null; });
 document.addEventListener('visibilitychange', () => {
   clearInput();
-  if (document.hidden && G.state === 'play') pause();
+  if (document.hidden && typeof G !== 'undefined' && G.state === 'play') pause();
 });
 
-view.addEventListener('contextmenu', e => e.preventDefault());
+/* The mouse belongs to the game across the WHOLE window while playing: in the
+   unlocked look modes the visible cursor drifts onto the letterbox bars around
+   the canvas mid-fight, and a click there must still shoot — and a right-click
+   must not open the browser menu. Outside play everything bails immediately,
+   so the menus keep native behaviour and their own focus. */
+document.addEventListener('contextmenu', e => {
+  if (typeof G !== 'undefined' && G.state === 'play') e.preventDefault();
+});
 
-view.addEventListener('mousedown', e => {
+document.addEventListener('mousedown', e => {
+  if (typeof G === 'undefined' || G.state !== 'play') return;
   e.preventDefault(); view.focus();
   M.moved = 0; M.downT = performance.now(); M.lx = e.clientX; M.ly = e.clientY;
-  if (G.state !== 'play') return;
   if (e.button === 2){ M.aim = true; return; }
   if (e.button !== 0) return;
   if (!M.locked && wantsLock()){
@@ -481,7 +494,12 @@ addEventListener('mouseup', e => {
   if (!M.tapDone) endDrag(true);          // browser without pointer events
   M.tapDone = false; M.dragging = false; M.fire = false;
 });
-addEventListener('pointercancel', () => { endDrag(false); M.aim = false; M.tapDone = false; });
+addEventListener('pointercancel', e => {
+  /* Touch state is owned by the touch handlers: a cancelled LOOK finger must
+     not release the FIRE button the other thumb is still pressing. */
+  if (e.pointerType === 'touch') return;
+  endDrag(false); M.aim = false; M.tapDone = false;
+});
 
 /* ONE handler, one currency: relative movement. Captured, that is the raw
    movementX/Y stream and it is passed through untouched — no clamps, no rate
@@ -646,7 +664,11 @@ function unlock(){
   view.addEventListener('touchstart', e=>{ const t=e.changedTouches[0]; T.look={id:t.identifier,x:t.clientX}; M.tlook = true; e.preventDefault(); }, {passive:false});
   const bind=(id,fn,fn2)=>{ const el=document.getElementById(id);
     el.addEventListener('touchstart',e=>{e.preventDefault();fn();},{passive:false});
-    el.addEventListener('touchend',e=>{e.preventDefault();fn2&&fn2();},{passive:false}); };
+    el.addEventListener('touchend',e=>{e.preventDefault();fn2&&fn2();},{passive:false});
+    /* The OS can steal a button touch (edge swipe, notification shade) and end
+       it with touchcancel, never touchend — without this, USE stayed held and
+       terminals hacked themselves by line of sight alone. */
+    el.addEventListener('touchcancel',()=>{fn2&&fn2();}); };
   bind('tfire',()=>{ M.fire=true; M.fireEdge=performance.now(); M.pressNew=true; },()=>M.fire=false);
   bind('tuse',()=>held.use=true,()=>held.use=false);
   bind('tswap',()=>{ M.wheel += 1; });
@@ -1585,17 +1607,21 @@ function fx(sub,x,y,z){ ent({kind:'fx', sub, x, y, zoff:z===undefined?.5:z, size
 function boom(x,y,z,radius,dmg,fromPlayer){
   ent({kind:'fx', sub:'boom', x, y, zoff:z, size:1.0, life:0});
   sfx('explode'); G.shake = Math.max(G.shake||0, 7);
+  /* Splash respects walls like every other damage path (hitscan, enemy fire,
+     aim assist all do): a rocket on a closed door must not clear the room
+     behind it, and a corner is real cover from your own blast. */
   for (const e of G.ents){
     if (e.dead2) continue;
     const d = Math.sqrt(dist2(e.x,e.y,x,y));
     if (d > radius) continue;
+    if (!los(x, y, e.x, e.y)) continue;
     const f = 1 - d/radius;
     if (e.kind==='enemy' && e.state!=='dead') hurtEnemy(e, dmg*f, true);
     else if (e.kind==='prop' && e.hp>0) hurtProp(e, dmg*f);
   }
   if (fromPlayer){
     const d = Math.sqrt(dist2(P.x,P.y,x,y));
-    if (d < radius*.75) hurtPlayer(dmg*.35*(1-d/(radius*.75)));
+    if (d < radius*.75 && los(x, y, P.x, P.y)) hurtPlayer(dmg*.35*(1-d/(radius*.75)));
   }
 }
 function los(ax,ay,bx,by){
@@ -1754,13 +1780,17 @@ function acquireTarget(){
   const det = planeX*dirY - dirX*planeY;
   if (!det) return;
   const invDet = 1/det, PROJ = RH/zoom;
+  /* Never lock what the equipped gun cannot reach: an amber crosshair on a
+     goon at 15u with the 13u shotgun promised a hit that silently expired
+     mid-air. Projectiles fly until they hit something, so they keep the cone. */
+  const wRange = WEAPS[P.w].proj ? AIM_RANGE : Math.min(AIM_RANGE, WEAPS[P.w].range);
   let best = null, bestScore = 1e9, bsx = 0, bsy = 0;
   for (const e of G.ents){
     if (e.kind!=='enemy' || e.state==='dead' || e.dead2) continue;
     const ox = e.x-P.x, oy = e.y-P.y;
     const tx = invDet*(dirY*ox - dirX*oy);
     const ty = invDet*(-planeY*ox + planeX*oy);
-    if (ty < .3 || ty > AIM_RANGE) continue;
+    if (ty < .3 || ty > wRange) continue;
     const sx = tx/ty;                               // -1..1 across the screen
     const halfW = ((PROJ/ty)*e.r) / (RW*.5);         // the body's own half-width on screen
     const cone = AIM_CONE*(1 - P.aim*.55) + halfW;
@@ -1776,6 +1806,23 @@ function acquireTarget(){
     }
   }
   if (best){ P.lockT = best; P.lockSX = bsx; P.lockSY = bsy; }
+}
+/* Where the locked body sits on THIS frame's screen: same camera maths as the
+   sprite pass and the same horizon (bob, shake, recoil included), computed
+   after the frame's movement. acquireTarget's stored point is one step stale
+   and knows none of those offsets, so the brackets slid off the target the
+   moment the gun kicked. */
+function lockScreen(e, horizon){
+  const zoom = 1 - P.aim*.42, PROJ = RH/zoom;
+  const dirX = Math.cos(P.ang), dirY = Math.sin(P.ang);
+  const planeX = -dirY*FOV_N*zoom, planeY = dirX*FOV_N*zoom;
+  const det = planeX*dirY - dirX*planeY;
+  if (!det) return null;
+  const invDet = 1/det, ox = e.x-P.x, oy = e.y-P.y;
+  const tx = invDet*(dirY*ox - dirX*oy), ty = invDet*(-planeY*ox + planeX*oy);
+  if (ty < .22) return null;
+  const inv = PROJ/ty;
+  return [ (RW*.5)*(1 + tx/ty), horizon + inv*P.camZ - inv*(e.zoff||0) - inv*(e.size||1)*.5 ];
 }
 /* Returns true when a shot actually left the barrel. */
 function playerFire(){
@@ -2016,7 +2063,12 @@ function step(dt){
 
   /* per-frame input trace for F2 */
   M.evtF = M.evt; M.evt = 0; M.rawMaxF = M.rawMax; M.rawMax = 0;
-  if (M.wheel){ switchWeapon(M.wheel>0?1:-1); M.wheel=0; }
+  /* Every notch is a step: a firm two-notch flick lands two weapons over.
+     Capped at a full cycle — more than four just wraps. */
+  if (M.wheel){
+    for (let n = Math.min(4, Math.abs(M.wheel)); n > 0; n--) switchWeapon(M.wheel > 0 ? 1 : -1);
+    M.wheel = 0;
+  }
 
   /* aim / crouch */
   const wantAim = (M.aim || held.aim) ? 1 : 0;
@@ -2282,16 +2334,20 @@ function render(){
     if (rdx < 0){ stx=-1; sdx=(P.x-mx)*ddx; } else { stx=1; sdx=(mx+1-P.x)*ddx; }
     if (rdy < 0){ sty=-1; sdy=(P.y-my)*ddy; } else { sty=1; sdy=(my+1-P.y)*ddy; }
     let side=0, hit=0, texi=0, guard=0, hOff=0;
-    let dHit=0, dSide=0, dPerp=0, dTex=0, dOff=0, dOpen=0;
+    /* Up to TWO opening doors can share one sightline (M01's door row manages
+       it) — note each and keep casting, so the gap under the far door shows the
+       real geometry behind it, not extrapolated floor. A third reads as a wall. */
+    let d0=0,d0P=0,d0S=0,d0T=0,d0O=0, d1=0,d1P=0,d1S=0,d1T=0,d1O=0;
     while (guard++ < 120){
       if (sdx < sdy){ sdx += ddx; mx += stx; side=0; } else { sdy += ddy; my += sty; side=1; }
       if (mx<0||my<0||mx>=G.W||my>=G.H){ hit=2; break; }
       const c = my*G.W+mx;
       if (G.solid[c]){
         const di = G.doorIx[c], op = di>=0 ? G.doors[di].open : 0;
-        if (op > 0 && !dHit){           // an opening door: note it, look past it
-          dHit=1; dSide=side; dTex=G.tex[c]; dOpen=op; dOff=(op*64)|0;
-          dPerp = Math.max(.02, side===0 ? sdx-ddx : sdy-ddy);
+        if (op > 0 && !d1){             // an opening door: note it, look past it
+          const p = Math.max(.02, side===0 ? sdx-ddx : sdy-ddy);
+          if (!d0){ d0=1; d0P=p; d0S=side; d0T=G.tex[c]; d0O=(op*64)|0; }
+          else    { d1=1; d1P=p; d1S=side; d1T=G.tex[c]; d1O=(op*64)|0; }
           continue;
         }
         hit=1; texi=G.tex[c]; hOff=(op*64)|0; break;
@@ -2303,17 +2359,16 @@ function render(){
       zbuf[x] = perp;
       wallCol(x, perp, side, rdx, rdy, texi, hOff, horizon, PROJ);
     }
-    if (dHit){
-      /* The door is solid to movement, sight and shots until it is .9 open, so
-         it occludes sprites for exactly as long as it is drawn at all. */
-      zbuf[x] = Math.min(zbuf[x], dPerp);
-      wallCol(x, dPerp, dSide, rdx, rdy, dTex, dOff, horizon, PROJ);
-    }
+    /* Far door first, near door over it. A door is solid to movement, sight and
+       shots until it is .9 open, so it occludes sprites for exactly as long as
+       it is drawn at all. */
+    if (d1){ zbuf[x] = Math.min(zbuf[x], d1P); wallCol(x, d1P, d1S, rdx, rdy, d1T, d1O, horizon, PROJ); }
+    if (d0){ zbuf[x] = Math.min(zbuf[x], d0P); wallCol(x, d0P, d0S, rdx, rdy, d0T, d0O, horizon, PROJ); }
   }
   drawSprites(dirX,dirY,planeX,planeY,horizon,PROJ);
   ctx.putImageData(img, 0, 0);
   drawViewModel(bobY);
-  drawHUD();
+  drawHUD(horizon);
   if (G.showTests) drawTestReport();
 }
 
@@ -2648,9 +2703,10 @@ function bar(x,y,w,h,frac,col,bg){
 }
 function fmt(t){ const m=Math.floor(t/60), s=Math.floor(t%60); return m+':'+(s<10?'0':'')+s; }
 
-function drawHUD(){
+function drawHUD(horizon){
   if (!G.solid) return;
   const w = WEAPS[P.w];
+  if (horizon === undefined) horizon = HALFH + P.pitch;
 
   /* damage vignette + hurt flash */
   if (P.hp < 40){
@@ -2663,9 +2719,14 @@ function drawHUD(){
   /* crosshair */
   const spread = w.spread*(1-P.aim*.62)*(1+P.speed*.28);
   const gap = 3 + spread*260 + P.recoil*7;
-  const lockOn = !!(AIM_ASSIST && P.lockT && !P.lockT.dead2 && P.lockT.state!=='dead');
-  const cx = lockOn ? clamp(P.lockSX|0, 8, RW-8) : (((RW>>1) * (1 + (P.aimU||0)))|0);
-  const cy = lockOn ? clamp(P.lockSY|0, 8, RH-8) : (HALFH + P.pitch)|0;
+  /* Re-project the lock target against THIS frame's camera and horizon so the
+     amber crosshair rides the sprite through recoil, bob and shake instead of
+     the stale pre-move point acquireTarget stored. */
+  const lockPos = (AIM_ASSIST && P.lockT && !P.lockT.dead2 && P.lockT.state!=='dead')
+    ? lockScreen(P.lockT, horizon) : null;
+  const lockOn = !!lockPos;
+  const cx = lockOn ? clamp(lockPos[0]|0, 8, RW-8) : (((RW>>1) * (1 + (P.aimU||0)))|0);
+  const cy = lockOn ? clamp(lockPos[1]|0, 8, RH-8) : (HALFH + P.pitch)|0;
   ctx.fillStyle = lockOn ? '#ffb02e' : P.useTarget ? '#4ade80' : '#e8f4ff';
   ctx.globalAlpha = .92;
   ctx.fillRect(cx-1, cy-gap-4, 2, 4); ctx.fillRect(cx-1, cy+gap, 2, 4);
@@ -2691,9 +2752,11 @@ function drawHUD(){
   if (P.keys>0) txt('KEY', 10, 40, '#8be6ff', 6);
   if (G.cheats.god) txt('INVULNERABLE', 10, RH-46, '#4ade80', 6);
 
-  /* radar + waypoint top right; clock sits left, clear of both */
-  /* The waypoint sits where the unfocused banner goes, so yield to it. */
-  if (G.mapOn){ drawMinimap(); if (document.hasFocus()) drawWaypoint(); }
+  /* radar top right; clock sits left, clear of both. The waypoint is its own
+     feature — hiding the radar with N must not take the objective chevron with
+     it. It still yields to the unfocused banner, which shares its spot. */
+  if (G.mapOn) drawMinimap();
+  if (document.hasFocus()) drawWaypoint();
   const left = objsLeft().length;
   const cy2 = P.keys>0 ? 52 : 42;
   txt(fmt(G.time), 10, cy2, '#8fa8c0', 7);
@@ -2773,14 +2836,19 @@ function drawHUD(){
   /* Free look: mark the turn zone so it is obvious what makes the view swing,
      and flash a chevron while it is actually turning. */
   if (!M.locked && LOOKMODE !== 'drag'){      // refused capture plays as free look too
-    const mid = RW>>1, tz = (RW/2)*RET_TURN;
+    /* Ticks mark the REAL gate (aim mode widens it) and sit on the reticle's
+       own row — never on the lock target's height, which sent them bouncing
+       to wherever a locked drone happened to fly. The chevron follows
+       P.turning, the same flag that actually swings the view. */
+    const mid = RW>>1, gate = P.turnAt || RET_TURN, tz = (RW/2)*gate;
+    const rowY = (HALFH + P.pitch)|0;
     ctx.fillStyle = 'rgba(125,147,171,.30)';
-    ctx.fillRect(mid-tz, cy-7, 1, 14); ctx.fillRect(mid+tz, cy-7, 1, 14);
-    if (Math.abs(P.rx) > RET_TURN){
+    ctx.fillRect(mid-tz, rowY-7, 1, 14); ctx.fillRect(mid+tz, rowY-7, 1, 14);
+    if (P.turning){
       const s = P.rx > 0 ? 1 : -1, ax = mid + s*(tz+9);
       ctx.fillStyle = '#35d0ff';
       ctx.beginPath();
-      ctx.moveTo(ax + s*5, cy); ctx.lineTo(ax - s*3, cy-5); ctx.lineTo(ax - s*3, cy+5);
+      ctx.moveTo(ax + s*5, rowY); ctx.lineTo(ax - s*3, rowY-5); ctx.lineTo(ax - s*3, rowY+5);
       ctx.closePath(); ctx.fill();
     }
   }
@@ -3060,7 +3128,10 @@ function selfTest(runSim){
     const save = { look:LOOK, layout:KEYS_LAYOUT, lvl:selLevel, diff:G.diff, aim:AIM_ASSIST,
                    cheats:Object.assign({}, G.cheats), fails:M.lockFails,
                    nagged:M.lockNagged, locked:M.locked, sens:M.sens,
-                   tainted:G.tainted, tscale:G.tscale, unlockAt:M.unlockAt };
+                   tainted:G.tainted, tscale:G.tscale, unlockAt:M.unlockAt, sfx:A.sfxVol };
+    /* The sim fires real guns and wakes real guards; without this the report
+       opens over an inexplicable one-frame firefight of overlapping SFX. */
+    A.sfxVol = 0;
     selLevel = 0; G.diff = 1; LOOK = 'free';
     M.lockFails = 0; M.lockNagged = false; M.sens = 0.7; M.locked = false; resolveLook();
     startMission(false); G.cheats.god = true; clearInput();
@@ -3209,6 +3280,12 @@ function selfTest(runSim){
         ok('aim assist: ignores a hostile outside the cone', P.lockT !== e);
         e.x = spot.px; e.y = spot.py; AIM_ASSIST = 0; step(0.016);
         ok('aim assist: OFF locks nothing', !P.lockT);
+        /* the equipped gun's reach caps the lock: a 2u pistol must ignore this
+           hostile at 3u+, where its shot would silently expire mid-air */
+        AIM_ASSIST = 1; const savedRange = WEAPS[0].range; WEAPS[0].range = 2; P.w = 0;
+        step(0.016);
+        ok('aim assist: never locks beyond the weapon\'s range', P.lockT !== e);
+        WEAPS[0].range = savedRange;
         e.dead2 = true; G.ents = G.ents.filter(o => o !== e); P.lockT = null;
       }
       AIM_ASSIST = saveAA; M.locked = false; clearInput();
@@ -3224,12 +3301,49 @@ function selfTest(runSim){
     held.fwd = true; for (let i=0;i<600;i++) step(0.016); held.fwd = false;
     ok('move: walls stop the player', !isSolid(P.x, P.y) && !isSolid(P.x+.26, P.y));
 
+    /* explosions respect walls: a blast on one side of M01's cubicle block must
+       not hurt the goon sealed on the other side, and must still hurt the one
+       standing in open air */
+    {
+      const sealed = spawnEnemy('goon', 5.5, 5.5);   // row 4's #### between it and the blast
+      const open   = spawnEnemy('goon', 5.5, 2.5);
+      const hp0 = sealed.hp, hp1 = open.hp;
+      boom(5.5, 3.5, .2, 2.4, 30, false);
+      ok('boom: splash is blocked by walls', sealed.hp === hp0, 'hp '+hp0+' -> '+sealed.hp);
+      ok('boom: splash still lands in the open', open.hp < hp1, 'hp '+hp1+' -> '+open.hp);
+      sealed.dead2 = true; open.dead2 = true;
+      G.ents = G.ents.filter(o => o !== sealed && o !== open);
+    }
+
+    /* a cancelled TOUCH pointer must not release the fire button the other
+       thumb is still holding; a cancelled mouse pointer still must */
+    if (typeof PointerEvent === 'function'){
+      M.fire = true;
+      dispatchEvent(new PointerEvent('pointercancel', { pointerType:'touch', bubbles:true }));
+      ok('touch pointercancel keeps FIRE held', M.fire === true);
+      dispatchEvent(new PointerEvent('pointercancel', { pointerType:'mouse', bubbles:true }));
+      ok('mouse pointercancel releases fire', M.fire === false);
+    }
+
+    /* two wheel notches in one frame are two weapon steps, not one */
+    {
+      const savedHas = P.has.slice(); P.has = [true, true, true, true];
+      P.w = 0; M.wheel = 2; step(0.016);
+      ok('wheel: two notches step two weapons', P.w === 2, 'w='+P.w);
+      P.has = savedHas; P.w = 0;
+    }
+
+    /* clicking another window (blur without hide) pauses like tab-hide does */
+    dispatchEvent(new Event('blur'));
+    ok('blur pauses a live mission', G.state === 'pause');
+
     /* restore everything, including the caller's screen */
     LOOK = save.look; KEYS_LAYOUT = save.layout; applyLayout();
     selLevel = save.lvl; G.diff = save.diff; G.cheats = save.cheats;
     M.lockFails = save.fails; M.lockNagged = save.nagged; M.locked = save.locked;
     M.unlockAt = save.unlockAt; M.lockPending = false;
     M.sens = save.sens; G.tainted = save.tainted; G.tscale = save.tscale; AIM_ASSIST = save.aim;
+    A.sfxVol = save.sfx;
     resolveLook(); clearInput();
     loadLevel(save.lvl, save.diff); P.x = 3.5; P.y = 2.5;
   }
@@ -3350,7 +3464,13 @@ function onKey(e){
   if (G.state==='boot'){ bootDone(); return; }
   if (e.code==='KeyM'){ A.musOn = !A.musOn; toast(A.musOn?'MUSIC ON':'MUSIC OFF','cyan',1400); }
   if (e.code==='KeyN'){ act('togglemap'); }
-  if (e.code==='KeyP'){ document.body.classList.toggle('noscan'); }
+  if (e.code==='KeyP'){
+    /* P and the Options slider drive the same scanlines: turning them back on
+       with the slider parked at zero would otherwise LOOK like a dead key. */
+    const off = document.body.classList.toggle('noscan');
+    if (!off){ const s = document.getElementById('o-scan');
+      if (s && +s.value === 0){ s.value = 50; document.getElementById('scan').style.opacity = .5; } }
+  }
   if (G.state==='play'){
     if (e.code==='Escape' || e.code==='Tab'){ pause(); return; }
     if (e.code==='KeyR' || e.code==='Slash') startReload();
@@ -3375,7 +3495,11 @@ function onKey(e){
 document.getElementById('o-sens').oninput = e => M.sens = e.target.value/100;
 document.getElementById('o-sfx').oninput  = e => { A.sfxVol = e.target.value/100; if (A.sfx) A.sfx.gain.value = A.sfxVol; };
 document.getElementById('o-mus').oninput  = e => { A.musVol = e.target.value/100; if (A.mus) A.mus.gain.value = A.musVol; };
-document.getElementById('o-scan').oninput = e => { document.getElementById('scan').style.opacity = e.target.value/100; };
+document.getElementById('o-scan').oninput = e => {
+  document.getElementById('scan').style.opacity = e.target.value/100;
+  /* The slider always wins over a stale P toggle, or it drags a dead control. */
+  if (+e.target.value > 0) document.body.classList.remove('noscan');
+};
 document.getElementById('o-face').onchange = e => {
   const f = e.target.files && e.target.files[0]; if (!f) return;
   const fr = new FileReader();
