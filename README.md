@@ -1,0 +1,106 @@
+# Agent 360 — GoldenShare
+
+A GoldenEye-era first-person shooter about managed IT services, rendered with
+GoldenEye-era technology: a software raycaster writing into a 384×216 pixel
+buffer, textured floor and ceiling casting, billboard sprites with a per-column
+depth buffer, and a procedurally synthesised soundtrack. **No assets, no
+libraries, no build step — the entire game is one HTML file.**
+
+Three missions, three difficulties, pointer-lock mouse look, GoldenEye-style
+aim assist, cheats unlocked from the start (the results screen just gets an
+asterisk), and a face-upload option so every hostile in the building can wear a
+colleague's photo. The photo never leaves the browser tab.
+
+## Play it
+
+| Channel | How |
+|---|---|
+| **Hosted (PWA)** | `https://joshfeinst.github.io/agent360/` — live once this repo is public (see *Hosting status* below). Installable from the browser's Install button; works offline after the first load. |
+| **Single file** | Download `index.html`, double-click it. That's the whole game. Chrome or Edge recommended — the mouse locks the moment you hit ACCEPT. |
+| **Local server** | `python3 -m http.server` in the repo, then `http://localhost:8000`. |
+
+### Hosting status
+
+This repo is currently **private**. GitHub Pages does not publish from private
+repos on a free personal plan, so the deploy workflow will fail at its
+`configure-pages` step until either the repo is flipped to **public**
+(Settings → General → Danger Zone → Change visibility) or the account has
+GitHub Pro. The moment that changes, the next push (or a manual run of the
+*Deploy to GitHub Pages* workflow) puts the game at the URL above.
+
+## Controls (short version)
+
+Move **WASD** · look **mouse** (pointer lock; Esc releases and pauses) · fire
+**click / Space** · aim-zoom **right-click / Z** · interact **hold F** · reload
+**R** · weapons **Q/E, wheel, 1–4** · floor plan **Tab** · radar **N** ·
+self-test **F4** · input diagnostics **F3 / F2**. Every action has a
+right-hand mirror for left-handed mouse users; full list on the in-game
+CONTROLS screen.
+
+## Packaging story
+
+The single HTML file **is** the build artifact — for a zero-dependency game
+that is a feature, not a limitation. The repo packages *distribution* around
+it:
+
+- **`index.html`** — the game. Also runs bare from disk; the PWA hooks
+  (manifest link + guarded service-worker registration) deliberately no-op on
+  `file://`.
+- **`manifest.webmanifest` + `icons/` + `sw.js`** — installable PWA with
+  offline support. The service worker is network-first for the shell (new
+  deploys land on next load) and stale-while-revalidate for the Google Fonts.
+  Bump the `CACHE` version in `sw.js` when cutting a release.
+- **`.github/workflows/pages.yml`** — deploys the repo to GitHub Pages on every
+  push to `main`.
+- **Releases** — tag a version (`git tag v1.0.3 && git push --tags`), create a
+  GitHub Release, and attach `index.html` renamed to `Agent360.html` as the
+  downloadable build. That is this project's "package registry".
+
+## Roadmap — SharePoint and multiplayer
+
+The eventual goal is colleagues playing this from the team's M365 world.
+
+**Getting it into SharePoint.** Modern SharePoint will not execute an uploaded
+`.html` file, so the realistic paths are, in order of sanity:
+
+1. **Embed web part** (recommended first step): host the game at a real URL —
+   the GitHub Pages setup here, or an Azure Static Web App if it should live
+   inside the company's Azure tenancy — and embed that URL in a SharePoint
+   page. A tenant admin must allow-list the domain (SharePoint admin center →
+   Settings → HTML field security). The game already tolerates iframes: where
+   the frame refuses pointer lock it falls back to free-look, and giving the
+   iframe `allow="pointer-lock"` restores full mouse capture.
+2. **SPFx web part**: wrap the game in a SharePoint Framework `.sppkg` package
+   — the "proper" M365 route, deployable through the tenant App Catalog.
+3. **Legacy `.aspx` upload**: works only where the tenant still allows custom
+   script; most don't. Not worth chasing.
+
+**Multiplayer, smallest first.** None of this is built yet; each step stands
+alone:
+
+1. **Shared leaderboard** — everyone plays solo, mission time / accuracy / rank
+   post to one board. Cheapest backends: a SharePoint List written via Graph, a
+   tiny Azure Function, or zero-infrastructure shared state on a hosted
+   artifact. Days of work; passes every corporate firewall.
+2. **Ghost racing** — record a run (position/yaw stream, a few KB of JSON),
+   share it, race the colleague's translucent ghost. The billboard-sprite
+   pipeline already in the engine renders the ghost; no netcode, no servers,
+   and combined with (1) the sharing is automatic. Best fun-per-effort.
+3. **Real-time deathmatch / co-op (2–8 players)** — a WebSocket relay over 443
+   (survives corporate networks; peer-to-peer WebRTC usually doesn't without a
+   TURN server anyway): ~100-line Node relay on Azure/Fly plus lobby UI, player
+   sprites and name tags, interpolation, respawns. Deathmatch first — it needs
+   no enemy-AI syncing, each client simulates itself and broadcasts
+   position/fire events. Co-op adds host-authoritative enemy state on top.
+
+## Development
+
+- **F4** runs the in-game self-test suite: level reachability audits, input
+  model invariants (pointer-lock linearity, free-look symmetry, aim-assist
+  never fighting the player's turn), movement and collision checks.
+- `tools/verify.js` runs the same suite headlessly plus a 5,400-frame
+  randomized-input soak across all nine mission/difficulty combinations:
+  `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
+- The game survived three adversarial review rounds (independent finder agents
+  cross-examined by paired skeptics); regressions found there become new F4
+  assertions.
