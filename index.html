@@ -174,7 +174,7 @@ body.touch .no-touch{display:none}
     <!-- TITLE -->
     <div class="screen" id="s-title" hidden>
       <div class="eyebrow">a managed services thriller</div>
-      <h1 class="logo">AGENT&nbsp;360<small>GOLDENSHARE</small></h1>
+      <h1 class="logo">AGENT&nbsp;360<small id="logosub">GOLDENSHARE</small></h1>
       <div class="menu" role="menu" id="titlemenu">
         <button class="mi" data-act="missions">SELECT MISSION <span class="k">▶</span></button>
         <button class="mi" data-act="controls">CONTROLS <span class="k">▶</span></button>
@@ -487,7 +487,10 @@ addEventListener('keydown', e => {
   const playing = (typeof G !== 'undefined') && G && G.state === 'play';
   const a = playing ? KEYMAP[e.code] : null;
   if (e.repeat) { if (a) e.preventDefault(); return; }
-  if (a) { held[a] = true; e.preventDefault(); }
+  if (a) { held[a] = true; e.preventDefault();
+    /* Space/X get the same press buffer a click does: a tap that lands during
+       the weapon's cool-down deserves the next available shot, not nothing. */
+    if (a === 'fire'){ M.fireEdge = performance.now(); M.pressNew = true; } }
   keys.add(e.code);
   onKey(e);
 }, {passive:false});
@@ -1606,7 +1609,9 @@ const LEVELS = [
         'answering mail. Quarantine the infected nodes, get the CFO off the floor, and take the '+
         'last clean tape with you.',
   /* warm beige fluorescent grade; carpet + office tile — daytime 14th floor */
-  floor:18, ceil:19, par:130,
+  /* par 170: the floor is the biggest map with the most objectives — the old
+     130 undercut M01's 150 and made the SLA line a foregone BREACHED */
+  floor:18, ceil:19, par:170,
   pal:[1.12,1.04,.90], fog:[0x16,0x12,0x0b], sky:[150,158,172],
   /* carpet stays the office default; the open plan and the service band get
      hard tile with the exposed duct ceiling over the racks */
@@ -1697,7 +1702,10 @@ const LEVELS = [
    legacy tower to a %3. */
 const DIFFS = [
   { name:'AGENT',        note:'Fewer hostiles, softer hits, four objectives.', dmg:.55, hp:.75, acc:.55 },
-  { name:'SECRET AGENT', note:'Full roster, one extra objective, they aim.',     dmg:1.0, hp:1.0, acc:.78 },
+  /* dmg .8/acc .7, not the old 1.0/.78: with AGENT at .55/.55 and 00 at
+     1.6/.93 the middle rung sat within a whisker of 00's punishment — a
+     measured cliff (playtest bot: 15/15 AGENT, dead in 9s median on SECRET). */
+  { name:'SECRET AGENT', note:'Full roster, one extra objective, they aim.',     dmg:.8, hp:1.0, acc:.7 },
   { name:'00 AGENT',     note:'Every objective, every hostile, and they hit.',   dmg:1.6, hp:1.4, acc:.93 }
 ];
 
@@ -1720,7 +1728,8 @@ const G = {
   solid:null, tex:null, doorIx:null, doors:[], ents:[], objs:[], L:null,
   floorTex:9, ceilTex:10,
   time:0, kills:0, shots:0, hits:0, dmgTaken:0, heat:0,
-  meltdown:-1, shieldDown:true, bossAlive:false, tscale:1, shake:0, mapOn:true,
+  meltdown:-1, meltMax:0, shieldDown:true, bossAlive:false, tscale:1, shake:0, mapOn:true,
+  deadT:0, ckpt:null,
   cheats:{ god:false, ammo:false, allguns:false, bighead:false, paint:false, slow:false },
   tainted:false, doorNag:0
 };
@@ -1731,6 +1740,7 @@ const P = {
   mag:[7,0,0,0], ammo:{p9:24,smg:0,sh:0,pt:0},
   fireCd:0, reload:0, aim:0, recoil:0, muzzle:0, crouch:0,
   useHold:0, useTarget:null, hurt:0, alive:true, aimU:0, rx:0,
+  hitT:0, killT:0, dmgDir:[], lastFireT:-9,
   lockT:null, lockSX:0, lockSY:0
 };
 const AMMOCAP = { p9:120, smg:300, sh:48, pt:14 };
@@ -1765,18 +1775,21 @@ const BOSSTUNE = {
      player at keep range — a wider pair straddled the hit radius and made
      holding still the best dodge, the exact opposite of the design. */
   fan:      [[0], [-.35,.35], [-1,0,1]], // projectiles per volley
-  pspd:     [4.6, 5.8, 6.6],             // projectile speed, u/s (run speed is 3.48)
-  rof:      [1.8, 1.25, 1.0],            // fire-period multiplier
-  keep:     [8, 6.5, 5.5],               // range the rack tries to hold: farther = longer slug flight
-  droneCap: [1, 2, 4],                   // rogue APs alive at once
-  droneCd:  [16, 10, 8],                 // seconds between spawns
+  /* SECRET's middle rung was a cliff — a mediocre bot lived 10-15s where the
+     same bot went 15/15 on AGENT. 5.2 u/s at 7.5 keep gives the slug pair a
+     dodgeable flight time while the pair spacing still punishes standing. */
+  pspd:     [4.6, 4.9, 6.6],             // projectile speed, u/s (run speed is 3.48)
+  rof:      [1.8, 1.45, 1.0],            // fire-period multiplier
+  keep:     [8, 7.5, 5.5],               // range the rack tries to hold: farther = longer slug flight
+  droneCap: [1, 1, 4],                   // rogue APs alive at once
+  droneCd:  [16, 13, 8],                 // seconds between spawns
   melt:     [50, 40, 35],                // thermal shutdown fuse, seconds
-  hp:       [.5, 1.0, 1.36]              // rack plating multiplier
+  hp:       [.5, .85, 1.36]              // rack plating multiplier
 };
 /* Hostile aim tracks a MOVING agent imperfectly, GoldenEye-style: sprinting
    and crouching are real evasion, and lower clearances track worst. P.speed is
    1 at a walk, 1.48 at a sprint. */
-const MOVE_DODGE = [.35, .22, .12];
+const MOVE_DODGE = [.35, .30, .12];  // SECRET .30: part of the same cliff-softening pass as DIFFS[1]
 function aimPenalty(){
   return (1 - clamp(P.speed, 0, 1.6) * MOVE_DODGE[G.diff]) * (1 - P.crouch * .25);
 }
@@ -1821,7 +1834,12 @@ function loadLevel(li, di){
                        Math.min(255,sk[1]*(1.25-.5*t))|0,
                        Math.min(255,sk[2]*(1.25-.5*t))|0); } }
   G.time=0; G.kills=0; G.shots=0; G.hits=0; G.dmgTaken=0; G.heat=0;
-  G.meltdown=-1; G.bossAlive=false; G.shieldDown = true; G.doorNag=0; G.shake=0;
+  G.meltdown=-1; G.meltMax=0; G.bossAlive=false; G.shieldDown = true; G.doorNag=0; G.shake=0;
+  G.deadT=0; G.ckpt=null;
+  /* The results asterisk marks the RUN, not the install: once every cheat is
+     back off, the next mission starts clean. */
+  { let on=false; for (const k in G.cheats) if (G.cheats[k]) on=true;
+    if (!on) G.tainted=false; }
 
   G.objs = L.objectives.filter(o => o.diff <= di).map(o => ({...o, have:0, done:false}));
   if (G.objs.some(o=>o.kind==='console')) G.shieldDown = false;
@@ -1883,6 +1901,7 @@ function loadLevel(li, di){
   P.mag=[7, G.cheats.allguns?20:0, G.cheats.allguns?5:0, G.cheats.allguns?3:0];
   P.ammo={ p9:42, smg:G.cheats.allguns?120:0, sh:G.cheats.allguns?20:0, pt:G.cheats.allguns?6:0 };
   P.fireCd=0; P.reload=0; P.aim=0; P.recoil=0; P.muzzle=0; P.useHold=0; P.hurt=0;
+  P.hitT=0; P.killT=0; P.dmgDir.length=0; P.lastFireT=-9;
 }
 
 /* ---------------------------- level self-audit --------------------------- */
@@ -1973,12 +1992,12 @@ function boom(x,y,z,radius,dmg,fromPlayer){
     if (d > radius) continue;
     if (!los(x, y, e.x, e.y)) continue;
     const f = 1 - d/radius;
-    if (e.kind==='enemy' && e.state!=='dead') hurtEnemy(e, dmg*f, true);
+    if (e.kind==='enemy' && e.state!=='dead') hurtEnemy(e, dmg*f, true, fromPlayer);
     else if (e.kind==='prop' && e.hp>0) hurtProp(e, dmg*f);
   }
   if (fromPlayer){
     const d = Math.sqrt(dist2(P.x,P.y,x,y));
-    if (d < radius*.75 && los(x, y, P.x, P.y)) hurtPlayer(dmg*.35*(1-d/(radius*.75)));
+    if (d < radius*.75 && los(x, y, P.x, P.y)) hurtPlayer(dmg*.35*(1-d/(radius*.75)), x, y);
   }
 }
 function los(ax,ay,bx,by){
@@ -2036,6 +2055,10 @@ function bump(kind, n=1){
     }
     if (kind==='console' && G.objs.find(q=>q.kind==='console').done){
       G.shieldDown = true; sfx('shield');
+      /* Duel checkpoint: what the agent carried the moment the shield fell.
+         retryDuel restores exactly this, so the retry is the fight they earned. */
+      G.ckpt = { has:P.has.slice(), mag:P.mag.slice(),
+                 ammo:Object.assign({}, P.ammo), armor:P.armor };
       toast('LEGACY-DC01 SHIELD DOWN', 'red', 3600);
     }
     return;
@@ -2044,32 +2067,53 @@ function bump(kind, n=1){
 const objsLeft = () => G.objs.filter(o => !o.done && o.kind!=='exit');
 
 /* --------------------------------- damage ------------------------------- */
-function hurtPlayer(dmg){
+function hurtPlayer(dmg, sx, sy){
   if (G.cheats.god || !P.alive) return;
   dmg *= DIFFS[G.diff].dmg;
   G.dmgTaken += dmg;
   if (P.armor > 0){ const a = Math.min(P.armor, dmg*.72); P.armor -= a; dmg -= a; }
   P.hp -= dmg; P.hurt = Math.min(1, P.hurt + dmg/55);
+  /* Directional pain: remember WHERE it came from, as a world bearing — the
+     HUD re-derives the screen side every frame so the arc rides a turning
+     view. Ring of 4: a boss triple-fan is three arcs, never an unbounded list. */
+  if (sx !== undefined){
+    if (P.dmgDir.length >= 4) P.dmgDir.shift();
+    P.dmgDir.push({ ang: Math.atan2(sy-P.y, sx-P.x), t:.8 });
+  }
   G.shake = Math.max(G.shake||0, Math.min(6, dmg/4));
   sfx('hurt');
-  if (P.hp <= 0){ P.hp=0; P.alive=false; endMission(false, 'AGENT DOWN'); }
+  if (P.hp <= 0){
+    P.hp=0; P.alive=false;
+    /* Death beat: hold 'play' for a second while the camera drops and the hurt
+       wash pins — step() files the ticket when G.deadT runs out. Cutting to the
+       debrief on the same frame read as a crash, not a death. */
+    G.deadT = 1.0; G.deadWhy = 'AGENT DOWN'; P.hurt = 1;
+  }
 }
-function hurtEnemy(e, dmg, splash){
+function hurtEnemy(e, dmg, splash, fromPlayer){
   if (e.state==='dead') return;
   if (e.sub==='boss' && !G.shieldDown){ sfx('shield'); fx('spark', e.x, e.y, .6); return; }
   e.hp -= dmg; e.pain = .22; e.alert = 1; e.state='chase';
+  if (fromPlayer) P.hitT = .15;
   if (!splash) sfx('flesh');
   if (e.hp <= 0){
     e.state='dead'; e.dying=0; e.deadFrame=0; e.zoff=0; G.kills++;
+    if (fromPlayer) P.killT = .3;
     sfx('die'); G.heat = Math.min(1, G.heat+.2);
     if (e.sub==='boss'){
       boom(e.x,e.y,.2,3.2,60,false); bump('boss');
-      G.bossAlive=false; G.meltdown = BOSSTUNE.melt[G.diff];
+      G.bossAlive=false; G.meltdown = G.meltMax = BOSSTUNE.melt[G.diff];
       toast('THERMAL SHUTDOWN IN '+BOSSTUNE.melt[G.diff]+' SECONDS — GET OUT', 'red', 5000);
       sfx('boss');
     } else if (ESPEC[e.sub].drop > 0 && Math.random() < .8){
       ent({kind:'item', sub:'wpn'+ESPEC[e.sub].drop, x:e.x, y:e.y, size:.4, r:.55});
     }
+    /* Dry-agent insurance: every reserve empty, and the mission has no vending
+       machine — a downed phish or goon always coughs up a crate (24 p9 minimum
+       via the pickup, since the PP7 is always carried). */
+    if ((e.sub==='phish' || e.sub==='goon') && !G.cheats.ammo &&
+        P.ammo.p9<=0 && P.ammo.smg<=0 && P.ammo.sh<=0 && P.ammo.pt<=0)
+      ent({kind:'item', sub:'ammo', x:e.x, y:e.y, size:.38, r:.5});
   }
 }
 function hurtProp(p, dmg){
@@ -2115,14 +2159,14 @@ function hitscan(ox,oy,ang,range,dmg,fromPlayer,pock=1){
       for (const e of G.ents){
         if (e.dead2) continue;
         if (e.kind==='enemy' && e.state!=='dead'){
-          if (dist2(e.x,e.y,x,y) < e.r*e.r){ hurtEnemy(e, dmg); G.hits++;
+          if (dist2(e.x,e.y,x,y) < e.r*e.r){ hurtEnemy(e, dmg, false, true); G.hits++;
             fx(G.cheats.paint?'paint':'spark', x, y, .3+rnd(.3)); return true; }
         } else if (e.kind==='prop' && e.hp>0){
           if (dist2(e.x,e.y,x,y) < e.r*e.r){ hurtProp(e, dmg); G.hits++; return true; }
         }
       }
     } else {
-      if (dist2(P.x,P.y,x,y) < .10){ hurtPlayer(dmg); return true; }
+      if (dist2(P.x,P.y,x,y) < .10){ hurtPlayer(dmg, ox, oy); return true; }
     }
   }
   return false;
@@ -2228,7 +2272,7 @@ function playerFire(){
   P.fireCd = w.rof;
   P.recoil = 1; P.muzzle = .07;
   sfx(w.sfx);
-  G.shots++; G.heat = Math.min(1, G.heat + .18);
+  G.shots++; G.heat = Math.min(1, G.heat + .18); P.lastFireT = G.time;
   const tgt = (AIM_ASSIST && P.lockT && !P.lockT.dead2 && P.lockT.state!=='dead') ? P.lockT : null;
   /* A locked shot goes to the body's centre with most of the spread taken off;
      the shotgun keeps its pattern, it just centres it. */
@@ -2330,18 +2374,43 @@ function updateEnemy(e, dt){
       } else e.stuck = 0;
       if (moved){ e.moving=true; e.walk += dt*(sp*2.2); }
     }
+    /* Legacy tower wind-up: the queued 5-pellet burst from the block below.
+       It fires at wherever the player IS when the capacitors finish, sight or
+       not — breaking the line during the whine is the counterplay. */
+    if (e.pending > 0){
+      e.pending -= dt;
+      e.fireFlash = Math.max(e.fireFlash, .1);
+      if (e.pending % .12 < dt)
+        fx('spark', e.x+Math.cos(e.ang)*.55, e.y+Math.sin(e.ang)*.55, .5);
+      if (e.pending <= 0){
+        const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)) * aimPenalty(), .06, .95);
+        const spread = (1-acc) * .44;
+        const fall = clamp(1 - dd/(s.sight*1.5), .34, 1);
+        sfx('shotgun');
+        for (let i=0;i<(s.pellets||1);i++)
+          hitscan(e.x, e.y, Math.atan2(P.y-e.y, P.x-e.x) + rr(-spread,spread), s.sight+2, s.dmg*fall, false);
+        for (const o of G.ents) if (o.kind==='enemy' && o!==e && dist2(o.x,o.y,e.x,e.y)<100) wake(o);
+      }
+    }
     e.cd -= dt;
     if (see && e.cd <= 0 && dd < s.sight){
       e.cd = s.rof * rr(.8,1.3);
       e.fireFlash = .12;
-      const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)) * aimPenalty(), .06, .95);
-      const spread = (1-acc) * .44;
-      const pel = s.pellets || 1;
-      const fall = clamp(1 - dd/(s.sight*1.5), .34, 1);      // range falloff
-      sfx(e.sub==='legacy' ? 'shotgun' : (e.sub==='drone' ? 'smg' : 'pistol'));
-      for (let i=0;i<pel;i++)
-        hitscan(e.x, e.y, Math.atan2(P.y-e.y, P.x-e.x) + rr(-spread,spread), s.sight+2, s.dmg*fall, false);
-      for (const o of G.ents) if (o.kind==='enemy' && o!==e && dist2(o.x,o.y,e.x,e.y)<100) wake(o);
+      if (e.sub==='legacy'){
+        /* .4s tell before the burst: whining caps, sparks off the barrel arm,
+           the fire pose held early — reuses existing fx/sfx, no new audio */
+        e.pending = .4; e.fireFlash = .45; sfx('hack');
+        fx('spark', e.x+Math.cos(e.ang)*.55, e.y+Math.sin(e.ang)*.55, .5);
+      } else {
+        const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)) * aimPenalty(), .06, .95);
+        const spread = (1-acc) * .44;
+        const pel = s.pellets || 1;
+        const fall = clamp(1 - dd/(s.sight*1.5), .34, 1);      // range falloff
+        sfx(e.sub==='drone' ? 'smg' : 'pistol');
+        for (let i=0;i<pel;i++)
+          hitscan(e.x, e.y, Math.atan2(P.y-e.y, P.x-e.x) + rr(-spread,spread), s.sight+2, s.dmg*fall, false);
+        for (const o of G.ents) if (o.kind==='enemy' && o!==e && dist2(o.x,o.y,e.x,e.y)<100) wake(o);
+      }
     }
   } else {
     e.cd -= dt;
@@ -2389,10 +2458,25 @@ function updateBoss(e, dt, dd, see){
 
 /* -------------------------------- the step ------------------------------ */
 function step(dt){
+  /* Death beat: the corpse is not steerable. The camera sinks, the hurt wash
+     holds, the world waits a breath, then endMission reopens the ticket. */
+  if (!P.alive){
+    G.deadT -= dt;
+    P.camZ = lerp(P.camZ, .12, Math.min(1, dt*3.2));
+    P.hurt = Math.max(P.hurt, .85);
+    if (G.shake) G.shake = Math.max(0, G.shake - dt*22);
+    if (G.deadT <= 0) endMission(false, G.deadWhy || 'AGENT DOWN');
+    return;
+  }
   G.time += dt;
   G.heat = Math.max(0, G.heat - dt*.14);
   if (G.shake) G.shake = Math.max(0, G.shake - dt*22);
   P.hurt = Math.max(0, P.hurt - dt*1.5);
+  if (P.hitT > 0) P.hitT -= dt;
+  if (P.killT > 0) P.killT -= dt;
+  for (let i=P.dmgDir.length-1; i>=0; i--){
+    P.dmgDir[i].t -= dt; if (P.dmgDir[i].t <= 0) P.dmgDir.splice(i,1);
+  }
 
   /* Look. Captured input is raw and linear: every pixel the mouse moved turns
      the view by LOOK_PX * sensitivity, this frame, no cap. That is what every
@@ -2401,6 +2485,10 @@ function step(dt){
      and can jump when the pointer re-enters the window.                      */
   const idle = performance.now() - M.lastMove > MOVE_STALE_MS;
   let yaw = 0;
+  /* Aim mode narrows the FOV 42%; the same raw counts must cover 42% less
+     world, or zooming in makes the reticle FASTER across the target. Every
+     look path below (captured, touch, drag, free-look reticle) scales by it. */
+  const zsens = 1 - P.aim*.42;
   /* Applied to every pitch path below — an invert option that only covered the
      captured mouse would silently un-invert on fallback to free look. */
   const ydir = INVERT_Y ? -1 : 1;
@@ -2408,8 +2496,8 @@ function step(dt){
   if (M.locked){                                   /* captured: classic mouse look */
     const mdx = M.dx, mdy = M.dy;
     M.dx = 0; M.dy = 0;
-    yaw = mdx * LOOK_PX * M.sens;
-    P.pitch = clamp(P.pitch - mdy*ydir * PITCH_PX * M.sens, -PITCH_MAX, PITCH_MAX);
+    yaw = mdx * LOOK_PX * M.sens * zsens;
+    P.pitch = clamp(P.pitch - mdy*ydir * PITCH_PX * M.sens * zsens, -PITCH_MAX, PITCH_MAX);
     P.rx = 0; P.turning = false;
     M.sumF = mdx;
   } else {
@@ -2422,18 +2510,18 @@ function step(dt){
       /* Direct drag, both axes, no gate, no decay: the reticle stays pinned to
          centre and P.pitch finally answers a vertical thumb. M.tsens is the
          touch sensitivity dial (Options slider, persisted).                   */
-      yaw = mdx * LOOK_PX * DRAG_MUL * M.sens * M.tsens;
-      P.pitch = clamp(P.pitch - mdy*ydir * .10 * M.sens * M.tsens, -PITCH_MAX, PITCH_MAX);
+      yaw = mdx * LOOK_PX * DRAG_MUL * M.sens * M.tsens * zsens;
+      P.pitch = clamp(P.pitch - mdy*ydir * .10 * M.sens * M.tsens * zsens, -PITCH_MAX, PITCH_MAX);
       P.rx = 0; P.turning = false;
     } else if (LOOKMODE === 'drag'){               /* only turns while held */
       if (M.dragging || M.tlook){                /* a look finger counts as holding */
-        yaw = mdx * LOOK_PX * DRAG_MUL * M.sens;
-        P.pitch = clamp(P.pitch - mdy*ydir * .10 * M.sens, -PITCH_MAX, PITCH_MAX);
+        yaw = mdx * LOOK_PX * DRAG_MUL * M.sens * zsens;
+        P.pitch = clamp(P.pitch - mdy*ydir * .10 * M.sens * zsens, -PITCH_MAX, PITCH_MAX);
       }
       P.rx = 0; P.turning = false;
     } else {                                       /* free: reticle + edge turn */
-      P.rx = clamp(P.rx + mdx * RET_PX * M.sens, -RET_EDGE, RET_EDGE);
-      P.pitch = clamp(P.pitch - mdy*ydir * .085 * M.sens, -PITCH_MAX, PITCH_MAX);
+      P.rx = clamp(P.rx + mdx * RET_PX * M.sens * zsens, -RET_EDGE, RET_EDGE);
+      P.pitch = clamp(P.pitch - mdy*ydir * .085 * M.sens * zsens, -PITCH_MAX, PITCH_MAX);
       /* Aim mode widens the free travel before the view swings, the way holding R
          let you place a shot without turning. */
       P.turnAt = RET_TURN + P.aim * .18;
@@ -2583,7 +2671,10 @@ function step(dt){
             e.dead2=true; G.hits++; boom(e.x,e.y,.15,2.4,e.dmg*2.6,true); break;
           }
         }
-      } else if (dist2(P.x,P.y,e.x,e.y) < .18){ e.dead2=true; hurtPlayer(e.dmg); fx('spark',e.x,e.y,1.0); }
+      /* the slug is ON the player at impact, so its position is a useless pain
+         bearing — hand hurtPlayer a point back along its flight instead */
+      } else if (dist2(P.x,P.y,e.x,e.y) < .18){ e.dead2=true;
+        hurtPlayer(e.dmg, P.x - Math.cos(e.ang), P.y - Math.sin(e.ang)); fx('spark',e.x,e.y,1.0); }
       continue;
     }
     if (e.kind==='item' && dist2(P.x,P.y,e.x,e.y) < .38) pickup(e);
@@ -2613,7 +2704,10 @@ function step(dt){
 
   /* meltdown */
   if (G.meltdown > 0){
+    const prev = G.meltdown;
     G.meltdown -= dt;
+    /* last five seconds: a room-shudder heartbeat on each remaining second */
+    if (G.meltdown < 5 && (prev|0) !== (G.meltdown|0)) G.shake = Math.max(G.shake, 2.5);
     if (G.meltdown <= 0) endMission(false, 'THERMAL SHUTDOWN');
   }
 }
@@ -2655,10 +2749,18 @@ function pickup(e){
       if (!isNew && P.ammo[a] >= AMMOCAP[a]) return;          // full: leave it on the floor
       P.has[i]=true; P.ammo[a]=Math.min(AMMOCAP[a], P.ammo[a]+add);
       if (isNew){
-        P.mag[i]=w[i].mag; toast(PICKLINE[i],'gold',3400); P.w=i;
-        /* Inherit a switch, not the old gun's reload: picking this up mid-reload
-           used to leave a full magazine unfireable for up to 2.9 seconds. */
-        P.reload = 0; P.fireCd = Math.max(P.fireCd, .18);
+        P.mag[i]=w[i].mag; toast(PICKLINE[i],'gold',3400);
+        /* Auto-switch only an UPGRADE, and only to a calm hand: yanking the
+           shotgun away from a trigger pulled half a second ago lost fights.
+           A completely dry current gun switches to anything, regardless. */
+        const dry  = !G.cheats.ammo && P.mag[P.w]<=0 && P.ammo[w[P.w].ammo]<=0;
+        const calm = P.fireCd<=0 && G.time - P.lastFireT > 1.5;
+        if ((i > P.w && calm) || dry){
+          P.w=i;
+          /* Inherit a switch, not the old gun's reload: picking this up mid-reload
+             used to leave a full magazine unfireable for up to 2.9 seconds. */
+          P.reload = 0; P.fireCd = Math.max(P.fireCd, .18);
+        }
       }
       else toast('AMMUNITION','cyan',1200);
       break;
@@ -3076,7 +3178,7 @@ function drawWaypoint(){
     ctx.moveTo(x+6*s, y); ctx.lineTo(x-2*s, y-5); ctx.lineTo(x-2*s, y+5);
   } else { ctx.moveTo(x, y-6); ctx.lineTo(x-5, y+2); ctx.lineTo(x+5, y+2); }
   ctx.closePath(); ctx.fill();
-  txt('OBJ '+t.tag+' · '+metres(t.dist)+'M', clamp(x, 44, RW-44), y+14, '#ffd76a', 6, 'center');
+  txtP('OBJ '+t.tag+' · '+metres(t.dist)+'M', clamp(x, 44, RW-44), y+14, '#ffd76a', 6);
 }
 
 /* The watch: a full floor plan with the outstanding objectives lettered on it. */
@@ -3155,6 +3257,16 @@ function bar(x,y,w,h,frac,col,bg){
   for (let i=1;i<8;i++) ctx.fillRect(x+Math.round(w*i/8),y,1,h);
 }
 function fmt(t){ const m=Math.floor(t/60), s=Math.floor(t%60); return m+':'+(s<10?'0':'')+s; }
+/* Centred text on a dark strip. In-world hints (the waypoint tag, the USE
+   prompt) sit over live wall pixels and were unreadable naked on a lit wall. */
+function txtP(s,x,y,col,size){
+  size = Math.max(6, size||8);
+  ctx.font = size+'px "Press Start 2P", monospace';
+  const w = Math.ceil(ctx.measureText(s).width);
+  ctx.fillStyle = 'rgba(5,8,14,.72)';
+  ctx.fillRect(Math.round(x - w/2) - 4, y - size - 2, w + 8, size + 7);
+  txt(s, x, y, col, size, 'center');
+}
 
 function drawHUD(horizon){
   if (!G.solid) return;
@@ -3168,6 +3280,15 @@ function drawHUD(horizon){
     ctx.fillStyle=g; ctx.fillRect(0,0,RW,RH);
   }
   if (P.hurt > 0){ ctx.fillStyle='rgba(255,40,30,'+(P.hurt*.36).toFixed(3)+')'; ctx.fillRect(0,0,RW,RH); }
+
+  /* directional pain: a short red arc on a 70px ring, one per remembered hit
+     source. rel 0 = dead ahead = top of the ring; behind lands at the bottom. */
+  for (const dd of P.dmgDir){
+    const rel = angDiff(P.ang, dd.ang) - Math.PI/2;
+    ctx.strokeStyle = 'rgba(255,45,30,'+clamp(dd.t*1.4, 0, .85).toFixed(2)+')';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(RW/2, RH/2, 70, rel-.38, rel+.38); ctx.stroke();
+  }
 
   /* crosshair */
   const spread = w.spread*(1-P.aim*.62)*(1+P.speed*.28);
@@ -3197,6 +3318,22 @@ function drawHUD(horizon){
   }
   ctx.globalAlpha = 1;
 
+  /* hit marker: four diagonal ticks around the crosshair while a shot of ours
+     is landing; red while the landing shot was a kill. Retro-small on purpose. */
+  if (P.hitT > 0 || P.killT > 0){
+    ctx.strokeStyle = P.killT > 0 ? '#ff5040' : '#e8f4ff';
+    ctx.globalAlpha = clamp(Math.max(P.hitT*6, P.killT*3), 0, .9);
+    ctx.lineWidth = 1;
+    const r0 = 5 + P.recoil*2, r1 = r0 + 4;
+    ctx.beginPath();
+    for (const [ux,uy] of [[1,1],[-1,1],[1,-1],[-1,-1]]){
+      ctx.moveTo(cx + ux*r0 + .5, cy + uy*r0 + .5);
+      ctx.lineTo(cx + ux*r1 + .5, cy + uy*r1 + .5);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
   /* health + armour, top left */
   bar(10, 10, 92, 6, P.armor/100, '#35d0ff');
   bar(10, 20, 92, 8, P.hp/100, P.hp>35?'#ffb02e':'#ff3b30');
@@ -3218,9 +3355,16 @@ function drawHUD(horizon){
   /* meltdown */
   if (G.meltdown > 0){
     const t = G.meltdown;
+    /* red wash breathing faster and deeper as the fuse burns down */
+    const frac = G.meltMax > 0 ? 1 - t/G.meltMax : .5;
+    const pulse = .5 + .5*Math.sin(G.time*(t < 10 ? 9 : 4));
+    ctx.fillStyle = 'rgba(255,30,15,'+((.04 + .16*frac)*pulse).toFixed(3)+')';
+    ctx.fillRect(0,0,RW,RH);
+    /* the countdown sits under the waypoint row — the DOM toast stack (top:17%)
+       parks squarely over canvas y36 for the first seconds of the escape */
     if (t > 10 || Math.floor(t*4)%2===0){
-      ctx.fillStyle='rgba(5,8,14,.72)'; ctx.fillRect((RW>>1)-58, 36, 116, 12);
-      txt('MELTDOWN '+fmt(Math.max(0,t)), RW>>1, 45, t<15?'#ff3b30':'#ffb02e', 8, 'center');
+      ctx.fillStyle='rgba(5,8,14,.72)'; ctx.fillRect((RW>>1)-58, 126, 116, 12);
+      txt('MELTDOWN '+fmt(Math.max(0,t)), RW>>1, 135, t<15?'#ff3b30':'#ffb02e', 8, 'center');
     }
   }
 
@@ -3267,7 +3411,7 @@ function drawHUD(horizon){
       : P.useTarget.sub==='console' ? hf+' — APPLY PATCH'
       : P.useTarget.sub==='audit' ? hf+' — PULL AUDIT LOG'
       : hf+' — DEPLOY AGENT';
-    txt(label, RW>>1, RH-57, '#4ade80', 7, 'center');
+    txtP(label, RW>>1, RH-57, '#4ade80', 7);
     if (P.useHold > .05) bar((RW>>1)-50, RH-54, 100, 5, P.useTarget.prog, '#4ade80');
   }
 
@@ -3281,11 +3425,11 @@ function drawHUD(horizon){
     ctx.fillStyle = 'rgba(5,8,14,.70)'; ctx.fillRect(0, RH-80, RW, 16);
     txt('CLICK THE VIEW TO CAPTURE THE MOUSE', RW>>1, RH-69, '#ffb02e', 6, 'center');
   } else if (G.time < 15){
-    txt(M.locked ? 'MOUSE CAPTURED · ESC TO RELEASE'
+    txtP(M.locked ? 'MOUSE CAPTURED · ESC TO RELEASE'
        : LOOKMODE==='touch' ? 'DRAG THE VIEW TO LOOK · FIRE TO SHOOT'
        : LOOKMODE==='drag' ? 'DRAG TO LOOK · TAP TO FIRE'
        : 'MOVE MOUSE TO AIM · PUSH PAST THE TICKS TO TURN',
-        RW>>1, RH-72, '#7d93ab', 6, 'center');
+        RW>>1, RH-72, '#7d93ab', 6);
   }
 
   /* Free look: mark the turn zone so it is obvious what makes the view swing,
@@ -3373,6 +3517,14 @@ const SCREENS = ['s-boot','s-title','s-select','s-brief','s-pause','s-result','s
 function show(id){
   G.screenId = id;
   for (const s of SCREENS){ const el=document.getElementById(s); if (el) el.hidden = (s!==id); }
+  /* the persisted campaign flag earns the title screen a permanent gold line */
+  if (id === 's-title'){
+    const sub = document.getElementById('logosub');
+    if (sub){
+      sub.textContent = campaignDone ? 'GOLDENSHARE · COMPLETE' : 'GOLDENSHARE';
+      sub.style.color = campaignDone ? 'var(--gold)' : '';
+    }
+  }
   document.getElementById('touch').classList.toggle('on', id===null && isTouch);
   syncRotHint();
 }
@@ -3475,6 +3627,26 @@ function startMission(gesture){
   }
   toast('MISSION '+G.L.code+' — '+G.L.name, 'gold', 3200);
 }
+/* M03 checkpoint: dying past shield-down restarts AT the duel, not at the
+   door. Same setup the scripted playtest applies — consoles done, shield off,
+   staged outside the arena — plus whatever loadout the agent actually carried
+   when the shield fell (G.ckpt); a first-visit fallback matches the playtest. */
+function retryDuel(gesture){
+  const ck = G.ckpt;                       // startMission's loadLevel wipes it
+  selLevel = LEVELS.length-1;
+  startMission(gesture);
+  for (const o of G.objs) if (o.kind==='console'){ o.done = true; o.have = o.need; }
+  for (const e of G.ents) if (e.kind==='prop' && e.sub==='console') e.hacked = true;
+  G.shieldDown = true;
+  G.ckpt = ck;                             // the NEXT death needs it too
+  P.x = 15.5; P.y = 3.5; P.ang = 0;
+  if (ck){ P.has = ck.has.slice(); P.mag = ck.mag.slice();
+           P.ammo = Object.assign({}, ck.ammo); P.armor = Math.max(P.armor, ck.armor); }
+  else { P.has = [true,false,true,true]; P.mag = [7,0,5,3];
+         P.ammo = { p9:42, smg:0, sh:16, pt:8 }; }
+  P.armor = Math.max(P.armor, 60);
+  toast('CHECKPOINT — THE SHIELD IS ALREADY DOWN', 'cyan', 3600);
+}
 function pause(){
   if (G.state!=='play') return;
   G.state='pause'; unlock(); clearInput();
@@ -3513,39 +3685,62 @@ function endMission(win, why){
   if (G.state!=='play') return;
   G.state='result'; unlock(); clearInput();
   sfx(win?'objective':'fail');
-  document.getElementById('r-eyebrow').textContent = G.L.code+' · '+G.L.name+' · '+DIFFS[G.diff].name;
-  document.getElementById('r-title').textContent = win ? 'MISSION COMPLETE' : why;
-  document.getElementById('r-title').style.color = win ? '#4ade80' : '#ff3b30';
+  /* Winning the last mission is the campaign, and it reads like it: gold
+     eyebrow-and-title treatment plus a career line over the stored bests. */
+  const finale = win && G.level === LEVELS.length-1;
+  document.getElementById('r-eyebrow').textContent = finale
+    ? 'CONTRACT COMPLETE — '+G.L.code+' · '+DIFFS[G.diff].name
+    : G.L.code+' · '+G.L.name+' · '+DIFFS[G.diff].name;
+  document.getElementById('r-title').textContent =
+    finale ? 'THE NETWORK IS MANAGED' : (win ? 'MISSION COMPLETE' : why);
+  document.getElementById('r-title').style.color = finale ? '#ffb02e' : win ? '#4ade80' : '#ff3b30';
   const acc = G.shots ? Math.round(G.hits/G.shots*100) : 0;
   const done = G.objs.filter(o=>o.done).length;
   const ticket = 'INC-' + (104200 + G.level*137 + G.diff*11);
   const sla = G.time <= G.L.par;
-  document.getElementById('r-stats').innerHTML =
-    '<dt>Ticket</dt><dd>'+ticket+(win?' — RESOLVED':' — REOPENED')+'</dd>'+
-    '<dt>Objectives</dt><dd>'+done+' of '+G.objs.length+'</dd>'+
-    '<dt>Time to resolution</dt><dd>'+fmt(G.time)+'</dd>'+
-    '<dt>SLA window</dt><dd style="color:'+(sla?'#4ade80':'#ff3b30')+'">'+fmt(G.L.par)+
-      ' — '+(sla?'MET':'BREACHED')+'</dd>'+
-    '<dt>First-shot accuracy</dt><dd>'+acc+'%  ('+G.hits+'/'+G.shots+')</dd>'+
-    '<dt>Hostiles decommissioned</dt><dd>'+G.kills+'</dd>'+
-    '<dt>Damage taken</dt><dd>'+Math.round(G.dmgTaken)+'</dd>'+
-    (win ? '<dt>Performance review</dt><dd style="color:#ffb02e">'+rankName()+(G.tainted?' *':'')+'</dd>' : '')+
-    (G.tainted ? '<dt>Note</dt><dd style="color:#8fa8c0">* cheats were enabled</dd>' : '');
-  /* Personal bests. A tainted run never reaches the blob — one cheat toggle
-     poisons the whole run and cheated times shadowing honest ones forever is
-     worse than losing the entry. A win always displaces a loss, a loss never
-     displaces anything but an empty slot, and between wins the clock decides. */
+  /* Personal bests, filed BEFORE the stats render so the finale's career line
+     counts this very win. A tainted run never reaches the blob — one cheat
+     toggle poisons the whole run and cheated times shadowing honest ones
+     forever is worse than losing the entry. A win always displaces a loss, a
+     loss never displaces anything but an empty slot, and between wins the
+     clock decides. */
   if (!G.tainted){
     const bk = G.level + ':' + G.diff, prev = BEST[bk];
     if (!prev || (win && !prev.win) || (win && prev.win && G.time < prev.time))
       BEST[bk] = { time: Math.round(G.time*100)/100, acc, rank: win ? rankName() : '', win: !!win };
-    if (win && G.level === LEVELS.length-1) campaignDone = true;
+    if (finale) campaignDone = true;
     saveSettings();
   }
+  let career = '';
+  if (finale){
+    let cw = 0, ct = 0;
+    for (const k in BEST) if (BEST[k].win){ cw++; ct += BEST[k].time; }
+    career = '<dt>Career to date</dt><dd style="color:#ffb02e">'+cw+' of '+
+             (LEVELS.length*DIFFS.length)+' engagements resolved · '+fmt(ct)+' on the clock</dd>';
+  }
+  document.getElementById('r-stats').innerHTML =
+    '<dt>Ticket</dt><dd>'+ticket+(win?' — RESOLVED':' — REOPENED')+'</dd>'+
+    '<dt>Objectives</dt><dd>'+done+' of '+G.objs.length+'</dd>'+
+    '<dt>Time to resolution</dt><dd>'+fmt(G.time)+'</dd>'+
+    /* a reopened ticket has no SLA verdict — 'MET' in green under AGENT DOWN
+       read as a bug, not a consolation */
+    '<dt>SLA window</dt>'+(win
+      ? '<dd style="color:'+(sla?'#4ade80':'#ff3b30')+'">'+fmt(G.L.par)+' — '+(sla?'MET':'BREACHED')+'</dd>'
+      : '<dd style="color:#8fa8c0">N/A — TICKET REOPENED</dd>')+
+    '<dt>First-shot accuracy</dt><dd>'+acc+'%  ('+G.hits+'/'+G.shots+')</dd>'+
+    '<dt>Hostiles decommissioned</dt><dd>'+G.kills+'</dd>'+
+    '<dt>Damage taken</dt><dd>'+Math.round(G.dmgTaken)+'</dd>'+
+    (win ? '<dt>Performance review</dt><dd style="color:#ffb02e">'+rankName()+(G.tainted?' *':'')+'</dd>' : '')+
+    career +
+    (G.tainted ? '<dt>Note</dt><dd style="color:#8fa8c0">* cheats were enabled</dd>' : '');
   const act = document.getElementById('r-actions'); act.innerHTML='';
   const mk=(label,fn,ghost)=>{ const b=document.createElement('button');
     b.className='btn'+(ghost?' ghost':''); b.textContent=label; b.onclick=fn; act.appendChild(b); };
   if (win && selLevel < LEVELS.length-1) mk('NEXT MISSION ▶', ()=>{ selLevel++; gotoBrief(); });
+  /* dying PAST the consoles offers the duel checkpoint, front and centre */
+  { const con = G.objs.find(o=>o.kind==='console');
+    if (!win && G.level === LEVELS.length-1 && con && con.done)
+      mk('RETRY AT THE DUEL ▶', ()=>retryDuel(true)); }
   mk(win?'REPLAY':'RETRY', ()=>startMission(true), true);
   mk('MISSION SELECT', ()=>{ buildSelect(); G.state='select'; show('s-select'); }, true);
   show('s-result');
@@ -4140,6 +4335,169 @@ function selfTest(runSim){
         ok(LEVELS[i].code+' AGENT roster composition', fmt(tally())===fmt(WANT[i].agent), fmt(tally()));
         ok(LEVELS[i].code+' audit terminal absent below 00', !hasAudit());
       }
+    }
+
+    /* ---- game-feel: pain direction, death beat, markers, checkpoint, finale ---- */
+    {
+      const g0 = G.cheats.god; G.cheats.god = false;
+
+      /* directional pain arcs ride hurtPlayer's source position */
+      const hp0 = P.hp, ar0 = P.armor; P.dmgDir.length = 0; P.hp = 100;
+      hurtPlayer(1, P.x+3, P.y);
+      ok('pain arc: a sourced hit records its bearing',
+         P.dmgDir.length===1 && Math.abs(P.dmgDir[0].ang) < 1e-6, 'n='+P.dmgDir.length);
+      for (let i=0;i<6;i++) hurtPlayer(.1, P.x, P.y+2);
+      ok('pain arc: the ring caps at 4', P.dmgDir.length===4, 'n='+P.dmgDir.length);
+      P.dmgDir.length = 0; P.hp = 100; P.hurt = 0;
+
+      /* hit marker + kill confirm follow the player's shots only */
+      const e1 = spawnEnemy('phish', P.x+1.2, P.y);
+      P.hitT = 0; P.killT = 0;
+      hurtEnemy(e1, 5, false, true);
+      ok('hit marker: player damage sets hitT', P.hitT > 0);
+      ok('kill confirm: a mere hit is not a kill', !(P.killT > 0));
+      hurtEnemy(e1, 1e5, false, true);
+      ok('kill confirm: the kill sets killT', P.killT > 0);
+      G.ents = G.ents.filter(o => o !== e1);
+
+      /* dry-agent insurance: a broke agent always gets a crate off a goon */
+      const am0 = Object.assign({}, P.ammo);
+      P.ammo = { p9:0, smg:0, sh:0, pt:0 };
+      const e2 = spawnEnemy('goon', P.x+1.2, P.y+.5);
+      const crates0 = G.ents.filter(o=>o.kind==='item'&&o.sub==='ammo').length;
+      hurtEnemy(e2, 1e5, false, true);
+      ok('dry insurance: an empty-handed kill always drops ammo',
+         G.ents.filter(o=>o.kind==='item'&&o.sub==='ammo').length === crates0+1);
+      P.ammo = am0; G.ents = G.ents.filter(o => o !== e2);
+      P.hitT = 0; P.killT = 0;
+
+      /* legacy tower: the 5-pellet burst is telegraphed, never instant */
+      {
+        let ls = null;
+        for (let a=0; a<6.28 && !ls; a+=.4) for (let d3=2.5; d3<=4 && !ls; d3+=.5){
+          const lx2 = P.x+Math.cos(a)*d3, ly2 = P.y+Math.sin(a)*d3;
+          if (!isSolid(lx2,ly2) && los(P.x,P.y,lx2,ly2)) ls = { x:lx2, y:ly2 };
+        }
+        if (!ls){ ok('legacy telegraph: (no open floor to test on)', true);
+                  ok('legacy telegraph fires: (no open floor to test on)', true); }
+        else {
+          const e3 = spawnEnemy('legacy', ls.x, ls.y);
+          e3.alert = 1; e3.state = 'chase'; e3.cd = 0;
+          e3.ang = Math.atan2(P.y-e3.y, P.x-e3.x);
+          updateEnemy(e3, .016);
+          ok('legacy: the burst is telegraphed, not instant', e3.pending > .3,
+             'pending='+(e3.pending||0).toFixed(2));
+          G.cheats.god = true;
+          for (let i=0;i<40;i++) updateEnemy(e3, .016);
+          G.cheats.god = false;
+          ok('legacy: the pending burst fires', !(e3.pending > 0));
+          G.ents = G.ents.filter(o => o !== e3);
+        }
+      }
+
+      /* weapon pickups: upgrades wait for a calm hand, dry hands take anything */
+      const w0 = { has:P.has.slice(), mag:P.mag.slice(), ammo:Object.assign({},P.ammo), w:P.w };
+      P.has = [true,false,false,false]; P.w = 0; P.mag = [7,0,0,0];
+      P.ammo = { p9:40, smg:0, sh:0, pt:0 }; P.lastFireT = G.time; P.fireCd = 0;
+      pickup(ent({kind:'item', sub:'wpn2', x:P.x, y:P.y, size:.38, r:.5}));
+      ok('pickup: an upgrade never yanks a firing hand', P.w === 0 && P.has[2]);
+      P.lastFireT = -9; P.fireCd = 0;
+      pickup(ent({kind:'item', sub:'wpn3', x:P.x, y:P.y, size:.38, r:.5}));
+      ok('pickup: a calm hand takes the upgrade', P.w === 3, 'w='+P.w);
+      P.has = [true,false,false,true]; P.w = 3; P.mag = [0,0,0,0];
+      P.ammo = { p9:0, smg:0, sh:0, pt:0 }; P.lastFireT = G.time;
+      pickup(ent({kind:'item', sub:'wpn2', x:P.x, y:P.y, size:.38, r:.5}));
+      ok('pickup: a completely dry hand switches to anything loaded', P.w === 2, 'w='+P.w);
+      P.has = w0.has; P.mag = w0.mag; P.ammo = w0.ammo; P.w = w0.w; P.lastFireT = -9;
+
+      /* aim zoom scales look sensitivity by the same 42% the FOV narrows */
+      {
+        const aa0 = AIM_ASSIST; AIM_ASSIST = 0;
+        M.locked = true; M.justLocked = 0; clearInput(); M.dx = 0; M.dy = 0;
+        const mvZ = x => { const ev = new MouseEvent('mousemove',{bubbles:true});
+          Object.defineProperty(ev,'movementX',{value:x});
+          Object.defineProperty(ev,'movementY',{value:0}); dispatchEvent(ev); };
+        P.aim = 0; let za = P.ang; mvZ(100); step(.016);
+        const yFull = angDiff(za, P.ang);
+        P.aim = 1; za = P.ang; mvZ(100); step(.016);
+        const yZoom = angDiff(za, P.ang);
+        ok('aim zoom: look sensitivity scales with the FOV',
+           Math.abs(yZoom - yFull*(1-.42)) < 1e-9, (yZoom/yFull).toFixed(2)+'x');
+        P.aim = 0; M.locked = false; AIM_ASSIST = aa0; clearInput();
+      }
+
+      /* Space taps get the same press buffer a click does */
+      M.fireEdge = 0; M.pressNew = false;
+      dispatchEvent(new KeyboardEvent('keydown', { code:'Space', bubbles:true }));
+      ok('keyboard fire is press-buffered', M.fireEdge > 0 && M.pressNew === true && held.fire === true);
+      dispatchEvent(new KeyboardEvent('keyup', { code:'Space', bubbles:true }));
+      M.fireEdge = 0; M.pressNew = false; held.fire = false;
+
+      ok('par: M02 outlasts M01\'s window', LEVELS[1].par === 170 && LEVELS[0].par === 150,
+         LEVELS[0].par+'/'+LEVELS[1].par+'/'+LEVELS[2].par);
+
+      /* boss death records the full fuse, so the HUD pulse can scale to it */
+      G.shieldDown = true;
+      const bz = spawnEnemy('boss', P.x+2, P.y);
+      hurtEnemy(bz, 1e6, false, true);
+      ok('meltdown: the full fuse is recorded for the pulse',
+         G.meltMax === BOSSTUNE.melt[G.diff] && Math.abs(G.meltdown - G.meltMax) < 1e-9);
+      G.meltdown = -1; G.meltMax = 0; G.ents = G.ents.filter(o => o !== bz);
+      P.hitT = 0; P.killT = 0; G.shake = 0; P.hurt = 0;
+
+      /* death beat: dying holds 'play' while the camera falls, then files the
+         ticket with a neutral SLA row. Tainted, so the saved bests stay clean. */
+      const t0 = G.tainted; G.tainted = true;
+      P.camZ = .5; P.hp = 5; P.armor = 0; P.alive = true;
+      hurtPlayer(500, P.x+1, P.y);
+      ok('death beat: state holds play while the camera falls',
+         G.state==='play' && !P.alive && G.deadT > 0);
+      for (let i=0;i<75;i++){ if (G.state !== 'play') break; step(.016); }
+      ok('death beat: the beat ends at the debrief', G.state === 'result');
+      ok('death beat: the camera sank', P.camZ < .2, 'camZ='+P.camZ.toFixed(2));
+      ok('loss debrief: SLA row is neutral on a loss',
+         document.getElementById('r-stats').innerHTML.indexOf('N/A — TICKET REOPENED') >= 0);
+      P.alive = true; P.hp = 100; P.camZ = .5; P.hurt = 0; P.dmgDir.length = 0; G.deadT = 0;
+
+      /* M03 checkpoint: the duel restart lands past the consoles */
+      retryDuel(false);
+      ok('checkpoint: retryDuel lands in M03 play', G.state==='play' && G.level===2);
+      ok('checkpoint: the shield is already down',
+         G.shieldDown === true && G.objs.find(o=>o.kind==='console').done === true);
+      ok('checkpoint: the z consoles read hacked',
+         G.ents.filter(e=>e.kind==='prop'&&e.sub==='console').every(e=>e.hacked));
+
+      /* campaign finale: winning M03 goes gold and persists the flag — run it
+         against a scratch save and put the real one straight back */
+      {
+        let raw1 = null; try { raw1 = localStorage.getItem(SAVE_KEY); } catch(_){}
+        const cd0 = campaignDone, b0 = JSON.stringify(BEST);
+        G.tainted = false;
+        for (const o of G.objs){ o.done = true; o.have = o.need; }
+        endMission(true, 'MISSION COMPLETE');
+        ok('finale: M03 win raises campaignDone', campaignDone === true);
+        ok('finale: the debrief goes gold',
+           document.getElementById('r-title').textContent === 'THE NETWORK IS MANAGED' &&
+           document.getElementById('r-eyebrow').textContent.indexOf('CONTRACT COMPLETE') === 0);
+        ok('finale: the career totals row appears',
+           document.getElementById('r-stats').innerHTML.indexOf('Career to date') >= 0);
+        campaignDone = cd0;
+        for (const k in BEST) delete BEST[k];
+        Object.assign(BEST, JSON.parse(b0));
+        try { raw1 === null ? localStorage.removeItem(SAVE_KEY)
+                            : localStorage.setItem(SAVE_KEY, raw1); } catch(_){}
+      }
+
+      /* the results asterisk clears once every cheat is off again */
+      const ch0 = Object.assign({}, G.cheats);
+      G.tainted = true; for (const k in G.cheats) G.cheats[k] = false;
+      loadLevel(0,1);
+      ok('tainted clears when no cheat is on', G.tainted === false);
+      G.tainted = true; G.cheats.god = true; loadLevel(0,1);
+      ok('tainted survives while a cheat is on', G.tainted === true);
+      Object.assign(G.cheats, ch0);
+      G.tainted = t0; G.cheats.god = g0; P.hp = hp0; P.armor = ar0;
+      G.state = 'play'; show(null); clearInput();
     }
 
     /* clicking another window (blur without hide) pauses like tab-hide does */
