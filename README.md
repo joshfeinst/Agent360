@@ -1,45 +1,52 @@
 # Agent 360 — GoldenShare
 
-A GoldenEye-era first-person shooter about managed IT services, rendered with
-GoldenEye-era technology: a software raycaster writing into a 384×216 pixel
-buffer, textured floor and ceiling casting, billboard sprites with a per-column
-depth buffer, and a procedurally synthesised soundtrack. **No assets, no
-libraries, no build step — the entire game is one HTML file.**
+Somebody at Riverbend Logistics propped the server-room door open. Somebody at
+Meridian Freight clicked the link. And somewhere under a building nobody has
+the keys to, a domain controller with twenty-two years of uptime has decided
+that migration is an attack. You are the MSP's field agent. Deploy the agent,
+walk the CFO off the floor, decommission the machine, and be out before the
+night shift arrives.
 
-Three missions, three difficulties, pointer-lock mouse look, GoldenEye-style
-aim assist, cheats unlocked from the start (the results screen just gets an
-asterisk), and a face-upload option so every hostile in the building can wear a
-colleague's photo. The photo never leaves the browser tab.
+It's a GoldenEye-era first-person shooter about managed IT services, rendered
+with GoldenEye-era technology: a software raycaster writing into a 384×216
+pixel buffer, textured floor and ceiling casting, billboard sprites with a
+per-column depth buffer, and a procedurally synthesised soundtrack. No assets,
+no libraries, no build step — the whole game is one HTML file. Its sibling
+project [Managed](https://github.com/joshfeinst/Managed) covers the desk job;
+this is the desk job seen from the field.
+
+Three missions on three clearances, GoldenEye-style aim assist, cheats
+unlocked from the start (the results screen just gets an asterisk), and a
+face-upload option so every hostile in the building can wear a colleague's
+photo. The photo never leaves the browser tab.
 
 ## Play it
 
-| Channel | How |
+| | |
 |---|---|
-| **Hosted (PWA)** | **Live now:** `https://joshfeinst.github.io/Agent360/`. Installable from the browser's Install button; works offline after the first load. |
-| **Single file** | Download `index.html`, double-click it. That's the whole game. Chrome or Edge recommended — the mouse locks the moment you hit ACCEPT. |
-| **Local server** | `python3 -m http.server` in the repo, then `http://localhost:8000`. |
+| **In a browser** | [joshfeinst.github.io/Agent360](https://joshfeinst.github.io/Agent360/) — installs as an app, works offline after the first load |
+| **From a file** | Download `index.html` and double-click it. That's the whole game. Chrome or Edge recommended — the mouse locks the moment you hit ACCEPT. |
+| **Locally** | `python3 -m http.server` in the repo, then `http://localhost:8000` |
 
-### Hosting status
+Every push to `main` deploys within a minute or two. The service worker is
+network-first, so an installed copy picks the new build up on its next launch.
 
-The repo is **public** and Pages deploys are green: every push to `main` puts
-the current build at the URL above within a minute or two. The service worker
-is network-first, so an already-installed copy picks the new version up on its
-next launch.
-
-## Controls (short version)
+## Controls
 
 Move **WASD** · look **mouse** (pointer lock; Esc releases and pauses) · fire
 **click / Space** · aim-zoom **right-click / Z** · interact **hold F** · reload
 **R** · weapons **Q/E, wheel, 1–4** · floor plan **Tab** · radar **N** ·
 self-test **F4** · input diagnostics **F3 / F2**. Every action has a
-right-hand mirror for left-handed mouse users; full list on the in-game
-CONTROLS screen.
+right-hand mirror for left-handed mouse users; the in-game CONTROLS screen has
+the full list.
 
-On a **touchscreen** the game switches to its own scheme: left pad moves
-(speed follows deflection, full deflection sprints), dragging the view looks,
-and an on-screen cluster carries **FIRE**, **AIM** (toggle), **RELOAD**,
-**GUN**, **USE**, **CROUCH** (toggle) and **PAUSE**. Every button clears 44px,
-and the pause screen's field watch stands in for Tab's floor plan.
+**On a phone it works out that it's a phone.** The left pad moves — push it to
+the rim and you sprint — dragging the view looks, and FIRE, AIM, RELOAD, GUN,
+USE, CROUCH and PAUSE sit where thumbs already are, every one of them at least
+44px. The pause screen's field watch stands in for Tab's floor plan. Landscape
+is the better way to hold it; installed from *Add to Home Screen*, it launches
+fullscreen. Settings and per-mission bests survive reloads, and cheated runs
+are never recorded.
 
 ## Packaging story
 
@@ -51,12 +58,12 @@ it:
   (manifest link + guarded service-worker registration) deliberately no-op on
   `file://`.
 - **`manifest.webmanifest` + `icons/` + `sw.js`** — installable PWA with
-  offline support. The service worker is network-first for the shell (new
-  deploys land on next load) and stale-while-revalidate for the Google Fonts.
-  Bump the `CACHE` version in `sw.js` when cutting a release.
+  offline support. The service worker is network-first for the shell and
+  caches the fonts at install. `VERSION` in `index.html` must match the
+  `CACHE` name in `sw.js`; `tools/verify.js` fails the build if they drift.
 - **`.github/workflows/pages.yml`** — deploys the repo to GitHub Pages on every
   push to `main`.
-- **Releases** — tag a version (`git tag v1.0.3 && git push --tags`), create a
+- **Releases** — tag a version (`git tag v1.10 && git push --tags`), create a
   GitHub Release, and attach `index.html` renamed to `Agent360.html` as the
   downloadable build. That is this project's "package registry".
 
@@ -97,23 +104,24 @@ alone:
    no enemy-AI syncing, each client simulates itself and broadcasts
    position/fire events. Co-op adds host-authoritative enemy state on top.
 
-## What's new in v1.10
+## v1.10
 
-A full TLC pass over v1.04: standards mode and scroll-safe menu screens, full
-touch parity, persisted settings and per-mission bests (`localStorage`,
-schema-versioned, cheats never recorded), per-mission art grades with per-cell
-floors/ceilings, dressed maps with one hidden cache per mission, damage-
-direction arcs and a proper death beat, an M03 duel checkpoint and campaign
-finale, and distance-attenuated audio with music states. The version in the
-title-screen corner tracks `VERSION` in `index.html`, which must match the
-`CACHE` name in `sw.js` — `tools/verify.js` fails the build if they drift.
+A full TLC pass over v1.04, run the way Managed's overnight rounds were run:
+measure first, change second, and a self-test for everything that broke on the
+way. The short version — the game now plays properly on a phone, the three
+missions stopped sharing one grey wall texture, getting shot tells you where
+from, dying gets a beat before the debrief, the M03 duel got a checkpoint, the
+soundtrack learned the difference between a menu and a meltdown, and every
+mission hides one cache behind a wall that doesn't advertise itself. The long
+version, with the measurements that forced each change, is
+[NIGHT_LOG.md](NIGHT_LOG.md).
 
 ## Development
 
-- **F4** runs the in-game self-test suite — now **171 assertions**: level
+- **F4** runs the in-game self-test suite — **171 assertions**: level
   reachability audits, input model invariants (pointer-lock linearity,
   free-look symmetry, aim-assist never fighting the player's turn), movement
-  and collision checks, touch-cluster behaviour, palette/zone rendering,
+  and collision checks, touch-cluster behaviour, palette and zone rendering,
   secrets, checkpoint and music-state logic.
 - `tools/verify.js` runs that suite headlessly plus a 5,400-frame
   randomized-input soak across all nine mission/difficulty combinations —
@@ -121,9 +129,9 @@ title-screen corner tracks `VERSION` in `index.html`, which must match the
   the real cluster) and once more stepping the sim at 144 Hz and 30 Hz to
   prove frame-rate invariance. It also checks the `index.html`/`sw.js`
   version lockstep: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
-- `tools/touch.js` is a phone-finger walkthrough: boot skip, every menu, a
-  mission started, walked, fired, paused and resumed by taps alone, with
-  44px tap-target and screen-utilization measurements.
+- `tools/touch.js` is a phone-finger walkthrough: boot skipped, every menu
+  visited, a mission started, walked, fired, paused and resumed by taps
+  alone, with 44px tap-target and screen-utilization measurements.
 - `tools/visual.js` measures the rendered glyph boxes of every text element
   on every DOM overlay screen — zero-height, clipped or painted-over text
   fails the run — at desktop and phone viewports.
@@ -132,6 +140,6 @@ title-screen corner tracks `VERSION` in `index.html`, which must match the
   meltdown escape: `node tools/playtest.js "$(pwd)/index.html" 0 30`. Balance
   changes are judged by its win rate — the AGENT duel is tuned so this bot wins
   ~93% of runs; on SECRET AGENT and 00 AGENT it dies, as it should.
-- The game survived three adversarial review rounds (independent finder agents
-  cross-examined by paired skeptics); regressions found there become new F4
-  assertions.
+- The game has been through repeated adversarial review rounds — independent
+  finders cross-examined by paired skeptics — and every confirmed regression
+  became an F4 assertion. [NIGHT_LOG.md](NIGHT_LOG.md) is the ledger.
