@@ -1536,13 +1536,21 @@ function bakeViewModels(){
      r  rusted panel     V  warning chevrons
      d  desk+chair  q  water cooler  p  potted plant  y  box pallet
      g  standing sign  h  hanging cables  u  floor UPS  o  clean rack (scenery)
+     H  hidden door — wears the wall texture the level's secretTex names, so it
+        reads as plain wall until you are nearly touching it (one cache each)
      P  start         <  extraction                T  endpoint terminal
-     U  audit terminal (00 Agent only)             z  patch console
+     U  audit terminal (00 Agent only — the prop itself only spawns on 00,
+        otherwise lower clearances stare at a marker that completes nothing)
      X  rogue access point   $  ransomware node    n  the CFO
      b  backup tape   c  credential case           k  keycard
      a  ammo   m  medkit   v  body armour
      W  KB-Klobb   S  Cat6 shotgun   N  patch cannon
      1  phishing bot   2  ransomware goon   3  legacy tower   4  rogue AP drone
+   Optional per level: zones [{x0,y0,x1,y1,f,c}] paint per-cell floor/ceiling
+   (c:255 = open sky); agentSkip [[x,y],...] names the enemies AGENT clearance
+   goes without — hand-picked so every type the full map fields survives the
+   cut (the old ei%3 raster hack once deleted M01's only legacy tower);
+   secretTex is the wall texture the 'H' door imitates.
    ========================================================================== */
 const LEVELS = [
 {
@@ -1554,36 +1562,41 @@ const LEVELS = [
   /* cool cyan-blue night grade; exposed duct ceiling suits a sub-basement */
   floor:9, ceil:20, par:150,
   pal:[.88,.96,1.12], fog:[0x07,0x11,0x20], sky:[10,18,36],
+  /* the server hall stands on a raised grate floor; no skylight — this is a
+     sub-basement at 02:40, sky here would be a continuity error */
+  zones:[ {x0:1,y0:10,x1:30,y1:14,f:11} ],
+  secretTex:2,                      // the rack hollow's door wears a rack face
+  agentSkip:[ [25,1],[28,11],[17,18] ],   // two phish and the dock goon sit out
   map:[
-    '################################',
-    '#....a....#.........#....1.....#',
-    '#..P......#....T....#..........#',
+    '##*####*########################',
+    '#....a....C.........C....1.....#',
+    '#..P......C....T....C..........#',
     '#.........+.........+..===.....#',
-    '#..####...#..##+##..#..===..m..#',
-    '#..#..#...#..#...#..#..===.....#',
-    '#..#T.#...#..#.1.#..#.........2#',
-    '#..#+#....#..#####..#..........#',
-    '#.........#.........#..........#',
-    '####+#############+#######+#####',
-    '#..............4...............#',
-    '#..===..===..===..===..===..1..#',
-    '#..===..===..===..===..===.....#',
-    '#.......v.....W................#',
-    '#..3...........T...............#',
+    '#..CCCC...C..CC+CC..C..=v=..m..#',
+    '#..C..C...C..C...C..C..=H=.....#',
+    '#..CT.C...C..C.1.C..C.........2#',
+    '#..C+C....C..CCCCC..C..........#',
+    '#.........C.........C..........#',
+    '#CCC+CCCCCCCCCCCCC+CCCCCCC+CCCC#',
+    'C......h.......4.......h.......C',
+    'C..===..===..===..===..===..1..C',
+    'C..===..===..===..===..===.....C',
+    'C..u....v.....W............o...C',
+    'C..3...........T...............C',
     '%%%%%%%%%%%%%%%%+%%%%%%%%%%%%%%%',
-    '#.......|||||.........#.....2..#',
-    '#...X...|.k.|.........#..a.U...#',
-    '#.......||.||.........#........#',
-    '#.....................L........#',
-    '#.....................#...m..<.#',
-    '################################'
+    '%.......|||||.........#.....2..#',
+    '%...X...|.k.|..==.....#..a.U...#',
+    '%.......||.||....2....#.y..y...#',
+    '#.............a...==..L......g.#',
+    '#.............1.......*...m..<.#',
+    '#############################*##'
   ],
   objectives:[
     { tag:'A', text:'Deploy the management agent to every endpoint', kind:'term', need:3, diff:0 },
     { tag:'B', text:'Destroy the rogue access point on the core switch', kind:'ap', need:1, diff:0 },
     { tag:'C', text:'Recover the door keycard from the UPS cage', kind:'key', need:1, diff:0 },
     { tag:'D', text:'Pull the audit log from the terminal on the loading dock', kind:'audit', need:1, diff:2 },
-    { tag:'E', text:'Exit via the north stairwell', kind:'exit', need:1, diff:0 }
+    { tag:'E', text:'Exit down the loading-dock stairs, south-east', kind:'exit', need:1, diff:0 }
   ]
 },
 {
@@ -1595,29 +1608,35 @@ const LEVELS = [
   /* warm beige fluorescent grade; carpet + office tile — daytime 14th floor */
   floor:18, ceil:19, par:130,
   pal:[1.12,1.04,.90], fog:[0x16,0x12,0x0b], sky:[150,158,172],
+  /* carpet stays the office default; the open plan and the service band get
+     hard tile with the exposed duct ceiling over the racks */
+  zones:[ {x0:1,y0:8,x1:30,y1:12,f:9,c:20},
+          {x0:1,y0:20,x1:30,y1:22,f:9,c:20} ],
+  secretTex:4,                  // the cubicle-island door is one more partition
+  agentSkip:[ [30,5],[25,12],[24,16] ],  // a phish, a goon, one legacy tower
   map:[
-    '################################',
-    '#....P.......#........#........#',
-    '#.......U....#...a....#...::...#',
-    '#..:::..:::..+........+...::...#',
-    '#..:.:..:.:..#...::...#...::...#',
-    '#..:::..:::..#...::...#.......1#',
-    '#..........1.#........#....2...#',
-    '#######+#########+########+#####',
-    '#..............................#',
+    '##BBBBBBBBB###BBBBBB###BBBBBBB##',
+    'B....P.....p.w........w........B',
+    'B.......q....w...a....w...::...B',
+    'B..:::..:::..+........+...::...B',
+    'B..:.:..:.:..w...::...w...::...B',
+    'B..:::..:::..w...::...w.......1B',
+    'B..d....d..1.w....d...w....2...B',
+    '#wwwwwG+Gwwwwwwww+wwwwwwww+wwww#',
+    '#....................4.........#',
     '#..===..$..===........===..===.#',
     '#..===.....===...n....===..===.#',
     '#..===..3..===........===..===.#',
-    '#..............................#',
-    '###########+########+###########',
-    '#.......#..........#....b.k....#',
-    '#...m...#...::::...#....S......#',
-    '#.......#...:..:...#....3...c..#',
-    '#...G...+...::::...+...........#',
-    '#.......#..........#...2.......#',
-    '#############+##################',
-    '#..........#.....$.......#.....#',
-    '#...v......+.............#..<..#',
+    '#........................2.....#',
+    '#wwwwwwwwww+wwwwwwww+wwwwwwwwww#',
+    '#.......G..........w....b.k....#',
+    '#...m...G...::::...w....S..d...#',
+    '#.......G...:c.:...w....3......#',
+    '#...d...+...:H::...+...........#',
+    '#.......G..........w...2.......#',
+    '#############+#############*#*##',
+    '#..........#.....$...1...#.....#',
+    '#...v..U...+.............#..<..#',
     '#..........#.............L..a..#',
     '################################'
   ],
@@ -1626,8 +1645,8 @@ const LEVELS = [
     { tag:'B', text:'Get the CFO out of the open-plan floor', kind:'npc', need:1, diff:0 },
     { tag:'C', text:'Recover the last clean backup tape', kind:'tape', need:1, diff:0 },
     { tag:'D', text:'Lift the elevator keycard from the finance desk', kind:'key', need:1, diff:0 },
-    { tag:'E', text:'Seize the compromised credential case', kind:'case', need:1, diff:1 },
-    { tag:'F', text:'Pull the audit log from the reception terminal', kind:'audit', need:1, diff:2 },
+    { tag:'E', text:'Seize the credential case nobody will admit to hiding', kind:'case', need:1, diff:1 },
+    { tag:'F', text:'Pull the audit log from the store-room terminal', kind:'audit', need:1, diff:2 },
     { tag:'G', text:'Leave by the service elevator', kind:'exit', need:1, diff:0 }
   ]
 },
@@ -1638,25 +1657,31 @@ const LEVELS = [
         'migration is an attack. Drop its shield at the patch consoles, decommission it, and '+
         'get clear before the room cooks.',
   /* hot amber alert grade; the same duct ceiling reads sodium-lit under it */
-  floor:12, ceil:20, par:180,
+  floor:11, ceil:20, par:180,
   pal:[1.14,.97,.86], fog:[0x1e,0x0e,0x07], sky:[46,18,10],
+  /* grate everywhere except a hazard-stripe apron ringing the DC itself — the
+     inner rect paints the centre back to grate so the stripes read as a ring */
+  zones:[ {x0:13,y0:3,x1:25,y1:11,f:12},
+          {x0:16,y0:5,x1:22,y1:9,f:11} ],
+  secretTex:2,                  // the escape closet hides behind a rack face
+  agentSkip:[ [28,2],[28,8],[20,12] ],   // a drone, the arena goon, one phish
   map:[
-    '################################',
-    '#..P.....#.....................#',
-    '#...v....#........m.........4..#',
+    '##################*#*###########',
+    '#..P.....r.....................#',
+    '#...v....V........m.........4..#',
     '#...z....+.....................#',
-    '#........#...==........==...a..#',
+    '#........V...==........==...a..#',
     '%%%%%+%%%%.....................#',
-    '#..2..S..#.....................#',
+    '#..2..S..V.....................#',
     '#...z....+.........Z...........#',
-    '#........#...==....a...==......#',
-    '#####+####.......b.............#',
-    '#..1..N..#.....................#',
-    '#...z....+..................v..#',
-    '#...a....#..4..................#',
-    '#####+##########################',
-    '#..m.a....................<....#',
-    '################################'
+    '#........V...==....a...==...2..#',
+    '#rrrr+rrrr.......b.............#',
+    '#..1..N..V.....................#',
+    '#...z....+..............==..v..#',
+    '#...a....V..4.......1..=am=....#',
+    '#%%%V+V%%%%%%%%%%%%%%%%%H%%%%%%#',
+    '#..m.a......h.......h.....<.g..#',
+    '#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#'
   ],
   objectives:[
     { tag:'A', text:'Drop the shield at all three patch consoles', kind:'console', need:3, diff:0 },
@@ -1667,16 +1692,21 @@ const LEVELS = [
 }
 ];
 
+/* Roster thinning is per-level agentSkip lists, not a count knob here — a
+   fraction can only cut in raster order, which is how M01 once lost its only
+   legacy tower to a %3. */
 const DIFFS = [
-  { name:'AGENT',        note:'Fewer hostiles, softer hits, four objectives.', dmg:.55, hp:.75, count:.7,  acc:.55 },
-  { name:'SECRET AGENT', note:'Full roster, one extra objective, they aim.',     dmg:1.0, hp:1.0, count:1.0, acc:.78 },
-  { name:'00 AGENT',     note:'Every objective, every hostile, and they hit.',   dmg:1.6, hp:1.4, count:1.0, acc:.93 }
+  { name:'AGENT',        note:'Fewer hostiles, softer hits, four objectives.', dmg:.55, hp:.75, acc:.55 },
+  { name:'SECRET AGENT', note:'Full roster, one extra objective, they aim.',     dmg:1.0, hp:1.0, acc:.78 },
+  { name:'00 AGENT',     note:'Every objective, every hostile, and they hit.',   dmg:1.6, hp:1.4, acc:.93 }
 ];
 
 /* map chars -> wall texture (anything not listed is walkable floor) */
 const WALLTEX = { '#':0, '%':1, '=':2, '|':3, ':':4, 'G':5, '*':8,
                   'w':13, 'B':14, 'r':15, 'V':16, 'C':17 };
-const DOORTEX = { '+':6, 'L':7 };
+/* 'H' is the hidden door; its value is only the FALLBACK disguise — loadLevel
+   prefers the level's own secretTex so each cache matches the wall it is in. */
+const DOORTEX = { '+':6, 'L':7, 'H':2 };
 </script>
 
 <script>
@@ -1796,16 +1826,15 @@ function loadLevel(li, di){
   G.objs = L.objectives.filter(o => o.diff <= di).map(o => ({...o, have:0, done:false}));
   if (G.objs.some(o=>o.kind==='console')) G.shieldDown = false;
 
-  const thin = DIFFS[di].count;
-  let ei = 0;
-
   for (let y=0;y<G.H;y++) for (let x=0;x<G.W;x++){
     const ch = L.map[y][x], c = idx(x,y);
     if (WALLTEX[ch] !== undefined){ G.solid[c]=1; G.tex[c]=WALLTEX[ch]; continue; }
     if (DOORTEX[ch] !== undefined){
-      G.solid[c]=1; G.tex[c]=DOORTEX[ch];
+      G.solid[c]=1;
+      G.tex[c] = ch==='H' ? (L.secretTex ?? DOORTEX.H) : DOORTEX[ch];
       G.doorIx[c] = G.doors.length;
-      G.doors.push({ c, x:x+.5, y:y+.5, open:0, locked: ch==='L', was:0 });
+      G.doors.push({ c, x:x+.5, y:y+.5, open:0, locked: ch==='L',
+                     secret: ch==='H', found:0, was:0 });
       continue;
     }
     const px=x+.5, py=y+.5;
@@ -1813,7 +1842,9 @@ function loadLevel(li, di){
       case 'P': P.x=px; P.y=py; P.ang=0; break;
       case '<': ent({kind:'exit', sub:'exit', x:px, y:py, size:.40, zoff:.52, r:.6}); break;
       case 'T': ent({kind:'prop', sub:'term', x:px, y:py, size:.62, r:.36, hacked:false, prog:0}); break;
-      case 'U': ent({kind:'prop', sub:'audit', x:px, y:py, size:.62, r:.36, hacked:false, prog:0}); break;
+      /* the audit objective is 00-only; below 00 the terminal itself stays
+         home too, or the radar dangles an amber marker that completes nothing */
+      case 'U': if (di>=2) ent({kind:'prop', sub:'audit', x:px, y:py, size:.62, r:.36, hacked:false, prog:0}); break;
       case 'z': ent({kind:'prop', sub:'console', x:px, y:py, size:.55, r:.36, hacked:false, prog:0}); break;
       case 'X': ent({kind:'prop', sub:'ap', x:px, y:py, size:.44, zoff:.36, r:.3, hp:26}); break;
       case '$': ent({kind:'prop', sub:'infected', x:px, y:py, size:.76, r:.42, hp:70}); break;
@@ -1839,7 +1870,8 @@ function loadLevel(li, di){
       case 'N': ent({kind:'item', sub:'wpn3', x:px, y:py, size:.38, r:.5}); break;
       case '1': case '2': case '3': case '4': {
         const sub = {'1':'phish','2':'goon','3':'legacy','4':'drone'}[ch];
-        ei++; if (di===0 && ei%3===0) break;                 // Agent: lighter roster
+        /* AGENT sits out the level's hand-picked agentSkip cells (see legend) */
+        if (di===0 && L.agentSkip && L.agentSkip.some(s => s[0]===x && s[1]===y)) break;
         spawnEnemy(sub, px, py); break;
       }
       case 'Z': spawnEnemy('boss', px, py); G.bossAlive=true; break;
@@ -1857,7 +1889,7 @@ function loadLevel(li, di){
 /* Objective logic passing tells you nothing about whether a player can WALK to
    the objective. M01 once shipped with its exit, keycard and objective B sealed
    behind a cage bar. This flood-fills every level at boot so that can't recur. */
-function auditLevel(li, lockedAreSolid){
+function auditLevel(li, lockedAreSolid, secretsAreSolid){
   const L = LEVELS[li], H = L.map.length, W = L.map[0].length;
   const solid = [], ents = [];
   let start = null;
@@ -1867,7 +1899,8 @@ function auditLevel(li, lockedAreSolid){
       const ch = L.map[y][x];
       const wall = WALLTEX[ch] !== undefined;
       const door = DOORTEX[ch] !== undefined;
-      solid[y][x] = wall || (door && lockedAreSolid && ch === 'L') ? 1 : 0;
+      solid[y][x] = wall || (door && ((lockedAreSolid && ch === 'L') ||
+                                      (secretsAreSolid && ch === 'H'))) ? 1 : 0;
       if (ch === 'P') start = [x,y];
       else if (!wall && !door && ch !== '.') ents.push({ ch, x, y });
     }
@@ -2488,9 +2521,10 @@ function step(dt){
     if (w.auto || !P.firedOnce){ if (playerFire()){ P.firedOnce = true; M.fireEdge = 0; } }
   } else P.firedOnce = false;
 
-  /* doors */
+  /* doors. A secret door holds its disguise until the player is nearly
+     touching it — the normal radius would pop it open from the next aisle. */
   for (const d of G.doors){
-    let want = dist2(P.x,P.y,d.x,d.y) < 2.6;
+    let want = dist2(P.x,P.y,d.x,d.y) < (d.secret ? 1.2 : 2.6);
     if (want && d.locked && P.keys<=0){
       want = false;
       if (G.doorNag <= 0){ G.doorNag = 3; sfx('dryfire'); toast('KEYCARD REQUIRED','red',2200); }
@@ -2499,12 +2533,12 @@ function step(dt){
       if (e.kind!=='enemy' || e.state==='dead') continue;
       const ed = dist2(e.x,e.y,d.x,d.y);
       /* never drop a door on a body standing in it; alert guards may hold any
-         door the player can already open */
-      if ((ed < 1 && d.open > 0) || (e.alert && (!d.locked || P.keys>0) && ed < 1.9)){ want=true; break; }
+         door the player can already open — but never give a secret away */
+      if ((ed < 1 && d.open > 0) || (!d.secret && e.alert && (!d.locked || P.keys>0) && ed < 1.9)){ want=true; break; }
     }
     d.open = clamp(d.open + (want ? dt*2.1 : -dt*1.3), 0, 1);
     G.solid[d.c] = d.open >= .9 ? 0 : 1;
-    if (want && !d.was){ d.was=1; sfx('door'); } else if (!want && d.was && d.open<=0) d.was=0;
+    if (want && !d.was){ d.was=1; d.found=1; sfx('door'); } else if (!want && d.was && d.open<=0) d.was=0;
   }
   G.doorNag -= dt;
 
@@ -2958,8 +2992,11 @@ function drawMinimap(){
   for (let my=ay;my<=by;my++) for (let mx=ax;mx<=bx;mx++){
     const c = my*G.W+mx, di = G.doorIx[c];
     if (!G.solid[c] && di < 0) continue;
-    ctx.fillStyle = di>=0 ? (G.doors[di].locked ? '#c86a2a' : '#2f7f9c')
-                          : (G.tex[c]===2 ? '#28323f' : '#3b485c');
+    /* an unfound secret door keeps its wall disguise on the radar too — and
+       never the locked amber, which would flag it as interesting */
+    const dr = di>=0 && !(G.doors[di].secret && !G.doors[di].found) ? G.doors[di] : null;
+    ctx.fillStyle = dr ? (dr.locked ? '#c86a2a' : '#2f7f9c')
+                       : (G.tex[c]===2 ? '#28323f' : '#3b485c');
     ctx.fillRect((mx-P.x)*k, (my-P.y)*k, cell, cell);
   }
   ctx.restore();
@@ -3054,8 +3091,10 @@ function drawPauseMap(){
   for (let y=0;y<G.H;y++) for (let x=0;x<G.W;x++){
     const i = y*G.W+x, di = G.doorIx[i];
     if (!G.solid[i] && di < 0) continue;
-    g.fillStyle = di>=0 ? (G.doors[di].locked ? '#c86a2a' : '#2f7f9c')
-                        : (G.tex[i]===2 ? '#232c38' : '#39465a');
+    /* unfound secret doors draw as their disguise wall here too */
+    const dr = di>=0 && !(G.doors[di].secret && !G.doors[di].found) ? G.doors[di] : null;
+    g.fillStyle = dr ? (dr.locked ? '#c86a2a' : '#2f7f9c')
+                     : (G.tex[i]===2 ? '#232c38' : '#39465a');
     g.fillRect(Math.round(ox+x*k), Math.round(oy+y*k), cell, cell);
   }
   const tagFor = e => {
@@ -3551,12 +3590,31 @@ function selfTest(runSim){
   const R = [];
   const ok = (name, pass, detail) => R.push({ name, pass, detail: detail || '' });
 
+  /* the one hidden cache per mission, by cell — the flood-fill tests below
+     prove each is sealed by its 'H' door and open through it */
+  const SECRETS = [ [[24,4]], [[13,16],[14,16]], [[24,12],[25,12]] ];
+
   for (let i=0;i<LEVELS.length;i++){
     const L = LEVELS[i], W = L.map[0].length;
     const bad = L.map.map((r,y) => r.length!==W ? y+':'+r.length : null).filter(Boolean);
     ok(L.code+' map is rectangular', bad.length===0, bad.join(' '));
+    ok(L.code+' rows are the canonical 32 wide', W===32, 'W='+W);
     ok(L.code+' has a player start', L.map.join('').indexOf('P')>=0);
     ok(L.code+' has an exit', L.map.join('').indexOf('<')>=0);
+    if (L.zones){
+      const zb = L.zones.filter(z => !(z.x0>=0 && z.y0>=0 && z.x1>=z.x0 && z.y1>=z.y0
+        && z.x1<W && z.y1<L.map.length
+        && (z.f===undefined || z.f===255 || z.f<TEX.length)
+        && (z.c===undefined || z.c===255 || z.c<TEX.length)));
+      ok(L.code+' zone rects in bounds', zb.length===0, JSON.stringify(zb));
+    }
+    {
+      const h = L.map.join('').split('H').length-1;
+      ok(L.code+' has exactly one hidden door', h===1, 'found '+h);
+      const shut = auditLevel(i, false, true);
+      ok(L.code+' secret cache is sealed until found',
+         SECRETS[i].every(([sx,sy]) => !shut.seen[sy][sx]));
+    }
 
     const a = auditLevel(i, false);
     ok(L.code+' everything reachable', a.unreachable.length===0, a.unreachable.join(' '));
@@ -4058,6 +4116,30 @@ function selfTest(runSim){
       let solidCols = 0; for (let x=0;x<RW;x++) if (zbuf[x] < 1e9) solidCols++;
       ok('render: frame is not a single colour', seen.size > 4, seen.size+' colours');
       ok('render: zbuf sees walls', solidCols > RW*.5, solidCols+'/'+RW+' cols');
+    }
+
+    /* roster composition per clearance: the full 00 muster and the hand-picked
+       AGENT cut, by type. A grid edit that silently rebalances either fails
+       here by name. The sim's final loadLevel restores the caller's mission. */
+    {
+      const WANT = [
+        { full:{phish:4,goon:3,legacy:1,drone:1}, agent:{phish:2,goon:2,legacy:1,drone:1} },
+        { full:{phish:3,goon:3,legacy:2,drone:1}, agent:{phish:2,goon:2,legacy:1,drone:1} },
+        { full:{phish:2,goon:2,drone:2,boss:1},   agent:{phish:1,goon:1,drone:1,boss:1} }
+      ];
+      const tally = () => { const t={};
+        for (const e of G.ents) if (e.kind==='enemy') t[e.sub]=(t[e.sub]||0)+1; return t; };
+      const fmt = t => Object.keys(t).sort().map(k=>k+':'+t[k]).join(' ');
+      const hasAudit = () => G.ents.some(e => e.kind==='prop' && e.sub==='audit');
+      for (let i=0;i<LEVELS.length;i++){
+        const mapHasU = LEVELS[i].map.join('').indexOf('U') >= 0;
+        loadLevel(i,2);
+        ok(LEVELS[i].code+' 00 roster composition', fmt(tally())===fmt(WANT[i].full), fmt(tally()));
+        if (mapHasU) ok(LEVELS[i].code+' audit terminal spawns on 00', hasAudit());
+        loadLevel(i,0);
+        ok(LEVELS[i].code+' AGENT roster composition', fmt(tally())===fmt(WANT[i].agent), fmt(tally()));
+        ok(LEVELS[i].code+' audit terminal absent below 00', !hasAudit());
+      }
     }
 
     /* clicking another window (blur without hide) pauses like tab-hide does */
