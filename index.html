@@ -30,9 +30,14 @@ canvas#view,#touch,#touch *{touch-action:none}
   radial-gradient(ellipse at 50% 45%, #0b1420 0%, #05070c 70%, #000 100%);}
 #frame{position:relative; line-height:0; box-shadow:0 0 0 1px #1e3a52, 0 0 60px -10px #35d0ff33, 0 30px 80px -20px #000;}
 canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:block; background:#000; cursor:crosshair;}
+/* Plain translucent stripes, not mix-blend-mode:multiply: over a game this dark
+   the two are indistinguishable, and multiply forced a full-display blend pass
+   every frame. background-size is set from fit() so the stripe period is an
+   exact multiple of the game-pixel size — a fractional period shimmered as the
+   stripes beat against the upscaled pixels on phones. */
 #scan{position:absolute; inset:0; pointer-events:none; opacity:.5;
-  background:repeating-linear-gradient(to bottom, rgba(0,0,0,.28) 0 1px, rgba(0,0,0,0) 1px 3px);
-  mix-blend-mode:multiply;}
+  background-image:linear-gradient(rgba(0,0,0,.28) 0 1px, rgba(0,0,0,0) 1px);
+  background-size:100% 3px; background-repeat:repeat;}
 #vig{position:absolute; inset:0; pointer-events:none;
   background:radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,.55) 100%);}
 body.noscan #scan{display:none}
@@ -935,8 +940,16 @@ const TEXFN = [
     R(g,0,0,s,s,'#242a35');
     for(let x=2;x<s;x+=8){ R(g,x,0,4,s,'#7b8494'); R(g,x,0,1,s,'#a3adbc'); R(g,x+3,0,1,s,'#4b5462'); }
     for(let y=0;y<s;y+=30){ R(g,0,y,s,4,'#6b7484'); R(g,0,y,s,1,'#98a2b1'); } },
-  /* 4 cubicle partition */ (g,s)=>{ R(g,0,0,s,s,'#5c6152'); grain(g,s,.42);
-    R(g,0,0,s,4,'#8d9382'); R(g,0,4,s,1,'#3f4438'); R(g,0,s-3,s,3,'#3f4438'); },
+  /* 4 cubicle partition — fabric pinboard with rails and pinned paper; the old
+     bake was featureless olive noise and read as mould at any distance */ (g,s)=>{
+    R(g,0,0,s,s,'#5c6152'); grain(g,s,.42);
+    for(let x=0;x<s;x+=16) R(g,x,0,1,s,'#464b3e');                    // panel seams
+    R(g,0,0,s,3,'#9aa0a8'); R(g,0,0,s,1,'#c2c8cf'); R(g,0,3,s,1,'#3f4438');   // top rail
+    R(g,0,40,s,3,'#9aa0a8'); R(g,0,40,s,1,'#c2c8cf'); R(g,0,43,s,1,'#3f4438'); // waist rail
+    R(g,0,s-8,s,8,'#3f4438'); R(g,0,s-8,s,1,'#565b4c');               // kick panel
+    for(const [px,py] of [[6,10],[38,14],[22,26]]){                   // pinned paper
+      R(g,px,py,4,5,'#e8e8e0'); R(g,px+1,py+2,2,1,'#6a6a60'); }
+    },
   /* 5 glass */ (g,s)=>{ R(g,0,0,s,s,'#2d4a5a');
     for(let i=0;i<s;i+=4) R(g,i,0,1,s,'#33566a');
     R(g,0,0,s,3,'#7d98a8'); R(g,0,s-3,s,3,'#1d3240'); R(g,0,0,3,s,'#5f7f92');
@@ -947,7 +960,12 @@ const TEXFN = [
     R(g,4,8,s-8,s-18,'#22475a'); R(g,4,8,s-8,1,'#3f7692');
     R(g,s/2-1,8,2,s-18,'#16303e');
     R(g,8,s-22,14,4,'#ffb02e'); R(g,s-22,s-22,14,4,'#ffb02e');
-    g.fillStyle='#9fd9f0'; g.font='bold 9px monospace'; g.fillText('360',s/2-11,s/2+3); },
+    /* explicit pixel digits: the 9px canvas font smeared '360' into '368' */
+    const DIG={ '3':['1111','0001','0111','0001','1111'],
+                '6':['1111','1000','1111','1001','1111'],
+                '0':['1111','1001','1001','1001','1111'] };
+    '360'.split('').forEach((d,i)=>DIG[d].forEach((row,y)=>row.split('').forEach((b,x)=>{
+      if (b==='1') R(g, s/2-14+i*10+x*2, s/2-5+y*2, 2, 2, '#9fd9f0'); }))); },
   /* 7 locked door */ (g,s)=>{ R(g,0,0,s,s,'#5a3a2b'); grain(g,s,.16);
     R(g,0,0,s,4,'#8d6244'); R(g,0,s-4,s,4,'#332016');
     R(g,4,8,s-8,s-18,'#4a3023'); R(g,s/2-1,8,2,s-18,'#2a1a12');
@@ -975,12 +993,64 @@ const TEXFN = [
   /* 12 hazard floor (boss room) */ (g,s)=>{ R(g,0,0,s,s,'#4a4438'); grain(g,s,.22);
     for(let i=-s;i<s;i+=16){ g.save(); g.fillStyle='#c8992e'; g.globalAlpha=.5;
       g.beginPath(); g.moveTo(i,0); g.lineTo(i+8,0); g.lineTo(i+8+s,s); g.lineTo(i+s,s); g.fill(); g.restore(); }
-    R(g,0,0,s,1,'#5d5646'); }
+    R(g,0,0,s,1,'#5d5646'); },
+  /* 13 office plaster (M02) */ (g,s)=>{ R(g,0,0,s,s,'#93897a'); grain(g,s,.16);
+    R(g,0,0,s,2,'#a89e8d'); R(g,0,10,s,1,'#a49a89');                  // picture rail
+    R(g,0,s-7,s,7,'#6a6152'); R(g,0,s-7,s,1,'#7d7464');               // skirting
+    for(let i=0;i<8;i++){ const x=rr(0,s); R(g,x,rr(12,s-10),1,rr(2,6),'#857b6c'); } },
+  /* 14 office window with blinds (M02) */ (g,s)=>{ R(g,0,0,s,s,'#1a222c');
+    for(let y=6;y<s-6;y+=4){ R(g,4,y,s-8,2,'#b7ae98'); R(g,4,y+2,s-8,1,'#4a4a44'); } // slats
+    R(g,s/2-1,4,2,s-8,'#3a3a34');                                     // lift cord
+    R(g,0,0,s,4,'#5a5548'); R(g,0,s-4,s,4,'#494439');                 // frame
+    R(g,0,0,4,s,'#5a5548'); R(g,s-4,0,4,s,'#494439'); R(g,0,0,s,1,'#6d6759'); },
+  /* 15 rusted panel (M03) */ (g,s)=>{ R(g,0,0,s,s,'#5d5248'); grain(g,s,.28);
+    for(let y=0;y<s;y+=32) R(g,0,y,s,1,'#3d352e');
+    R(g,31,0,1,s,'#3d352e');
+    for(let i=0;i<26;i++){ const x=rr(2,s-4),y=rr(2,s-4),r=rr(1,4);
+      g.fillStyle=Math.random()<.5?'#7a4a28':'#8a5a30'; g.beginPath(); g.arc(x,y,r,0,7); g.fill(); }
+    for(let i=0;i<7;i++){ const x=rr(2,s-2); R(g,x,rr(30,s-16),2,rr(6,16),'#2e2620'); } // scorch runs
+    for(let x=4;x<s;x+=8){ R(g,x,3,2,2,'#766a5e'); R(g,x,s-5,2,2,'#766a5e'); } },
+  /* 16 warning chevrons (M03) */ (g,s)=>{ R(g,0,0,s,s,'#2a2622');
+    for(let i=-s;i<s+16;i+=16){ g.fillStyle='#c8992e'; g.beginPath();
+      g.moveTo(i,s); g.lineTo(i+8,s); g.lineTo(i+8+s,0); g.lineTo(i+s,0); g.fill(); }
+    grain(g,s,.20);
+    R(g,0,0,s,4,'#1c1916'); R(g,0,s-4,s,4,'#1c1916'); R(g,0,4,s,1,'#3a352e'); },
+  /* 17 painted cinderblock with conduit (M01) */ (g,s)=>{ R(g,0,0,s,s,'#5b6a7c'); grain(g,s,.24);
+    for(let y=0;y<s;y+=16){ R(g,0,y,s,2,'#43505f');
+      const off=(y/16)%2?0:16; for(let x=off;x<s;x+=32) R(g,x,y,2,16,'#43505f'); }
+    R(g,0,22,s,6,'#8d97a1'); R(g,0,22,s,2,'#b3bcc5'); R(g,0,27,s,1,'#5b636e');   // conduit run
+    for(let x=6;x<s;x+=16) R(g,x,20,3,10,'#6c757e');                  // brackets
+    R(g,44,18,10,14,'#4a525c'); R(g,46,20,6,3,'#39d7ff'); },          // junction box
+  /* 18 carpet floor (M02) */ (g,s)=>{ R(g,0,0,s,s,'#4a5560');
+    for(let y=0;y<s;y+=32) for(let x=0;x<s;x+=32)
+      if ((x/32+y/32)%2) R(g,x,y,32,32,'#414b55');
+    for(let i=0;i<120;i++){ const n=Math.random();
+      R(g,rr(0,s),rr(0,s),1,1, n<.5?'#525d68':'#3a444e'); } },
+  /* 19 warm office ceiling (M02) — diffuser in half the tiles only, so the
+     grid does not strobe when every cell carries a light */ (g,s)=>{
+    R(g,0,0,s,s,'#7b7568'); grain(g,s,.12);
+    for(let y=0;y<s;y+=32) for(let x=0;x<s;x+=32){
+      R(g,x,y,32,1,'#5d584d'); R(g,x,y,1,32,'#5d584d'); R(g,x+1,y+1,31,1,'#8c8678');
+      if ((x/32+y/32)%2===0){ R(g,x+7,y+11,18,10,'#efe9d2'); R(g,x+7,y+11,18,2,'#fffbe8');
+        for(let i=0;i<3;i++) R(g,x+7,y+14+i*3,18,1,'#c9c3ab'); } } },
+  /* 20 exposed duct ceiling (M01/M03) */ (g,s)=>{ R(g,0,0,s,s,'#20252d'); grain(g,s,.14);
+    R(g,0,8,s,20,'#49525e'); R(g,0,8,s,3,'#5f6a78'); R(g,0,25,s,3,'#333b45');    // main duct
+    for(let x=0;x<s;x+=16){ R(g,x,8,1,20,'#3a424e'); }                // duct seams
+    R(g,0,38,s,4,'#3a424e'); R(g,0,38,s,1,'#4a525e');                 // pipe pair
+    R(g,0,46,s,3,'#54473a'); R(g,0,46,s,1,'#6a5b4a');
+    for(let x=10;x<s;x+=24){ R(g,x,0,2,46,'#181c22'); }               // hangers
+    R(g,40,56,16,4,'#cfe0ea'); R(g,40,56,16,1,'#ffffff'); }           // one strip light
 ];
 const TEX = TEXFN.map(makeTex);
 
-function shade(px, levels, dark=.86, fog=.55){
+/* tint is a per-channel multiplier (the mission grade) and fogc the colour the
+   far levels sink into; both default to neutral so the sprite bakes — which
+   must stay mission-agnostic, they are baked once at boot — never pick up a
+   grade. The min() clamps matter: a 1.1 tint on a 240 channel overflows into
+   the neighbouring byte and paints magenta sparkles on every bright texel. */
+function shade(px, levels, dark=.86, fog=.55, tint=null, fogc=FOG){
   const out=[];
+  const tr=tint?tint[0]:1, tg=tint?tint[1]:1, tb=tint?tint[2]:1;
   for (let l=0;l<levels;l++){
     const t=l/(levels-1), f=1-t*dark, fm=t*fog;
     const d=new Uint32Array(px.length);
@@ -988,13 +1058,26 @@ function shade(px, levels, dark=.86, fog=.55){
       const p=px[i]; const a=p & 0xff000000;
       if (!a) { d[i]=0; continue; }              // keep cut-outs fully transparent
       const r=p&255, gg=(p>>8)&255, b=(p>>16)&255;
-      d[i]=(a | ((((b*f)+FOG[2]*fm)|0)<<16) | ((((gg*f)+FOG[1]*fm)|0)<<8) | (((r*f)+FOG[0]*fm)|0))>>>0;
+      d[i]=(a | (Math.min(255,(b*tb*f)+fogc[2]*fm)|0)<<16
+              | (Math.min(255,(gg*tg*f)+fogc[1]*fm)|0)<<8
+              | (Math.min(255,(r*tr*f)+fogc[0]*fm)|0))>>>0;
     }
     out.push(d);
   }
   return out;
 }
-const TEXL = TEX.map(t => shade(t.px, LV));
+/* Wall/floor shade tables are REBUILT by applyPalette when a mission's grade
+   differs from the one currently baked — ~1.3M ops, imperceptible on load. */
+let TEXL = TEX.map(t => shade(t.px, LV));
+let TEXPAL = '';                       // grade key currently baked into TEXL
+function applyPalette(pal, fogc){
+  pal = pal || [1,1,1]; fogc = fogc || FOG;
+  const key = pal.join()+'/'+fogc.join();
+  if (key === TEXPAL) return;
+  TEXPAL = key;
+  TEXL = TEX.map(t => shade(t.px, LV, .86, .55, pal, fogc));
+  FOGPX = pack(Math.min(255,fogc[0]+6), Math.min(255,fogc[1]+8), Math.min(255,fogc[2]+12));
+}
 
 /* --------------------------------- the face ------------------------------ */
 /* A 48x48 head plate. Default is drawn from scratch; the player can drop in a
@@ -1294,6 +1377,86 @@ PROP = {
               g.arc(40+Math.cos(a)*r,40+Math.sin(a)*r,rr(4,11),0,7); g.fill(); }
             g.globalAlpha=1; g.fillStyle='#ff8a3d'; g.beginPath(); g.arc(40,40,12,0,7); g.fill(); })
 };
+
+/* bullet-impact decals — 4 variants so a wall of pocks doesn't tile visibly */
+PROP.decal = [];
+for (let i=0;i<4;i++) PROP.decal.push(bake(12,12,(g,w,h)=>{
+  const cx=6+rr(-1,1), cy=6+rr(-1,1);
+  g.fillStyle='#20262e'; g.beginPath(); g.arc(cx,cy,rr(2.6,3.6),0,7); g.fill();
+  g.fillStyle='#0e1114'; g.beginPath(); g.arc(cx,cy,rr(1.2,1.9),0,7); g.fill();
+  for(let k=0;k<4;k++){ const a=rnd(7);
+    R(g,cx+Math.cos(a)*3.4,cy+Math.sin(a)*3.4,1,1, k%2?'#7a838e':'#3c434f'); }
+  if (i===3){ g.globalAlpha=.5; g.fillStyle='#191410';                // one scorchier variant
+    g.beginPath(); g.arc(cx,cy,5,0,7); g.fill(); g.globalAlpha=1; }
+}));
+
+/* weapon pickups: silhouettes of the guns themselves — see spriteOf */
+PROP.gunS = bake(36,24,(g,w,h)=>{                                    // KB-Klobb, long SMG
+  g.globalAlpha=.3; R(g,4,h-3,28,2,'#000'); g.globalAlpha=1;
+  R(g,0,11,4,3,'#2b303a'); R(g,4,9,24,6,'#3a3f47'); R(g,4,9,24,2,'#565c66');
+  R(g,28,10,7,3,'#2b303a'); R(g,33,11,3,1,'#1a1e24');
+  R(g,12,15,5,7,'#23282f'); R(g,12,15,5,1,'#3a3f47'); });
+PROP.gunH = bake(40,24,(g,w,h)=>{                                    // CAT6: VM.cat6 palette
+  g.globalAlpha=.3; R(g,4,h-3,32,2,'#000'); g.globalAlpha=1;
+  R(g,2,12,8,5,'#8d5a2b');                                           // wood stock
+  R(g,8,10,24,6,'#b9c2c9'); R(g,8,10,24,2,'#e3eaef'); R(g,8,15,24,1,'#7d8792');
+  R(g,30,9,9,4,'#c9d2da'); R(g,30,9,9,1,'#eef2f5');
+  R(g,16,16,9,4,'#c0392b'); R(g,16,16,9,1,'#e0574a');                // red pump
+  R(g,11,12,3,3,'#c8992e'); R(g,16,12,3,3,'#c8992e'); });            // brass shells
+PROP.gunP = bake(40,26,(g,w,h)=>{                                    // patch cannon
+  g.globalAlpha=.3; R(g,4,h-3,32,2,'#000'); g.globalAlpha=1;
+  R(g,4,11,28,8,'#3d4650'); R(g,4,11,28,2,'#5d6874');
+  R(g,32,12,6,6,'#2b323c'); R(g,34,14,3,3,'#0b1218');
+  R(g,8,7,12,4,'#39d7ff'); R(g,8,7,12,1,'#8be6ff');                  // patch cartridge
+  R(g,14,13,4,5,'#ffb02e'); R(g,22,13,4,5,'#ffb02e'); });
+
+/* scenery — set dressing, never interactive (loadLevel flags them deco) */
+PROP.desk = bake(48,40,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,4,h-2,42,2,'#000'); g.globalAlpha=1;
+  R(g,2,24,10,3,'#243038'); R(g,2,12,3,12,'#243038'); R(g,6,27,2,9,'#14161a');  // chair
+  R(g,4,36,8,2,'#14161a');
+  R(g,14,18,32,4,'#8d6a44'); R(g,14,18,32,1,'#b08a58');              // desk top
+  R(g,16,22,3,16,'#5a4430'); R(g,42,22,3,16,'#5a4430');
+  R(g,24,7,12,10,'#2b323c'); R(g,26,9,8,6,'#0b1218'); R(g,26,9,8,1,'#39d7ff');  // monitor
+  R(g,28,17,4,2,'#1a1e24'); });
+PROP.cooler = bake(28,48,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,5,h-2,18,2,'#000'); g.globalAlpha=1;
+  R(g,8,3,12,11,'#7fc4e0'); R(g,9,4,3,9,'#b8e2f2');                  // bottle
+  R(g,6,14,16,28,'#e8eef2'); R(g,6,14,16,2,'#ffffff'); R(g,20,14,2,28,'#b9c2c9');
+  R(g,10,27,3,3,'#39d7ff'); R(g,15,27,3,3,'#ff5d4a');                // taps
+  R(g,9,32,10,5,'#c9d2da'); R(g,6,42,16,4,'#9aa3ad'); });
+PROP.plant = bake(32,44,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,8,h-2,16,2,'#000'); g.globalAlpha=1;
+  g.fillStyle='#3d7a3a';
+  for(const [lx,ly,lw,lh] of [[14,6,4,26],[8,12,4,20],[20,10,4,22],[4,20,5,12],[23,18,5,14]])
+    R(g,lx,ly,lw,lh,'#3d7a3a');
+  R(g,15,8,2,22,'#4f9a48'); R(g,9,14,2,16,'#2c5c2a'); R(g,21,12,2,18,'#4f9a48');
+  R(g,10,30,12,10,'#8a5a30'); R(g,9,30,14,3,'#a8703c'); R(g,10,38,12,2,'#6a4322'); });
+PROP.pallet = bake(44,36,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,3,h-2,38,2,'#000'); g.globalAlpha=1;
+  R(g,6,16,16,14,'#a8845a'); R(g,6,16,16,3,'#c09a68'); R(g,13,16,2,14,'#6a4c2c');
+  R(g,22,8,16,22,'#98744a'); R(g,22,8,16,3,'#b08a58'); R(g,29,8,2,22,'#6a4c2c');
+  R(g,25,14,8,5,'#e8e8e0'); R(g,26,16,6,1,'#6a6a60');                // shipping label
+  R(g,4,30,36,4,'#8d6a44'); R(g,4,30,36,1,'#5a4430');
+  R(g,6,32,4,2,'#5a4430'); R(g,20,32,4,2,'#5a4430'); R(g,34,32,4,2,'#5a4430'); });
+PROP.sign = bake(28,44,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,4,h-2,20,2,'#000'); g.globalAlpha=1;
+  R(g,5,8,18,26,'#e8c840'); R(g,5,8,18,2,'#f4dc6a'); R(g,5,32,18,2,'#a8901e');
+  R(g,13,13,3,10,'#1a1508'); R(g,13,26,3,3,'#1a1508');               // the !
+  R(g,4,34,4,8,'#5a5548'); R(g,20,34,4,8,'#5a5548'); });
+PROP.cables = bake(44,26,(g,w,h)=>{
+  g.lineWidth=2;
+  for(const [c,dy] of [['#1a1e24',0],['#54473a',4],['#2b323c',7]]){
+    g.strokeStyle=c; g.beginPath(); g.moveTo(0,2+dy);
+    g.quadraticCurveTo(22,16+dy,44,2+dy); g.stroke(); }
+  R(g,18,12,8,5,'#3a3f47'); R(g,18,12,8,1,'#565c66'); });            // cable tie block
+PROP.ups = bake(32,40,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,5,h-2,22,2,'#000'); g.globalAlpha=1;
+  R(g,6,6,20,32,'#14181e'); R(g,6,6,20,2,'#2a3038'); R(g,24,6,2,32,'#0a0d11');
+  for(let y=10;y<20;y+=3) R(g,9,y,10,1,'#242a32');                   // vents
+  R(g,21,10,3,3,'#4ade80'); R(g,21,15,3,3,'#ffb02e');
+  R(g,9,24,14,8,'#0d1015'); R(g,10,26,8,1,'#39d7ff');
+  g.fillStyle='#5b636e'; g.font='4px monospace'; g.fillText('UPS',10,37); });
 }
 
 /* ------------------------------- view models ---------------------------- */
@@ -1369,6 +1532,10 @@ function bakeViewModels(){
      #  concrete      %  bullet-scarred concrete   =  server rack
      |  cage bars     :  cubicle partition         G  glass
      +  door          L  keycard door              *  360 stencil
+     w  office plaster   B  window with blinds     C  cinderblock + conduit
+     r  rusted panel     V  warning chevrons
+     d  desk+chair  q  water cooler  p  potted plant  y  box pallet
+     g  standing sign  h  hanging cables  u  floor UPS  o  clean rack (scenery)
      P  start         <  extraction                T  endpoint terminal
      U  audit terminal (00 Agent only)             z  patch console
      X  rogue access point   $  ransomware node    n  the CFO
@@ -1384,7 +1551,9 @@ const LEVELS = [
   brief:'Their previous provider left the domain unmanaged and the door propped open. '+
         'Get our agent onto the endpoints, kill the rogue access point somebody hung off the '+
         'core switch, and be out before the night shift arrives.',
-  floor:9, ceil:10, par:150,
+  /* cool cyan-blue night grade; exposed duct ceiling suits a sub-basement */
+  floor:9, ceil:20, par:150,
+  pal:[.88,.96,1.12], fog:[0x07,0x11,0x20], sky:[10,18,36],
   map:[
     '################################',
     '#....a....#.........#....1.....#',
@@ -1423,7 +1592,9 @@ const LEVELS = [
   brief:'Somebody clicked. Ransomware is walking the share drives and the finance team is still '+
         'answering mail. Quarantine the infected nodes, get the CFO off the floor, and take the '+
         'last clean tape with you.',
-  floor:11, ceil:10, par:130,
+  /* warm beige fluorescent grade; carpet + office tile — daytime 14th floor */
+  floor:18, ceil:19, par:130,
+  pal:[1.12,1.04,.90], fog:[0x16,0x12,0x0b], sky:[150,158,172],
   map:[
     '################################',
     '#....P.......#........#........#',
@@ -1466,7 +1637,9 @@ const LEVELS = [
   brief:'Twenty-two years of uptime, no patches, and full domain admin. It has decided that '+
         'migration is an attack. Drop its shield at the patch consoles, decommission it, and '+
         'get clear before the room cooks.',
-  floor:12, ceil:10, par:180,
+  /* hot amber alert grade; the same duct ceiling reads sodium-lit under it */
+  floor:12, ceil:20, par:180,
+  pal:[1.14,.97,.86], fog:[0x1e,0x0e,0x07], sky:[46,18,10],
   map:[
     '################################',
     '#..P.....#.....................#',
@@ -1501,7 +1674,8 @@ const DIFFS = [
 ];
 
 /* map chars -> wall texture (anything not listed is walkable floor) */
-const WALLTEX = { '#':0, '%':1, '=':2, '|':3, ':':4, 'G':5, '*':8 };
+const WALLTEX = { '#':0, '%':1, '=':2, '|':3, ':':4, 'G':5, '*':8,
+                  'w':13, 'B':14, 'r':15, 'V':16, 'C':17 };
 const DOORTEX = { '+':6, 'L':7 };
 </script>
 
@@ -1598,6 +1772,24 @@ function loadLevel(li, di){
   G.tex   = new Uint8Array(G.W*G.H);
   G.doorIx= new Int16Array(G.W*G.H).fill(-1);
   G.doors = []; G.ents = []; G.floorTex = L.floor; G.ceilTex = L.ceil;
+  applyPalette(L.pal, L.fog);          // rebakes TEXL only when the grade changes
+  /* Per-cell floor/ceiling maps, defaulted to the level's single indices; the
+     optional zones list paints rectangles over them. Ceiling 255 = open sky. */
+  G.ftex = new Uint8Array(G.W*G.H).fill(L.floor);
+  G.ctex = new Uint8Array(G.W*G.H).fill(L.ceil);
+  G.zoned = !!(L.zones && L.zones.length);   // gates the per-cell path in render()
+  if (L.zones) for (const z of L.zones)
+    for (let zy=z.y0; zy<=z.y1; zy++) for (let zx=z.x0; zx<=z.x1; zx++){
+      if (zx<0||zy<0||zx>=G.W||zy>=G.H) continue;
+      if (z.f !== undefined) G.ftex[idx(zx,zy)] = z.f;
+      if (z.c !== undefined) G.ctex[idx(zx,zy)] = z.c;
+    }
+  { const sk = L.sky || [90,110,140];
+    SKYROW = new Uint32Array(RH);
+    for (let y=0;y<RH;y++){ const t = y/RH;   // brighter at the zenith
+      SKYROW[y] = pack(Math.min(255,sk[0]*(1.25-.5*t))|0,
+                       Math.min(255,sk[1]*(1.25-.5*t))|0,
+                       Math.min(255,sk[2]*(1.25-.5*t))|0); } }
   G.time=0; G.kills=0; G.shots=0; G.hits=0; G.dmgTaken=0; G.heat=0;
   G.meltdown=-1; G.bossAlive=false; G.shieldDown = true; G.doorNag=0; G.shake=0;
 
@@ -1632,6 +1824,16 @@ function loadLevel(li, di){
       case 'a': ent({kind:'item', sub:'ammo', x:px, y:py, size:.38, r:.5}); break;
       case 'm': ent({kind:'item', sub:'med',  x:px, y:py, size:.38, r:.5}); break;
       case 'v': ent({kind:'item', sub:'vest', x:px, y:py, size:.40, r:.5}); break;
+      /* scenery: solid to nothing, hackable by nothing (deco flags them out of
+         the USE scan), shot straight through (no hp field) — set dressing only */
+      case 'd': case 'q': case 'p': case 'y': case 'g': case 'h': case 'u': case 'o': {
+        const art = {d:'desk', q:'cooler', p:'plant', y:'pallet',
+                     g:'sign', h:'cables', u:'ups', o:'clean'}[ch];
+        ent({kind:'prop', sub:'scenery', deco:true, art, x:px, y:py,
+             size: ch==='o' ? .74 : (ch==='h' ? .34 : .52),
+             zoff: ch==='h' ? .62 : 0, r:.3});
+        break;
+      }
       case 'W': ent({kind:'item', sub:'wpn1', x:px, y:py, size:.38, r:.5}); break;
       case 'S': ent({kind:'item', sub:'wpn2', x:px, y:py, size:.38, r:.5}); break;
       case 'N': ent({kind:'item', sub:'wpn3', x:px, y:py, size:.38, r:.5}); break;
@@ -1848,13 +2050,32 @@ function hurtProp(p, dmg){
 }
 
 /* --------------------------------- shooting ----------------------------- */
-function hitscan(ox,oy,ang,range,dmg,fromPlayer){
+/* Persistent bullet pocks. FIFO-capped: past DECAL_MAX the oldest one is
+   evicted, so a long CAT6 exchange never grows the entity list without bound
+   (every decal is a sprite sort+blit per frame). They sit at the same .12-in-
+   front-of-the-wall offset the impact puff uses, for the same reason: flush
+   with the wall they z-fight the zbuf and flicker column by column. */
+const DECAL_MAX = 48, DECAL_LIFE = 20;
+function spawnDecal(x,y,z){
+  let n=0, oldest=null;
+  for (const e of G.ents) if (e.kind==='fx' && e.sub==='decal' && !e.dead2){
+    n++; if (!oldest || e.life > oldest.life) oldest = e;
+  }
+  if (n >= DECAL_MAX && oldest) oldest.dead2 = true;
+  ent({kind:'fx', sub:'decal', x, y, zoff:z, size:.12,
+       life:0, decI:(Math.random()*4)|0, dead2:false});
+}
+/* pock: decals left on a wall hit — the CAT6 passes 2 per pellet so a blast
+   leaves a proper cluster, everything else marks once. */
+function hitscan(ox,oy,ang,range,dmg,fromPlayer,pock=1){
   const dx=Math.cos(ang), dy=Math.sin(ang);
   const st=.07;
   for (let t=.24; t<range; t+=st){
     const x=ox+dx*t, y=oy+dy*t;
     if (isSolid(x,y)){
       fx(G.cheats.paint?'paint':'puff', x-dx*.12, y-dy*.12, .32+rnd(.1));
+      for (let i=0;i<pock;i++)
+        spawnDecal(x-dx*.12+rr(-.03,.03), y-dy*.12+rr(-.03,.03), .30+rnd(.16));
       sfx('impact'); return false;
     }
     if (fromPlayer){
@@ -1995,7 +2216,7 @@ function playerFire(){
          spd:11, life:0, size:.24, zoff:.48, mine:true, dmg:w.dmg});
   } else {
     const h0 = G.hits;
-    for (let i=0;i<w.pellets;i++) hitscan(P.x,P.y,aim + rr(-sp,sp), w.range, w.dmg, true);
+    for (let i=0;i<w.pellets;i++) hitscan(P.x,P.y,aim + rr(-sp,sp), w.range, w.dmg, true, w.pellets>1?2:1);
     if (G.hits > h0) G.hits = h0 + 1;          // one trigger pull = at most one hit
   }
   for (const e of G.ents) if (e.kind==='enemy' && e.state!=='dead' && dist2(e.x,e.y,P.x,P.y)<144) wake(e);
@@ -2300,6 +2521,7 @@ function step(dt){
     if (e.kind==='fx'){
       e.life += dt;
       if (e.sub==='boom'){ e.size = .8 + e.life*2.0; if (e.life>.42) e.dead2=true; }
+      else if (e.sub==='decal'){ if (e.life>DECAL_LIFE) e.dead2=true; }   // pocks linger, never drift
       else if (e.life>.30) e.dead2=true;
       continue;
     }
@@ -2340,7 +2562,7 @@ function step(dt){
   let best = 9;
   for (const e of G.ents){
     if (e.kind!=='prop') continue;
-    if (e.sub==='ap' || e.sub==='infected') continue;
+    if (e.sub==='ap' || e.sub==='infected' || e.deco) continue;
     if (e.hacked || e.rescued) continue;
     const d2 = dist2(P.x,P.y,e.x,e.y);
     if (d2 > 2.4 || d2 > best) continue;
@@ -2422,7 +2644,12 @@ function tryExit(){
 }
 
 /* -------------------------------- renderer ------------------------------ */
-const FOGPX = pack(FOG[0]+6, FOG[1]+8, FOG[2]+12);
+/* `let`, not const: applyPalette retints it with each mission's fog colour. */
+let FOGPX = pack(FOG[0]+6, FOG[1]+8, FOG[2]+12);
+/* Ceiling index 255 is open sky: a per-row gradient built by loadLevel from the
+   level's sky colour, indexed by screen row (close enough — the horizon only
+   wanders a few rows with pitch and bob). */
+let SKYROW = null;
 
 /* One wall column. dOff > 0 means a rising door: the rows whose texture row
    would fall past the bottom of the texture are the gap under the door, and
@@ -2463,23 +2690,42 @@ function render(){
   const bobY = Math.sin(P.bob*2)*1.6*P.speed + Math.sin(P.bob)*.6;
   const horizon = Math.round(HALFH + P.pitch + bobY + shk - P.recoil*7);
 
-  /* floor + ceiling */
-  const ft = TEXL[G.floorTex], ct = TEXL[G.ceilTex];
+  /* floor + ceiling — per-CELL texture via G.ftex/G.ctex, so zones can carpet
+     one office or open one atrium to the sky (ceiling index 255). The per-pixel
+     cell lookup measured +0.3ms on a 0.42ms render, so an unzoned level takes
+     the old uniform row loop instead and pays nothing. Rays run out to rowD 70,
+     far outside the map, so out-of-bounds falls back to the level default. */
+  const gw = G.W, gh = G.H, ftex = G.ftex, ctex = G.ctex;
   const rx0 = dirX - planeX, ry0 = dirY - planeY;
   const rx1 = dirX + planeX, ry1 = dirY + planeY;
   for (let y=0;y<RH;y++){
     const p = y - horizon;
-    let rowD, tset;
-    if (p > 0){ rowD = (P.camZ*PROJ)/p; tset = ft; }
-    else if (p < 0){ rowD = ((1-P.camZ)*PROJ)/(-p); tset = ct; }
+    let rowD, tmap, dflt;
+    if (p > 0){ rowD = (P.camZ*PROJ)/p; tmap = ftex; dflt = G.floorTex; }
+    else if (p < 0){ rowD = ((1-P.camZ)*PROJ)/(-p); tmap = ctex; dflt = G.ceilTex; }
     else { buf.fill(FOGPX, y*RW, y*RW+RW); continue; }
     if (rowD > 70 || !isFinite(rowD)){ buf.fill(FOGPX, y*RW, y*RW+RW); continue; }
     const sl = clamp((rowD/MAXDIST*(LV-1))|0, 0, LV-1);
-    const t = tset[sl];
     const sx = rowD*(rx1-rx0)/RW, sy = rowD*(ry1-ry0)/RW;
     let wx = P.x + rowD*rx0, wy = P.y + rowD*ry0;
     let o = y*RW;
+    if (!G.zoned){
+      /* uniform level: skip the per-pixel cell lookup entirely — it costs a
+         real ~0.3ms/frame and buys nothing when every cell is the default */
+      const t = TEXL[dflt][sl];
+      for (let x=0;x<RW;x++){
+        buf[o++] = t[((((wy*64)|0)&63)<<6) + (((wx*64)|0)&63)];
+        wx += sx; wy += sy;
+      }
+      continue;
+    }
+    let lastTi = -1, t = null;
+    const sky = SKYROW ? SKYROW[y] : FOGPX;
     for (let x=0;x<RW;x++){
+      const mx = wx|0, my = wy|0;
+      const ti = (wx>=0 && wy>=0 && mx<gw && my<gh) ? tmap[my*gw+mx] : dflt;
+      if (ti === 255){ buf[o++] = sky; wx += sx; wy += sy; continue; }
+      if (ti !== lastTi){ t = TEXL[ti][sl]; lastTi = ti; }
       buf[o++] = t[((((wy*64)|0)&63)<<6) + (((wx*64)|0)&63)];
       wx += sx; wy += sy;
     }
@@ -2557,6 +2803,7 @@ function spriteOf(e){
       case 'ap': return e.hp>0 ? PROP.ap : PROP.apDead;
       case 'infected': return e.hp>0 ? PROP.infected : PROP.clean;
       case 'npc': return PROP.npc;
+      case 'scenery': return PROP[e.art] || null;
     }
   }
   if (e.kind==='item'){
@@ -2564,7 +2811,9 @@ function spriteOf(e){
       case 'ammo': return PROP.ammo9; case 'med': return PROP.med;
       case 'vest': return PROP.vest; case 'key': return PROP.key;
       case 'case': return PROP.case; case 'tape': return PROP.tape;
-      case 'wpn1': return PROP.ammoS; case 'wpn2': return PROP.ammoH; case 'wpn3': return PROP.ammoP;
+      /* gun silhouettes, not the matching ammo crates: a dropped weapon that
+         looked identical to its refill box made every drop read as ammo */
+      case 'wpn1': return PROP.gunS; case 'wpn2': return PROP.gunH; case 'wpn3': return PROP.gunP;
     }
   }
   if (e.kind==='exit') return PROP.exit;
@@ -2572,6 +2821,7 @@ function spriteOf(e){
   if (e.kind==='fx'){
     if (e.sub==='boom') return e.life<.14 ? PROP.boom0 : (e.life<.28 ? PROP.boom1 : PROP.boom2);
     if (e.sub==='paint'){ if (e.paintI===undefined) e.paintI = Math.random()*6|0; return PROP.paint[e.paintI]; }
+    if (e.sub==='decal') return PROP.decal[e.decI];
     if (e.sub==='spark') return PROP.spark;
     return PROP.puff;
   }
@@ -3330,6 +3580,28 @@ function selfTest(runSim){
     });
   }
 
+  /* ---- art: the mission grade rebakes the wall tables; sprites stay neutral ---- */
+  {
+    const psum = () => { let n=0; const p=PROP.puff.lv[0]; for (let i=0;i<p.length;i++) n=(n+p[i])>>>0; return n; };
+    applyPalette(LEVELS[0].pal, LEVELS[0].fog);
+    const t01 = TEXL[0][0][2080], f01 = FOGPX, s01 = psum();
+    applyPalette(LEVELS[2].pal, LEVELS[2].fog);
+    ok('palette: M01 vs M03 grades bake different walls', t01 !== TEXL[0][0][2080]);
+    ok('palette: fog colour follows the grade', FOGPX !== f01);
+    ok('palette: sprite bakes stay neutral', psum() === s01);
+    if (G.L) applyPalette(G.L.pal, G.L.fog);
+    else { TEXPAL=''; TEXL = TEX.map(t => shade(t.px, LV)); FOGPX = pack(FOG[0]+6, FOG[1]+8, FOG[2]+12); }
+  }
+  {
+    /* a dropped gun must not render as its own ammo crate */
+    const sum = s => { let n=0; const p=s.lv[0]; for (let i=0;i<p.length;i++) n=(n+p[i])>>>0; return n; };
+    ok('weapon pickup sprites differ from the ammo crates',
+       !!PROP.gunS && !!PROP.gunH && !!PROP.gunP &&
+       (PROP.gunS.w!==PROP.ammoS.w || sum(PROP.gunS)!==sum(PROP.ammoS)) &&
+       (PROP.gunH.w!==PROP.ammoH.w || sum(PROP.gunH)!==sum(PROP.ammoH)) &&
+       (PROP.gunP.w!==PROP.ammoP.w || sum(PROP.gunP)!==sum(PROP.ammoP)));
+  }
+
   /* ---- persistence: the roundtrip must ride the REAL save/load path ---- */
   {
     let raw0 = null, lsOK = true;
@@ -3755,6 +4027,39 @@ function selfTest(runSim){
       ok('touch: the reload completes', P.reload === 0 && P.mag[0] === WEAPS[0].mag, 'mag='+P.mag[0]);
     }
 
+    /* impact decals persist but are FIFO-capped */
+    {
+      for (let i=0;i<DECAL_MAX+12;i++) spawnDecal(P.x+1, P.y, .4);
+      const alive = G.ents.filter(e=>e.kind==='fx'&&e.sub==='decal'&&!e.dead2).length;
+      ok('decals: FIFO cap holds at '+DECAL_MAX, alive === DECAL_MAX, 'alive '+alive);
+      G.ents = G.ents.filter(e=>!(e.kind==='fx'&&e.sub==='decal'));
+    }
+
+    /* per-cell floor/ceiling zones, the sky index, and a render smoke check.
+       These reload M01 with temporary zones; the sim's final loadLevel below
+       restores the caller's mission either way. */
+    {
+      const L0 = LEVELS[0];
+      L0.zones = [{x0:1,y0:1,x1:2,y1:2,f:18,c:19}];
+      loadLevel(0,1);
+      ok('zones: cell inside the zone gets the zone textures',
+         G.ftex[idx(2,2)]===18 && G.ctex[idx(2,2)]===19);
+      ok('zones: cells outside keep the level default',
+         G.ftex[idx(5,5)]===L0.floor && G.ctex[idx(5,5)]===L0.ceil);
+      L0.zones = [{x0:0,y0:0,x1:99,y1:99,c:255}];
+      loadLevel(0,1);
+      P.pitch=0; P.bob=0; P.recoil=0; G.shake=0; P.aim=0;
+      render();
+      ok('sky: ceiling 255 renders the sky gradient', buf[RW>>1] === SKYROW[0],
+         buf[RW>>1].toString(16)+' vs '+SKYROW[0].toString(16));
+      delete L0.zones;
+      loadLevel(0,1); render();
+      const seen = new Set(); for (let i=0;i<buf.length;i+=997) seen.add(buf[i]);
+      let solidCols = 0; for (let x=0;x<RW;x++) if (zbuf[x] < 1e9) solidCols++;
+      ok('render: frame is not a single colour', seen.size > 4, seen.size+' colours');
+      ok('render: zbuf sees walls', solidCols > RW*.5, solidCols+'/'+RW+' cols');
+    }
+
     /* clicking another window (blur without hide) pauses like tab-hide does */
     dispatchEvent(new Event('blur'));
     ok('blur pauses a live mission', G.state === 'pause');
@@ -4106,9 +4411,17 @@ function fit(){
   const de = document.documentElement;
   const w = Math.min(innerWidth || 1e9, de && de.clientWidth || 1e9, vv && vv.width || 1e9);
   const h = Math.min(innerHeight || 1e9, de && de.clientHeight || 1e9, vv && vv.height || 1e9);
-  const s = Math.min(w/RW, h/RH);
+  let s = Math.min(w/RW, h/RH);
+  /* Integer scale once there is room for it: a 2.37x stretch turns 1-game-pixel
+     detail (door digits, HUD glyphs) into unevenly fat and thin columns. Below
+     2x the letterbox cost of snapping down to 1x is worse than the shimmer. */
+  if (s >= 2) s = Math.floor(s);
   view.style.width = Math.floor(RW*s)+'px';
   view.style.height = Math.floor(RH*s)+'px';
+  /* One scanline per game-pixel row, and never a fractional period. Under 2x
+     a per-row stripe is half the display — keep the classic 3px look there. */
+  const scan = document.getElementById('scan');
+  if (scan) scan.style.backgroundSize = '100% ' + (s >= 2 ? Math.floor(s) : 3) + 'px';
 }
 addEventListener('resize', fit);
 fit();
