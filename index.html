@@ -107,6 +107,13 @@ kbd{font-family:var(--pix); font-size:.72em; background:#101c2c; border:1px soli
 .ctl{display:flex; justify-content:space-between; gap:10px; font-size:clamp(11px,1.6vh,14px); border-bottom:1px dotted #1e3a52; padding:5px 0}
 .ctl span:last-child{color:var(--dim); text-align:right}
 input[type=range]{accent-color:var(--cyan); width:150px}
+.ctl .sv{font-family:var(--pix); font-size:.78em; color:var(--cyan); display:inline-block;
+  min-width:3.4em; text-align:right; font-variant-numeric:tabular-nums; vertical-align:middle}
+/* The shared .touch-only rule below restores display:grid, which stacks a .ctl
+   row's label on top of its slider — a control row is a flex row. */
+.ctl.touch-only{display:none}
+body.touch .ctl.touch-only{display:flex}
+.mi .best{display:block; font-size:.72em; color:var(--gold); margin-top:5px; letter-spacing:.06em}
 .stat{font-family:var(--pix); color:var(--gold); font-size:clamp(9px,1.5vh,13px)}
 #touch{position:absolute; inset:0; pointer-events:none; display:none}
 body.touch #touch.on{display:block}
@@ -297,14 +304,16 @@ body.touch .no-touch{display:none}
       <div class="eyebrow">options</div>
       <h2 class="ttl">SETTINGS</h2>
       <div class="grid2 panel">
-        <div class="ctl"><span>Mouse sensitivity</span><span><input type="range" id="o-sens" min="15" max="220" value="70"></span></div>
+        <div class="ctl"><span>Mouse sensitivity</span><span><input type="range" id="o-sens" min="15" max="220" value="70"> <b class="sv" id="v-sens">70</b></span></div>
+        <div class="ctl touch-only"><span>Touch look sensitivity</span><span><input type="range" id="o-tsens" min="30" max="220" value="100"> <b class="sv" id="v-tsens">100</b></span></div>
         <div class="ctl"><span>Look mode</span><span><button class="btn ghost" id="o-look" data-act="cyclelook" style="padding:4px 9px;font-size:8px">CAPTURE</button></span></div>
+        <div class="ctl"><span>Invert Y axis</span><span><button class="btn ghost" id="o-inv" data-act="toggleinv" aria-pressed="false" style="padding:4px 9px;font-size:8px">OFF</button></span></div>
         <div class="ctl"><span>Aim assist</span><span><button class="btn ghost" id="o-aim" data-act="cycleaim" style="padding:4px 9px;font-size:8px">SNAP + PULL</button></span></div>
         <div class="ctl"><span>Movement keys</span><span><button class="btn ghost" id="o-keys" data-act="togglekeys" style="padding:4px 9px;font-size:8px">WASD</button></span></div>
-        <div class="ctl"><span>Corner radar</span><span><button class="btn ghost" data-act="togglemap" style="padding:4px 9px;font-size:8px">N</button></span></div>
-        <div class="ctl"><span>Sound effects</span><span><input type="range" id="o-sfx" min="0" max="100" value="70"></span></div>
-        <div class="ctl"><span>Music</span><span><input type="range" id="o-mus" min="0" max="100" value="34"></span></div>
-        <div class="ctl"><span>Scanlines</span><span><input type="range" id="o-scan" min="0" max="100" value="50"></span></div>
+        <div class="ctl"><span>Corner radar</span><span><button class="btn ghost" id="o-radar" data-act="togglemap" aria-pressed="true" style="padding:4px 9px;font-size:8px">ON</button></span></div>
+        <div class="ctl"><span>Sound effects</span><span><input type="range" id="o-sfx" min="0" max="100" value="70"> <b class="sv" id="v-sfx">70%</b></span></div>
+        <div class="ctl"><span>Music</span><span><input type="range" id="o-mus" min="0" max="100" value="34"> <b class="sv" id="v-mus">34%</b></span></div>
+        <div class="ctl"><span>Scanlines</span><span><input type="range" id="o-scan" min="0" max="100" value="50"> <b class="sv" id="v-scan">50%</b></span></div>
       </div>
       <div class="panel" style="width:min(760px,92vw);text-align:left">
         <div class="eyebrow" style="margin-bottom:8px">enemy face</div>
@@ -408,6 +417,7 @@ const M = { locked:false, dragging:false, dx:0, dy:0, fire:false, aim:false, sen
                a thumb could travel from the look surface to FIRE.             */
 let LOOK = 'capture';
 let LOOKMODE = 'capture';
+let INVERT_Y = false;             // one flag for every look mode; the step() applies it to all pitch paths
 const LOOK_ORDER = ['capture','free','drag'];
 function resolveLook(){ LOOKMODE = isTouch ? 'touch' : LOOK; }
 const wantsLock  = () => LOOK === 'capture' && !isTouch && !!view.requestPointerLock;   // no API, no mouse: play as free look
@@ -2137,12 +2147,15 @@ function step(dt){
      and can jump when the pointer re-enters the window.                      */
   const idle = performance.now() - M.lastMove > MOVE_STALE_MS;
   let yaw = 0;
+  /* Applied to every pitch path below — an invert option that only covered the
+     captured mouse would silently un-invert on fallback to free look. */
+  const ydir = INVERT_Y ? -1 : 1;
 
   if (M.locked){                                   /* captured: classic mouse look */
     const mdx = M.dx, mdy = M.dy;
     M.dx = 0; M.dy = 0;
     yaw = mdx * LOOK_PX * M.sens;
-    P.pitch = clamp(P.pitch - mdy * PITCH_PX * M.sens, -PITCH_MAX, PITCH_MAX);
+    P.pitch = clamp(P.pitch - mdy*ydir * PITCH_PX * M.sens, -PITCH_MAX, PITCH_MAX);
     P.rx = 0; P.turning = false;
     M.sumF = mdx;
   } else {
@@ -2154,19 +2167,19 @@ function step(dt){
     if (LOOKMODE === 'touch'){                     /* the look finger IS the view */
       /* Direct drag, both axes, no gate, no decay: the reticle stays pinned to
          centre and P.pitch finally answers a vertical thumb. M.tsens is the
-         touch sensitivity dial (persisted + slidered in a later pass).        */
+         touch sensitivity dial (Options slider, persisted).                   */
       yaw = mdx * LOOK_PX * DRAG_MUL * M.sens * M.tsens;
-      P.pitch = clamp(P.pitch - mdy * .10 * M.sens * M.tsens, -PITCH_MAX, PITCH_MAX);
+      P.pitch = clamp(P.pitch - mdy*ydir * .10 * M.sens * M.tsens, -PITCH_MAX, PITCH_MAX);
       P.rx = 0; P.turning = false;
     } else if (LOOKMODE === 'drag'){               /* only turns while held */
       if (M.dragging || M.tlook){                /* a look finger counts as holding */
         yaw = mdx * LOOK_PX * DRAG_MUL * M.sens;
-        P.pitch = clamp(P.pitch - mdy * .10 * M.sens, -PITCH_MAX, PITCH_MAX);
+        P.pitch = clamp(P.pitch - mdy*ydir * .10 * M.sens, -PITCH_MAX, PITCH_MAX);
       }
       P.rx = 0; P.turning = false;
     } else {                                       /* free: reticle + edge turn */
       P.rx = clamp(P.rx + mdx * RET_PX * M.sens, -RET_EDGE, RET_EDGE);
-      P.pitch = clamp(P.pitch - mdy * .085 * M.sens, -PITCH_MAX, PITCH_MAX);
+      P.pitch = clamp(P.pitch - mdy*ydir * .085 * M.sens, -PITCH_MAX, PITCH_MAX);
       /* Aim mode widens the free travel before the view swings, the way holding R
          let you place a shot without turning. */
       P.turnAt = RET_TURN + P.aim * .18;
@@ -3090,7 +3103,12 @@ function buildSelect(){
   const list = document.getElementById('misslist'); list.innerHTML='';
   LEVELS.forEach((L,i)=>{
     const b=document.createElement('button'); b.className='mi';
-    b.innerHTML = '<span>'+L.code+' · '+L.name+'</span><span class="k">'+(i===selLevel?'◀ SELECTED':'▶')+'</span>';
+    /* Only a WIN earns the gold line — a stored loss holds the slot until one
+       arrives, and 'BEST 0:12 · AGENT DOWN' is nobody's trophy. */
+    const bb = BEST[i + ':' + G.diff];
+    b.innerHTML = '<span>'+L.code+' · '+L.name+
+      (bb && bb.win ? '<small class="best">BEST '+fmt(bb.time)+' · '+bb.rank+'</small>' : '')+
+      '</span><span class="k">'+(i===selLevel?'◀ SELECTED':'▶')+'</span>';
     b.onclick = ()=>{ selLevel=i; buildSelect(); };
     list.appendChild(b);
   });
@@ -3224,6 +3242,17 @@ function endMission(win, why){
     '<dt>Damage taken</dt><dd>'+Math.round(G.dmgTaken)+'</dd>'+
     (win ? '<dt>Performance review</dt><dd style="color:#ffb02e">'+rankName()+(G.tainted?' *':'')+'</dd>' : '')+
     (G.tainted ? '<dt>Note</dt><dd style="color:#8fa8c0">* cheats were enabled</dd>' : '');
+  /* Personal bests. A tainted run never reaches the blob — one cheat toggle
+     poisons the whole run and cheated times shadowing honest ones forever is
+     worse than losing the entry. A win always displaces a loss, a loss never
+     displaces anything but an empty slot, and between wins the clock decides. */
+  if (!G.tainted){
+    const bk = G.level + ':' + G.diff, prev = BEST[bk];
+    if (!prev || (win && !prev.win) || (win && prev.win && G.time < prev.time))
+      BEST[bk] = { time: Math.round(G.time*100)/100, acc, rank: win ? rankName() : '', win: !!win };
+    if (win && G.level === LEVELS.length-1) campaignDone = true;
+    saveSettings();
+  }
   const act = document.getElementById('r-actions'); act.innerHTML='';
   const mk=(label,fn,ghost)=>{ const b=document.createElement('button');
     b.className='btn'+(ghost?' ghost':''); b.textContent=label; b.onclick=fn; act.appendChild(b); };
@@ -3301,6 +3330,56 @@ function selfTest(runSim){
     });
   }
 
+  /* ---- persistence: the roundtrip must ride the REAL save/load path ---- */
+  {
+    let raw0 = null, lsOK = true;
+    try { raw0 = localStorage.getItem(SAVE_KEY); } catch(_){ lsOK = false; }
+    if (lsOK){
+      const s0 = { sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
+                   keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn, scan:SCANOP,
+                   map:G.mapOn, cd:campaignDone, god:G.cheats.god, taint:G.tainted,
+                   best:JSON.stringify(BEST) };
+      M.sens = 1.23; M.tsens = .77; INVERT_Y = true; AIM_ASSIST = 0; KEYS_LAYOUT = 'arrows';
+      A.sfxVol = .12; A.musVol = .21; A.musOn = false; SCANOP = 15; G.mapOn = false;
+      if (!isTouch) LOOK = 'drag';
+      BEST['0:2'] = { time:99.5, acc:61, rank:'TIER 2 TECH', win:true };
+      G.cheats.god = true; G.tainted = true;          // must NOT reach the blob
+      saveSettings();
+      let blob = ''; try { blob = localStorage.getItem(SAVE_KEY) || ''; } catch(_){}
+      ok('save writes the blob', blob.length > 0);
+      ok('cheats never persisted', !/cheat|taint|god/i.test(blob));
+      M.sens = .5; M.tsens = 1; INVERT_Y = false; AIM_ASSIST = 2; KEYS_LAYOUT = 'wasd';
+      A.sfxVol = .7; A.musVol = .34; A.musOn = true; SCANOP = 50; G.mapOn = true;
+      delete BEST['0:2'];
+      loadSettings();
+      ok('settings roundtrip', Math.abs(M.sens-1.23)<1e-9 && Math.abs(M.tsens-.77)<1e-9
+         && INVERT_Y && AIM_ASSIST===0 && KEYS_LAYOUT==='arrows'
+         && Math.abs(A.sfxVol-.12)<1e-9 && !A.musOn && SCANOP===15 && !G.mapOn
+         && (isTouch || LOOK==='drag'));
+      const bb = BEST['0:2'];
+      ok('best result roundtrip', !!bb && bb.win && Math.abs(bb.time-99.5)<1e-6
+         && bb.rank==='TIER 2 TECH');
+      let threw = false;
+      try { localStorage.setItem(SAVE_KEY, '{"v":1,oops'); } catch(_){}
+      M.sens = .41;
+      try { loadSettings(); } catch(_){ threw = true; }
+      ok('malformed blob never throws', !threw && Math.abs(M.sens-.41)<1e-9);
+      try { localStorage.setItem(SAVE_KEY, '{"v":99,"sens":9}'); } catch(_){}
+      try { loadSettings(); } catch(_){ threw = true; }
+      ok('unknown schema version is dropped', !threw && Math.abs(M.sens-.41)<1e-9);
+      M.sens = s0.sens; M.tsens = s0.tsens; INVERT_Y = s0.inv; AIM_ASSIST = s0.aim;
+      KEYS_LAYOUT = s0.keys; A.sfxVol = s0.sfx; A.musVol = s0.mus; A.musOn = s0.musOn;
+      SCANOP = s0.scan; G.mapOn = s0.map; campaignDone = s0.cd;
+      G.cheats.god = s0.god; G.tainted = s0.taint;
+      if (!isTouch) LOOK = s0.look;
+      for (const k in BEST) delete BEST[k];
+      Object.assign(BEST, JSON.parse(s0.best));
+      applyLayout(); resolveLook();
+      try { raw0 === null ? localStorage.removeItem(SAVE_KEY)
+                          : localStorage.setItem(SAVE_KEY, raw0); } catch(_){}
+    }
+  }
+
   if (runSim){
     /* Snapshot EVERYTHING the sim touches, so running it never resets the
        player's mission, difficulty, cheats or look settings. */
@@ -3372,6 +3451,10 @@ function selfTest(runSim){
     ok('lock: a glitch jump is dropped', Math.abs(angDiff(a0,P.ang)) < 1e-12);
     const pp = P.pitch; mvL(0,-40); step(0.016);
     ok('lock: mouse up looks up', P.pitch > pp, 'pitch='+P.pitch.toFixed(1));
+    /* the same stream with the option on must come out flipped */
+    INVERT_Y = true; const pi = P.pitch; mvL(0,-40); step(0.016);
+    ok('lock: invert-Y flips mouse pitch', P.pitch < pi, 'pitch='+P.pitch.toFixed(1));
+    INVERT_Y = false;
     mvL(0,400); step(0.016);
     ok('lock: pitch is clamped', P.pitch >= -PITCH_MAX && P.pitch <= PITCH_MAX);
     a0 = P.ang; for (let i=0;i<60;i++) step(0.016);
@@ -3654,6 +3737,15 @@ function selfTest(runSim){
       ok('touch: horizontal drag turns the view', angDiff(ta0, P.ang) > .05,
          (angDiff(ta0, P.ang)*57.3).toFixed(1)+'deg');
       tev('touchend', null, [{ identifier:73, clientX:260, clientY:140 }]);
+      /* invert-Y is one flag across input models: the identical upward finger
+         stroke must now pitch the view DOWN */
+      INVERT_Y = true; P.pitch = 0;
+      tev('touchstart', view, [{ identifier:74, clientX:200, clientY:200 }]);
+      tev('touchmove', null, [{ identifier:74, clientX:200, clientY:140 }]);
+      step(0.016);
+      ok('touch: invert-Y flips drag pitch', P.pitch < -2, 'pitch='+P.pitch.toFixed(1));
+      tev('touchend', null, [{ identifier:74, clientX:200, clientY:140 }]);
+      INVERT_Y = false;
       LOOKMODE = savedLM;
 
       P.w = 0; P.mag[0] = 3; P.ammo.p9 = Math.max(P.ammo.p9, 20); P.reload = 0;
@@ -3700,6 +3792,55 @@ function drawTestReport(){
   txt('F4 CLOSES', RW-8, RH-8, '#7d93ab', 6, 'right');
 }
 
+/* ------------------------------ persistence ----------------------------- */
+/* One key, one JSON blob, schema-versioned; a version mismatch drops the whole
+   blob rather than guessing at old fields. Every localStorage touch is wrapped:
+   private windows and some file:// contexts throw on ANY access, and losing a
+   save must never take the game down with it. Cheats and G.tainted are
+   deliberately absent from the blob — a reload has always been the cure. */
+const SAVE_KEY = 'a360.v1';
+const BEST = {};                  // 'level:diff' -> { time, acc, rank, win }
+let campaignDone = false;
+let SCANOP = 50;                  // scanline slider 0..100; JS-side so it can be saved before the DOM syncs
+function saveSettings(){
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      v:1, sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
+      keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn,
+      scan:SCANOP, map:G.mapOn, best:BEST, campaignDone
+    }));
+  } catch(_){}
+}
+function loadSettings(){
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(_){ d = null; }
+  if (!d || typeof d !== 'object' || d.v !== 1) return;
+  /* Every field is re-validated on the way in: the blob is user-editable, and a
+     hand-typed sens of 900 or look:'yes' must land on defaults, not in step(). */
+  const num = (v,lo,hi,fb) => typeof v === 'number' && isFinite(v) ? clamp(v,lo,hi) : fb;
+  M.sens  = num(d.sens, .15, 2.2, M.sens);
+  M.tsens = num(d.tsens, .3, 2.2, M.tsens);
+  /* Touch never restores LOOK: resolveLook pins it to direct drag, and reviving
+     a stored 'capture' would re-open the wait-forever lock WP2 closed. */
+  if (!isTouch && LOOK_ORDER.indexOf(d.look) >= 0) LOOK = d.look;
+  INVERT_Y = d.inv === true;
+  if (d.aim === 0 || d.aim === 1 || d.aim === 2) AIM_ASSIST = d.aim;
+  if (d.keys === 'wasd' || d.keys === 'arrows') KEYS_LAYOUT = d.keys;
+  A.sfxVol = num(d.sfx, 0, 1, A.sfxVol);      // pre-audioInit: the gain nodes read these at creation
+  A.musVol = num(d.mus, 0, 1, A.musVol);
+  A.musOn  = d.musOn !== false;
+  SCANOP   = Math.round(num(d.scan, 0, 100, SCANOP));
+  G.mapOn  = d.map !== false;
+  campaignDone = d.campaignDone === true;
+  if (d.best && typeof d.best === 'object')
+    for (const k in d.best){ const b = d.best[k];
+      if (/^\d+:\d+$/.test(k) && b && typeof b.time === 'number' && isFinite(b.time))
+        BEST[k] = { time:b.time, acc:num(b.acc,0,100,0), rank:String(b.rank||''), win:b.win === true };
+    }
+  resolveLook(); applyLayout();
+}
+loadSettings();                   // before boot() and before any UI sync, so labels reflect the blob
+
 /* ------------------------------ shell wiring --------------------------- */
 const LOOK_BLURB = {
   capture: 'click the view to capture the mouse, Esc to release',
@@ -3719,11 +3860,36 @@ function syncKeysLabel(){
   const b = document.getElementById('o-keys');
   if (b) b.textContent = KEYS_LAYOUT === 'arrows' ? 'ARROWS (LEFT-HANDED)' : 'WASD';
 }
+function syncInvLabel(){
+  const b = document.getElementById('o-inv');
+  if (b){ b.textContent = INVERT_Y ? 'ON' : 'OFF'; b.setAttribute('aria-pressed', String(INVERT_Y)); }
+}
+function syncRadarLabel(){
+  const b = document.getElementById('o-radar');
+  if (b){ b.textContent = G.mapOn ? 'ON' : 'OFF'; b.setAttribute('aria-pressed', String(G.mapOn)); }
+}
+/* State drives the widgets, never the reverse: after loadSettings() the sliders
+   and their value readouts must show the blob, not the HTML defaults. */
+function syncOptionsUI(){
+  const set = (id, v, lab, txt) => {
+    const el = document.getElementById(id); if (el) el.value = v;
+    const l = document.getElementById(lab); if (l) l.textContent = txt;
+  };
+  const sens = Math.round(M.sens*100), tsens = Math.round(M.tsens*100);
+  const sfx = Math.round(A.sfxVol*100), mus = Math.round(A.musVol*100);
+  set('o-sens', sens, 'v-sens', sens);
+  set('o-tsens', tsens, 'v-tsens', tsens);
+  set('o-sfx', sfx, 'v-sfx', sfx+'%');
+  set('o-mus', mus, 'v-mus', mus+'%');
+  set('o-scan', SCANOP, 'v-scan', SCANOP+'%');
+  const sc = document.getElementById('scan'); if (sc) sc.style.opacity = SCANOP/100;
+  syncLookLabel(); syncKeysLabel(); syncAimLabel(); syncInvLabel(); syncRadarLabel();
+}
 function act(a){
   switch(a){
     case 'missions': buildSelect(); G.state='select'; show('s-select'); break;
     case 'controls': G.state='controls'; show('s-controls'); break;
-    case 'options': syncLookLabel(); syncKeysLabel(); syncAimLabel(); G.state='options'; show('s-options'); break;
+    case 'options': syncOptionsUI(); G.state='options'; show('s-options'); break;
     case 'cheats': buildCheats(); G.state='cheats'; show('s-cheats'); break;
     case 'start': startMission(true); break;
     case 'resume': resume(true); break;
@@ -3737,22 +3903,26 @@ function act(a){
       if (M.locked) unlock();
       LOOK = LOOK_ORDER[(LOOK_ORDER.indexOf(LOOK)+1) % LOOK_ORDER.length];
       M.lockFails = 0; M.lockNagged = false;   // a fresh choice gets a fresh chance
-      resolveLook(); clearInput(); syncLookLabel();
+      resolveLook(); clearInput(); syncLookLabel(); saveSettings();
       toast('LOOK: ' + LOOK.toUpperCase() + ' — ' + LOOK_BLURB[LOOK], 'cyan', 4200);
       break;
     }
     case 'cycleaim': {
-      AIM_ASSIST = (AIM_ASSIST + 1) % 3; syncAimLabel();
+      AIM_ASSIST = (AIM_ASSIST + 1) % 3; syncAimLabel(); saveSettings();
       toast('AIM ASSIST: ' + AIM_ASSIST_NAMES[AIM_ASSIST] + (AIM_ASSIST===2 ? ' — VIEW EASES ONTO TARGETS' : AIM_ASSIST===1 ? ' — SHOTS SNAP TO THE LOCKED HOSTILE' : ''), 'cyan', 3600);
       break;
     }
+    case 'toggleinv':
+      INVERT_Y = !INVERT_Y; syncInvLabel(); saveSettings();
+      toast(INVERT_Y ? 'INVERT Y: ON — PUSH FORWARD TO LOOK DOWN' : 'INVERT Y: OFF', 'cyan', 3000);
+      break;
     case 'togglemap':
-      G.mapOn = !G.mapOn;
+      G.mapOn = !G.mapOn; syncRadarLabel(); saveSettings();
       toast(G.mapOn ? 'RADAR ON' : 'RADAR OFF', 'cyan', 1500);
       break;
     case 'togglekeys': {
       KEYS_LAYOUT = KEYS_LAYOUT === 'wasd' ? 'arrows' : 'wasd';
-      applyLayout(); clearInput(); syncKeysLabel();
+      applyLayout(); clearInput(); syncKeysLabel(); saveSettings();
       toast(KEYS_LAYOUT === 'arrows'
         ? 'ARROW KEYS MOVE AND STRAFE — TURN WITH , AND .'
         : 'WASD MOVES — ARROWS TURN', 'cyan', 4200);
@@ -3799,14 +3969,13 @@ function onKey(e){
   if (e.code==='F3'){ e.preventDefault(); M.diag = !M.diag; return; }
   if (e.code==='Backspace'){ e.preventDefault(); panic(); return; }
   if (G.state==='boot'){ if (bootSkippable()) bootDone(); return; }
-  if (e.code==='KeyM'){ A.musOn = !A.musOn; toast(A.musOn?'MUSIC ON':'MUSIC OFF','cyan',1400); }
+  if (e.code==='KeyM'){ A.musOn = !A.musOn; saveSettings(); toast(A.musOn?'MUSIC ON':'MUSIC OFF','cyan',1400); }
   if (e.code==='KeyN'){ act('togglemap'); }
   if (e.code==='KeyP'){
     /* P and the Options slider drive the same scanlines: turning them back on
        with the slider parked at zero would otherwise LOOK like a dead key. */
     const off = document.body.classList.toggle('noscan');
-    if (!off){ const s = document.getElementById('o-scan');
-      if (s && +s.value === 0){ s.value = 50; document.getElementById('scan').style.opacity = .5; } }
+    if (!off && SCANOP === 0){ SCANOP = 50; syncOptionsUI(); saveSettings(); }
   }
   if (G.state==='play'){
     if (e.code==='Escape' || e.code==='Tab'){ pause(); return; }
@@ -3829,13 +3998,17 @@ function onKey(e){
 }
 
 /* options */
-document.getElementById('o-sens').oninput = e => M.sens = e.target.value/100;
-document.getElementById('o-sfx').oninput  = e => { A.sfxVol = e.target.value/100; if (A.sfx) A.sfx.gain.value = A.sfxVol; };
-document.getElementById('o-mus').oninput  = e => { A.musVol = e.target.value/100; if (A.mus) A.mus.gain.value = A.musVol; };
+const sv = (id, txt) => { const l = document.getElementById(id); if (l) l.textContent = txt; };
+document.getElementById('o-sens').oninput = e => { M.sens = e.target.value/100; sv('v-sens', e.target.value); saveSettings(); };
+document.getElementById('o-tsens').oninput = e => { M.tsens = e.target.value/100; sv('v-tsens', e.target.value); saveSettings(); };
+document.getElementById('o-sfx').oninput  = e => { A.sfxVol = e.target.value/100; if (A.sfx) A.sfx.gain.value = A.sfxVol; sv('v-sfx', e.target.value+'%'); saveSettings(); };
+document.getElementById('o-mus').oninput  = e => { A.musVol = e.target.value/100; if (A.mus) A.mus.gain.value = A.musVol; sv('v-mus', e.target.value+'%'); saveSettings(); };
 document.getElementById('o-scan').oninput = e => {
-  document.getElementById('scan').style.opacity = e.target.value/100;
+  SCANOP = Math.round(+e.target.value);
+  document.getElementById('scan').style.opacity = SCANOP/100;
+  sv('v-scan', SCANOP+'%'); saveSettings();
   /* The slider always wins over a stale P toggle, or it drags a dead control. */
-  if (+e.target.value > 0) document.body.classList.remove('noscan');
+  if (SCANOP > 0) document.body.classList.remove('noscan');
 };
 document.getElementById('o-face').onchange = e => {
   const f = e.target.files && e.target.files[0]; if (!f) return;
@@ -3880,7 +4053,7 @@ function boot(){
   bakeAllActors();
   loadLevel(0, G.diff);                 // level 1 doubles as the menu backdrop
   P.x = 3.5; P.y = 2.5;
-  resolveLook(); syncLookLabel(); syncKeysLabel(); syncAimLabel();
+  resolveLook(); syncOptionsUI();
   selfTest(false);                      // fail loudly if a level is unwinnable
   const bl = document.getElementById('bootline');
   bootAt = performance.now();
