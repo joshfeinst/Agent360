@@ -1,3 +1,6 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
 <title>Agent 360</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#05070c">
@@ -20,8 +23,9 @@ html,body{height:100%}
 body{
   margin:0; background:var(--void); color:var(--paper);
   font-family:var(--tech); overflow:hidden;
-  -webkit-user-select:none; user-select:none; touch-action:none;
+  -webkit-user-select:none; user-select:none; touch-action:manipulation;
 }
+canvas#view,#touch,#touch *{touch-action:none}
 #stage{position:fixed; inset:0; display:grid; place-items:center; background:
   radial-gradient(ellipse at 50% 45%, #0b1420 0%, #05070c 70%, #000 100%);}
 #frame{position:relative; line-height:0; box-shadow:0 0 0 1px #1e3a52, 0 0 60px -10px #35d0ff33, 0 30px 80px -20px #000;}
@@ -34,10 +38,19 @@ canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:bloc
 body.noscan #scan{display:none}
 
 /* ---------- overlay screens ---------- */
-.screen{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+.screen{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
   gap:clamp(10px,2.2vh,22px); padding:clamp(14px,3vh,36px); line-height:1.5; text-align:center;
   background:linear-gradient(180deg, rgba(5,7,12,.93), rgba(5,7,12,.97));
-  backdrop-filter:blur(2px);}
+  backdrop-filter:blur(2px); overflow-y:auto; overflow-x:hidden; touch-action:pan-y;
+  scrollbar-width:thin; scrollbar-color:var(--line) transparent;}
+/* centred while it fits, top-aligned and scrollable once it doesn't — the auto
+   margins absorb equal free space and collapse to zero on overflow. Without
+   this, flex centring clips tall screens at BOTH ends and the pause / controls
+   screens strand their buttons off-screen on phones. */
+.screen::before,.screen::after{content:""; flex:0 0 0; display:block}
+.screen::before{margin-top:auto}
+.screen::after{margin-bottom:auto}
+.screen>*{flex-shrink:0}
 .screen[hidden]{display:none}
 .eyebrow{font-family:var(--pix); font-size:clamp(7px,1.15vh,10px); letter-spacing:.18em; color:var(--cyan); text-transform:uppercase}
 h1.logo{font-family:var(--pix); margin:0; line-height:1.25; text-wrap:balance;
