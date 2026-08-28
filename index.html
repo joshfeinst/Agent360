@@ -4,6 +4,11 @@
 <title>Agent 360</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#05070c">
+<!-- iOS treats an installed PWA as a web clip unless told otherwise; these are
+     inert on file:// and on every non-Apple browser. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Agent 360">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -67,6 +72,8 @@ h2.ttl{font-family:var(--pix); font-size:clamp(11px,2.1vh,18px); margin:0; color
 .blink{font-family:var(--pix); font-size:clamp(8px,1.4vh,12px); color:var(--paper); animation:bl 1.1s steps(2,end) infinite}
 @keyframes bl{50%{opacity:.15}}
 @media (prefers-reduced-motion:reduce){.blink{animation:none}}
+#ver{position:absolute; right:10px; bottom:7px; font-family:var(--pix); font-size:8px;
+  letter-spacing:.08em; color:#3b485c; pointer-events:none}
 
 .panel{background:linear-gradient(180deg,#0d1725,#080e18); border:1px solid var(--line);
   box-shadow:inset 0 1px 0 #ffffff0d; padding:clamp(12px,2.4vh,22px) clamp(14px,2.6vw,26px); position:relative;}
@@ -182,6 +189,7 @@ body.touch .no-touch{display:none}
         <button class="mi" data-act="cheats">CHEAT MENU <span class="k">▶</span></button>
       </div>
       <p class="hint" id="titlehint">Click the viewport, then drag to look and tap to fire. Headphones recommended.</p>
+      <div id="ver"></div>
     </div>
 
     <!-- MISSION SELECT -->
@@ -226,7 +234,7 @@ body.touch .no-touch{display:none}
                   style="image-rendering:pixelated;width:100%;height:auto;border:1px solid var(--line)"></canvas>
           <p class="hint" style="margin:8px 0 0;font-size:clamp(9px,1.3vh,12px)">
             Lettered markers are your outstanding objectives. Amber terminals, cyan consoles,
-            red hostiles, orange doors need a keycard, green is the way out.</p>
+            red hostiles, green is the way out. Doors with a dark keyhole pip need a keycard.</p>
         </div>
         <div>
           <div class="eyebrow" style="margin-bottom:10px">objectives</div>
@@ -372,6 +380,7 @@ body.touch .no-touch{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
+const VERSION = '1.10';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -452,6 +461,10 @@ const TURN_MAX  = 4.3;            // rad/s at full push
 const RET_RELAX = .38;            // reticle eases back toward CENTRE while moving
 const RET_IDLE  = 2.4;            // and snaps back once the mouse stops
 const isTouch = matchMedia('(hover:none) and (pointer:coarse)').matches;
+/* Reduced motion is honoured where the game shakes or strobes the whole frame:
+   camera shake is capped to a nudge and the meltdown wash to a faint tint. The
+   CSS .blink rule above handles the DOM side. */
+const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches;
 if (isTouch){ document.body.classList.add('touch'); LOOK = 'free'; }   // LOOK is moot on touch (resolveLook forces 'touch'); 'free' just keeps it off 'capture'
 
 /* Two movement layouts. Every action also has a right-hand mirror, so a
@@ -2911,7 +2924,7 @@ function render(){
   const PROJ = RH / zoom;
   const dirX = Math.cos(P.ang), dirY = Math.sin(P.ang);
   const planeX = -dirY*FOV_N*zoom, planeY = dirX*FOV_N*zoom;
-  const shk = G.shake ? (Math.random()-.5)*G.shake : 0;
+  const shk = G.shake ? (Math.random()-.5)*(REDUCED_MOTION ? Math.min(G.shake, 1.2) : G.shake) : 0;
   const bobY = Math.sin(P.bob*2)*1.6*P.speed + Math.sin(P.bob)*.6;
   const horizon = Math.round(HALFH + P.pitch + bobY + shk - P.recoil*7);
 
@@ -3189,6 +3202,12 @@ function drawMinimap(){
     ctx.fillStyle = dr ? (dr.locked ? '#c86a2a' : '#2f7f9c')
                        : (G.tex[c]===2 ? '#28323f' : '#3b485c');
     ctx.fillRect((mx-P.x)*k, (my-P.y)*k, cell, cell);
+    /* amber alone is what a locked door has over an open one, and amber and
+       teal converge for a deutan eye — a dark keyhole pip says LOCKED in shape */
+    if (dr && dr.locked){
+      ctx.fillStyle = '#0b0f16';
+      ctx.fillRect((mx-P.x)*k + cell/2 - .5, (my-P.y)*k + cell/2 - .5, 1, 1);
+    }
   }
   ctx.restore();
   ctx.save();
@@ -3287,6 +3306,11 @@ function drawPauseMap(){
     g.fillStyle = dr ? (dr.locked ? '#c86a2a' : '#2f7f9c')
                      : (G.tex[i]===2 ? '#232c38' : '#39465a');
     g.fillRect(Math.round(ox+x*k), Math.round(oy+y*k), cell, cell);
+    /* locked doors carry a dark keyhole pip as well as the amber — see radar */
+    if (dr && dr.locked){
+      g.fillStyle = '#060b12';
+      g.fillRect(Math.round(ox+x*k + cell/2) - 1, Math.round(oy+y*k + cell/2) - 1, 2, 2);
+    }
   }
   const tagFor = e => {
     for (const o of G.objs){
@@ -3446,8 +3470,9 @@ function drawHUD(horizon){
     const t = G.meltdown;
     /* red wash breathing faster and deeper as the fuse burns down */
     const frac = G.meltMax > 0 ? 1 - t/G.meltMax : .5;
-    const pulse = .5 + .5*Math.sin(G.time*(t < 10 ? 9 : 4));
-    ctx.fillStyle = 'rgba(255,30,15,'+((.04 + .16*frac)*pulse).toFixed(3)+')';
+    const pulse = REDUCED_MOTION ? .5 : .5 + .5*Math.sin(G.time*(t < 10 ? 9 : 4));
+    const wash = Math.min(REDUCED_MOTION ? .05 : 1, (.04 + .16*frac)*pulse);
+    ctx.fillStyle = 'rgba(255,30,15,'+wash.toFixed(3)+')';
     ctx.fillRect(0,0,RW,RH);
     /* the countdown sits under the waypoint row — the DOM toast stack (top:17%)
        parks squarely over canvas y36 for the first seconds of the escape */
@@ -4918,6 +4943,7 @@ const BOOTLINES = [
   'BAKING TEXTURES ............. DONE',
   'UPTIME SLA .................. 99.99%',
   'PATCH LEVEL ................. TUESDAY',
+  'BUILD ....................... v' + VERSION,
   'ARMING AGENT ................ READY'
 ];
 let bootI = 0, bootT = null, bootAt = 0, bootExitAt = 0;
@@ -4945,6 +4971,7 @@ function boot(){
   resolveLook(); syncOptionsUI();
   selfTest(false);                      // fail loudly if a level is unwinnable
   const bl = document.getElementById('bootline');
+  document.getElementById('ver').textContent = 'v' + VERSION;
   bootAt = performance.now();
   const bs = document.getElementById('bootskip');
   bs.textContent = isTouch ? 'TAP TO SKIP' : 'CLICK TO SKIP';
