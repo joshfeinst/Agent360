@@ -99,6 +99,10 @@ h2.ttl{font-family:var(--pix); font-size:clamp(11px,2.1vh,18px); margin:0; color
 .hint{font-size:clamp(10px,1.5vh,13px); color:var(--dim); max-width:70ch}
 .hint b{color:var(--cyan); font-weight:700}
 kbd{font-family:var(--pix); font-size:.72em; background:#101c2c; border:1px solid var(--line); padding:3px 5px; color:var(--paper)}
+/* vw units measure the viewport, but these live inside #frame, which is
+   narrower than the viewport on phones — without the 100% cap the panels
+   clip at both edges under the screen's overflow-x:hidden. */
+.grid2,.dossier,.menu,.panel{max-width:100%}
 .grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px 22px; text-align:left; width:min(760px,92vw)}
 .ctl{display:flex; justify-content:space-between; gap:10px; font-size:clamp(11px,1.6vh,14px); border-bottom:1px dotted #1e3a52; padding:5px 0}
 .ctl span:last-child{color:var(--dim); text-align:right}
@@ -106,15 +110,39 @@ input[type=range]{accent-color:var(--cyan); width:150px}
 .stat{font-family:var(--pix); color:var(--gold); font-size:clamp(9px,1.5vh,13px)}
 #touch{position:absolute; inset:0; pointer-events:none; display:none}
 body.touch #touch.on{display:block}
+/* Buttons float over the canvas but take pointer events ONLY on themselves, so
+   every uncovered pixel stays part of the look surface. 44px floors keep them
+   tappable on small phones where vmin shrinks below thumb size. */
 .tbtn{position:absolute; pointer-events:auto; border:2px solid #35d0ff66; border-radius:50%;
-  background:#35d0ff14; color:var(--paper); font-family:var(--pix); font-size:9px; display:grid; place-items:center}
-#tstick{left:3%; bottom:5%; width:33vmin; height:33vmin; border-radius:50%; position:absolute; pointer-events:auto;
+  background:#35d0ff14; color:var(--paper); font-family:var(--pix); font-size:10px;
+  min-width:44px; min-height:44px; display:grid; place-items:center}
+.tbtn.on{border-color:var(--gold); background:#ffb02e2b; color:var(--gold)}
+#tstick{left:calc(3% + env(safe-area-inset-left,0px)); bottom:5%; width:33vmin; height:33vmin; border-radius:50%; position:absolute; pointer-events:auto;
   border:2px dashed #35d0ff44}
 #tnub{position:absolute; left:50%; top:50%; width:12vmin; height:12vmin; margin:-6vmin 0 0 -6vmin; border-radius:50%;
   background:#35d0ff33; border:2px solid #35d0ff88}
-#tfire{right:4%; bottom:8%; width:20vmin; height:20vmin}
-#tuse{right:26%; bottom:6%; width:13vmin; height:13vmin}
-#tswap{right:5%; bottom:32%; width:13vmin; height:13vmin}
+/* Cluster geometry is picked around the canvas HUD: the radar owns the top 37%
+   of the right 21% (RW-80..RW, 0..80 at render scale) and the ammo plate the
+   bottom-right corner, so PAUSE sits inboard of the radar and the right-hand
+   arc curls around the ammo plate rather than across it. */
+#tfire{right:calc(4% + env(safe-area-inset-right,0px)); bottom:8%; width:20vmin; height:20vmin}
+#tuse{right:calc(26% + env(safe-area-inset-right,0px)); bottom:6%; width:13vmin; height:13vmin}
+#taim{right:calc(6% + env(safe-area-inset-right,0px)); bottom:36%; width:13vmin; height:13vmin}
+#tswap{right:calc(23% + env(safe-area-inset-right,0px)); bottom:24%; width:13vmin; height:13vmin}
+#trel{right:calc(25% + env(safe-area-inset-right,0px)); bottom:47%; width:13vmin; height:13vmin}
+#tcrouch{left:calc(4.5% + env(safe-area-inset-left,0px)); bottom:44%; width:13vmin; height:13vmin}
+#tpause{right:calc(23% + env(safe-area-inset-right,0px)); top:calc(6px + env(safe-area-inset-top,0px));
+  width:13vmin; height:13vmin; min-width:48px; min-height:48px; border-radius:10px}
+#rothint{position:absolute; left:50%; top:14%; transform:translateX(-50%); pointer-events:none;
+  font-family:var(--pix); font-size:9px; letter-spacing:.06em; color:var(--cyan); white-space:nowrap;
+  background:rgba(7,13,22,.9); border:1px solid var(--cyan); padding:8px 12px}
+#rothint[hidden]{display:none}
+/* Touch players get taught touch first; the pointer-lock prose would only
+   confuse a device that can never hold a lock. */
+.touch-only{display:none}
+body.touch .touch-only{display:grid}
+body.touch .no-touch{display:none}
+@media (pointer:coarse){ .mi,.btn{min-height:44px} }
 .toastwrap{position:absolute; left:0; right:0; top:17%; display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none}
 </style>
 
@@ -128,6 +156,7 @@ body.touch #touch.on{display:block}
       <div class="eyebrow" id="bootline">initializing</div>
       <h1 class="logo" style="font-size:clamp(26px,6vh,58px)">360</h1>
       <div class="sub" style="font-family:var(--pix);font-size:clamp(7px,1.1vh,10px)">SMART&nbsp;NETWORKS</div>
+      <div class="blink" id="bootskip" hidden>CLICK TO SKIP</div>
     </div>
 
     <!-- TITLE -->
@@ -140,7 +169,7 @@ body.touch #touch.on{display:block}
         <button class="mi" data-act="options">OPTIONS &amp; FACE UPLOAD <span class="k">▶</span></button>
         <button class="mi" data-act="cheats">CHEAT MENU <span class="k">▶</span></button>
       </div>
-      <p class="hint">Click the viewport, then drag to look and tap to fire. Headphones recommended.</p>
+      <p class="hint" id="titlehint">Click the viewport, then drag to look and tap to fire. Headphones recommended.</p>
     </div>
 
     <!-- MISSION SELECT -->
@@ -213,8 +242,20 @@ body.touch #touch.on{display:block}
     <div class="screen" id="s-controls" hidden>
       <div class="eyebrow">field manual</div>
       <h2 class="ttl">CONTROLS</h2>
-      <p class="hint" style="margin:0">Every action has a right-hand mirror, so you can drive the mouse with either hand.
+      <p class="hint no-touch" style="margin:0">Every action has a right-hand mirror, so you can drive the mouse with either hand.
       Switch the arrow keys between turning and strafing under <b>Movement keys</b> in Options.</p>
+      <div class="grid2 panel touch-only" id="ctl-touch">
+        <div class="ctl"><span>Move / strafe</span><span>Left pad — speed follows deflection</span></div>
+        <div class="ctl"><span>Sprint</span><span>Push the pad all the way to its rim</span></div>
+        <div class="ctl"><span>Look</span><span>Drag anywhere on the view</span></div>
+        <div class="ctl"><span>Fire</span><span>FIRE — hold for automatics</span></div>
+        <div class="ctl"><span>Aim mode (zoom)</span><span>AIM — tap on, tap off</span></div>
+        <div class="ctl"><span>Reload</span><span>RLD</span></div>
+        <div class="ctl"><span>Next weapon</span><span>GUN</span></div>
+        <div class="ctl"><span>Interact &amp; hack</span><span>Hold USE</span></div>
+        <div class="ctl"><span>Crouch</span><span>CRCH — tap on, tap off</span></div>
+        <div class="ctl"><span>Pause / floor plan</span><span>❚❚ — top right</span></div>
+      </div>
       <div class="grid2 panel">
         <div class="ctl"><span>Move / strafe</span><span>W A S D</span></div>
         <div class="ctl"><span>Move / strafe (left-handed)</span><span>↑ ↓ ← →</span></div>
@@ -236,7 +277,7 @@ body.touch #touch.on{display:block}
         <div class="ctl"><span>Mute music</span><span>M</span></div>
         <div class="ctl"><span>Toggle scanlines</span><span>P</span></div>
       </div>
-      <p class="hint">Click the viewport and the mouse is <b>captured</b>: it disappears, raw movement turns the view, and
+      <p class="hint no-touch">Click the viewport and the mouse is <b>captured</b>: it disappears, raw movement turns the view, and
       <b>Esc</b> hands it back (and pauses). That is the default and it works exactly like a native FPS. If the page is
       embedded somewhere that refuses pointer lock, the game falls back to <b>free look</b> — the mouse moves your
       reticle and pushing it past the two tick marks swings the view — and every click asks for capture again.
@@ -296,7 +337,12 @@ body.touch #touch.on{display:block}
       <div class="tbtn" id="tfire">FIRE</div>
       <div class="tbtn" id="tuse">USE</div>
       <div class="tbtn" id="tswap">GUN</div>
+      <div class="tbtn" id="trel">RLD</div>
+      <div class="tbtn" id="taim" role="button" aria-pressed="false">AIM</div>
+      <div class="tbtn" id="tcrouch" role="button" aria-pressed="false">CRCH</div>
+      <div class="tbtn" id="tpause" role="button" aria-label="Pause">❚❚</div>
     </div>
+    <div id="rothint" hidden>ROTATE FOR A WIDER VIEW</div>
   </div>
 </div>
 
@@ -336,7 +382,7 @@ const pack = (r,g,b,a=255) => ((a<<24)|(b<<16)|(g<<8)|r)>>>0;
 
 /* ---------------------------------- input -------------------------------- */
 const keys = new Set();
-const M = { locked:false, dragging:false, dx:0, dy:0, fire:false, aim:false, sens:.7, wheel:0, wheelAt:0,
+const M = { locked:false, dragging:false, dx:0, dy:0, fire:false, aim:false, sens:.7, tsens:1, wheel:0, wheelAt:0,
             justLocked:0, moved:0, downT:0, lx:null, ly:null, tapDone:false, fireEdge:0, pressNew:false, tlook:false,
             /* pointer-lock bookkeeping */
             lockPending:false, lockPromise:false, lockAt:0, unlockAt:0, lockFails:0,
@@ -354,11 +400,16 @@ const M = { locked:false, dragging:false, dx:0, dy:0, fire:false, aim:false, sen
                so the game stays playable, and the next click asks again.
      free    — the mouse moves a reticle; push it past the ticks and the view
                turns. Delta driven, never absolute cursor position.
-     drag    — hold and drag to turn, tap to fire.                              */
+     drag    — hold and drag to turn, tap to fire.
+     touch   — (forced on touch devices) the look finger drives the view 1:1,
+               both axes. The reticle gate exists for a mouse that must also
+               reach the edge of the screen; a thumb has no such errand, and
+               free look's RET_RELAX decay re-centred the reticle faster than
+               a thumb could travel from the look surface to FIRE.             */
 let LOOK = 'capture';
 let LOOKMODE = 'capture';
 const LOOK_ORDER = ['capture','free','drag'];
-function resolveLook(){ LOOKMODE = LOOK; }
+function resolveLook(){ LOOKMODE = isTouch ? 'touch' : LOOK; }
 const wantsLock  = () => LOOK === 'capture' && !isTouch && !!view.requestPointerLock;   // no API, no mouse: play as free look
 const LOCK_STRIKES = 3;                      // refusals before we stop nagging
 const lockGivenUp = () => M.lockFails >= LOCK_STRIKES;
@@ -385,7 +436,7 @@ const TURN_MAX  = 4.3;            // rad/s at full push
 const RET_RELAX = .38;            // reticle eases back toward CENTRE while moving
 const RET_IDLE  = 2.4;            // and snaps back once the mouse stops
 const isTouch = matchMedia('(hover:none) and (pointer:coarse)').matches;
-if (isTouch){ document.body.classList.add('touch'); LOOK = 'free'; }   // touch feeds the reticle, never a lock
+if (isTouch){ document.body.classList.add('touch'); LOOK = 'free'; }   // LOOK is moot on touch (resolveLook forces 'touch'); 'free' just keeps it off 'capture'
 
 /* Two movement layouts. Every action also has a right-hand mirror, so a
    left-hander driving the mouse with their left hand can reach reload, use,
@@ -446,6 +497,9 @@ function clearInput(){
   /* Reticle state lives on the player object, which is declared in a later
      script block, so reach it through a hook rather than a bare reference. */
   if (typeof resetLookState === 'function') resetLookState();
+  /* The AIM / CROUCH touch toggles are latches over M.aim / held.crouch, which
+     the lines above just dropped — leave the buttons lit and they lie. */
+  if (typeof resetTouchUI === 'function') resetTouchUI();
 }
 /* Losing focus without losing visibility — a click on another window — is the
    same loss of control as tab-hide or Esc-unlock: never leave the sim running
@@ -645,17 +699,23 @@ function unlock(){
   catch(_){}
 }
 
-/* touch controls */
+/* touch controls — handlers are installed unconditionally (they only ever fire
+   on touch events), so the F4 suite can drive them with synthetic events on a
+   mouse-only page and a desktop with a touchscreen is not a dead surface. */
 (function(){
-  if (!isTouch) return;
   const stick = document.getElementById('tstick'), nub = document.getElementById('tnub');
   const T = { move:null, look:null };
+  /* Sprint lives on the stick rim with hysteresis: past .92 engages, and only
+     easing back under .85 releases, so finger jitter at full deflection does
+     not flutter run on and off every frame. */
+  const runGate = m => { if (m > .92) held.run = true; else if (m < .85) held.run = false; };
   function stickVec(t, el){
     const r = el.getBoundingClientRect();
     const cx = r.left + r.width/2, cy = r.top + r.height/2;
     let dx = (t.clientX-cx)/(r.width/2), dy = (t.clientY-cy)/(r.height/2);
     const m = Math.hypot(dx,dy); if (m>1){ dx/=m; dy/=m; }
     nub.style.transform = `translate(${dx*40}%, ${dy*40}%)`;
+    runGate(m);
     return [dx,dy];
   }
   stick.addEventListener('touchstart', e=>{ T.move = e.changedTouches[0].identifier; [held.tx,held.ty]=stickVec(e.changedTouches[0],stick); e.preventDefault(); }, {passive:false});
@@ -664,19 +724,20 @@ function unlock(){
       if (t.identifier === T.move){ [held.tx,held.ty] = stickVec(t,stick); }
       else if (T.look && t.identifier === T.look.id){
         M.dx += (t.clientX - T.look.x)*1.6; T.look.x = t.clientX;
+        M.dy += (t.clientY - T.look.y)*1.6; T.look.y = t.clientY;
         M.lastMove = performance.now();   // without this the idle guard ate every touch delta
       }
     }
   }, {passive:false});
   const touchDone = e => {
     for (const t of e.changedTouches){
-      if (t.identifier===T.move){ T.move=null; held.tx=held.ty=0; nub.style.transform=''; }
+      if (t.identifier===T.move){ T.move=null; held.tx=held.ty=0; held.run=false; nub.style.transform=''; }
       if (T.look && t.identifier===T.look.id){ T.look=null; M.tlook=false; }
     }
   };
   addEventListener('touchend', touchDone);
-  addEventListener('touchcancel', touchDone);   // else a cancelled stick walks forever
-  view.addEventListener('touchstart', e=>{ const t=e.changedTouches[0]; T.look={id:t.identifier,x:t.clientX}; M.tlook = true; e.preventDefault(); }, {passive:false});
+  addEventListener('touchcancel', touchDone);   // else a cancelled stick walks (or sprints) forever
+  view.addEventListener('touchstart', e=>{ const t=e.changedTouches[0]; T.look={id:t.identifier,x:t.clientX,y:t.clientY}; M.tlook = true; e.preventDefault(); }, {passive:false});
   const bind=(id,fn,fn2)=>{ const el=document.getElementById(id);
     el.addEventListener('touchstart',e=>{e.preventDefault();fn();},{passive:false});
     el.addEventListener('touchend',e=>{e.preventDefault();fn2&&fn2();},{passive:false});
@@ -687,6 +748,16 @@ function unlock(){
   bind('tfire',()=>{ M.fire=true; M.fireEdge=performance.now(); M.pressNew=true; },()=>M.fire=false);
   bind('tuse',()=>held.use=true,()=>held.use=false);
   bind('tswap',()=>{ M.wheel += 1; });
+  bind('trel',()=>startReload());
+  bind('tpause',()=>pause());
+  /* AIM and CROUCH are toggles, not holds: a thumb parked on a hold-button is a
+     thumb that cannot drag the view. They latch the same state the desktop hold
+     bindings drive, so step() cannot tell the difference. */
+  const setTog = (el,on) => { el.classList.toggle('on', on); el.setAttribute('aria-pressed', String(on)); };
+  const taim = document.getElementById('taim'), tcr = document.getElementById('tcrouch');
+  bind('taim',   ()=>setTog(taim, M.aim = !M.aim));
+  bind('tcrouch',()=>setTog(tcr, held.crouch = !held.crouch));
+  window.resetTouchUI = () => { setTog(taim,false); setTog(tcr,false); };
 })();
 
 /* ---------------------------------- audio -------------------------------- */
@@ -2080,7 +2151,14 @@ function step(dt){
     const mdy = clamp(M.dy, -MAX_FRAME_PX, MAX_FRAME_PX);
     M.dx = 0; M.dy = 0;
     M.sumF = mdx;
-    if (LOOKMODE === 'drag'){                      /* only turns while held */
+    if (LOOKMODE === 'touch'){                     /* the look finger IS the view */
+      /* Direct drag, both axes, no gate, no decay: the reticle stays pinned to
+         centre and P.pitch finally answers a vertical thumb. M.tsens is the
+         touch sensitivity dial (persisted + slidered in a later pass).        */
+      yaw = mdx * LOOK_PX * DRAG_MUL * M.sens * M.tsens;
+      P.pitch = clamp(P.pitch - mdy * .10 * M.sens * M.tsens, -PITCH_MAX, PITCH_MAX);
+      P.rx = 0; P.turning = false;
+    } else if (LOOKMODE === 'drag'){               /* only turns while held */
       if (M.dragging || M.tlook){                /* a look finger counts as holding */
         yaw = mdx * LOOK_PX * DRAG_MUL * M.sens;
         P.pitch = clamp(P.pitch - mdy * .10 * M.sens, -PITCH_MAX, PITCH_MAX);
@@ -2880,12 +2958,13 @@ function drawHUD(horizon){
     sx2 += 13;
   }
 
-  /* interaction prompt */
+  /* interaction prompt — name the control the player actually has */
   if (P.useTarget){
-    const label = P.useTarget.sub==='npc' ? 'HOLD F — ESCORT THE CFO'
-      : P.useTarget.sub==='console' ? 'HOLD F — APPLY PATCH'
-      : P.useTarget.sub==='audit' ? 'HOLD F — PULL AUDIT LOG'
-      : 'HOLD F — DEPLOY AGENT';
+    const hf = isTouch ? 'HOLD USE' : 'HOLD F';
+    const label = P.useTarget.sub==='npc' ? hf+' — ESCORT THE CFO'
+      : P.useTarget.sub==='console' ? hf+' — APPLY PATCH'
+      : P.useTarget.sub==='audit' ? hf+' — PULL AUDIT LOG'
+      : hf+' — DEPLOY AGENT';
     txt(label, RW>>1, RH-57, '#4ade80', 7, 'center');
     if (P.useHold > .05) bar((RW>>1)-50, RH-54, 100, 5, P.useTarget.prog, '#4ade80');
   }
@@ -2893,7 +2972,7 @@ function drawHUD(horizon){
   /* control state — keyboard only reaches a focused frame, so say so plainly */
   if (!document.hasFocus()){
     ctx.fillStyle = 'rgba(5,8,14,.78)'; ctx.fillRect(0, HALFH-15, RW, 28);
-    txt('CLICK THE VIEWPORT TO TAKE CONTROL', RW>>1, HALFH+3, '#ffb02e', 7, 'center');
+    txt((isTouch?'TAP':'CLICK')+' THE VIEWPORT TO TAKE CONTROL', RW>>1, HALFH+3, '#ffb02e', 7, 'center');
   } else if (!M.locked && wantsLock() && !lockGivenUp()){
     /* Capture wanted but not held: say exactly what to do, for as long as it
        applies — not just for the first fifteen seconds. */
@@ -2901,6 +2980,7 @@ function drawHUD(horizon){
     txt('CLICK THE VIEW TO CAPTURE THE MOUSE', RW>>1, RH-69, '#ffb02e', 6, 'center');
   } else if (G.time < 15){
     txt(M.locked ? 'MOUSE CAPTURED · ESC TO RELEASE'
+       : LOOKMODE==='touch' ? 'DRAG THE VIEW TO LOOK · FIRE TO SHOOT'
        : LOOKMODE==='drag' ? 'DRAG TO LOOK · TAP TO FIRE'
        : 'MOVE MOUSE TO AIM · PUSH PAST THE TICKS TO TURN',
         RW>>1, RH-72, '#7d93ab', 6, 'center');
@@ -2908,7 +2988,7 @@ function drawHUD(horizon){
 
   /* Free look: mark the turn zone so it is obvious what makes the view swing,
      and flash a chevron while it is actually turning. */
-  if (!M.locked && LOOKMODE !== 'drag'){      // refused capture plays as free look too
+  if (!M.locked && LOOKMODE !== 'drag' && LOOKMODE !== 'touch'){   // refused capture plays as free look too; touch has no gate to mark
     /* Ticks mark the REAL gate (aim mode widens it) and sit on the reticle's
        own row — never on the lock target's height, which sent them bouncing
        to wherever a locked drone happened to fly. The chevron follows
@@ -2992,7 +3072,18 @@ function show(id){
   G.screenId = id;
   for (const s of SCREENS){ const el=document.getElementById(s); if (el) el.hidden = (s!==id); }
   document.getElementById('touch').classList.toggle('on', id===null && isTouch);
+  syncRotHint();
 }
+/* Portrait on a phone is a letterboxed strip a third of the screen tall. Say
+   so, mid-mission only, without ever blocking input — the hint is pointer-
+   events:none and clears itself the moment the device turns. */
+const portMQ = matchMedia('(orientation: portrait)');
+function syncRotHint(){
+  const el = document.getElementById('rothint');
+  if (el) el.hidden = !(isTouch && G.state==='play' && portMQ.matches);
+}
+try { portMQ.addEventListener('change', syncRotHint); }
+catch(_){ if (portMQ.addListener) portMQ.addListener(syncRotHint); }   // pre-2019 WebKit
 let selLevel = 0;
 
 function buildSelect(){
@@ -3060,6 +3151,21 @@ function startMission(gesture){
      player click the viewport a second time. Never from the self-test, which
      has no gesture and would only log a refusal. */
   if (gesture) tryLock();
+  /* Touch: the mission-start tap is the one user gesture available — spend it
+     on fullscreen plus a landscape lock. Strictly best-effort: file://, iOS
+     Safari and split-screen all refuse variously, and a refusal must cost
+     nothing (orientation.lock itself usually needs the fullscreen to land). */
+  if (gesture && isTouch){
+    try {
+      const fs = document.documentElement.requestFullscreen
+        && document.documentElement.requestFullscreen({ navigationUI:'hide' });
+      const ori = () => { try {
+        const l = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape');
+        if (l && l.catch) l.catch(()=>{});
+      } catch(_){} };
+      if (fs && fs.then) fs.then(ori, ori); else ori();
+    } catch(_){}
+  }
   toast('MISSION '+G.L.code+' — '+G.L.name, 'gold', 3200);
 }
 function pause(){
@@ -3208,6 +3314,9 @@ function selfTest(runSim){
     selLevel = 0; G.diff = 1; LOOK = 'free';
     M.lockFails = 0; M.lockNagged = false; M.sens = 0.7; M.locked = false; resolveLook();
     startMission(false); G.cheats.god = true; clearInput();
+    /* resolveLook pins touch devices to 'touch'; these assertions are about the
+       desktop modes, so drive LOOKMODE directly and F4 stays green on a phone. */
+    LOOKMODE = 'free';
 
     const spin = frames => { let n=0, p=P.ang;
       for (let i=0;i<frames;i++){ step(0.016); n += angDiff(p,P.ang); p=P.ang; } return n*180/Math.PI; };
@@ -3242,7 +3351,7 @@ function selfTest(runSim){
     ok('free: no drift once the mouse stops', Math.abs(angDiff(restAng,P.ang))*57.3 < .05);
 
     /* ---- pointer lock: the stream is raw, linear, symmetric and uncapped ---- */
-    LOOK='capture'; resolveLook(); clearInput();
+    LOOK='capture'; resolveLook(); LOOKMODE='capture'; clearInput();
     M.locked=true; M.justLocked=0; M.dx=0; M.dy=0; M.lastMove=performance.now(); P.rx=0; P.pitch=0;
     const mvL = (x,y) => { const ev = new MouseEvent('mousemove',{bubbles:true});
       Object.defineProperty(ev,'movementX',{value:x}); Object.defineProperty(ev,'movementY',{value:y});
@@ -3301,7 +3410,7 @@ function selfTest(runSim){
     M.locked = false;
     }
 
-    LOOK='drag'; resolveLook(); clearInput(); P.fireCd=0;
+    LOOK='drag'; resolveLook(); LOOKMODE='drag'; clearInput(); P.fireCd=0;
     const shotsBefore = G.shots;
     view.dispatchEvent(new MouseEvent('mousedown',{button:0,buttons:1,clientX:400,clientY:300,bubbles:true}));
     dispatchEvent(new PointerEvent('pointerup',{button:0,buttons:0,bubbles:true}));
@@ -3485,6 +3594,75 @@ function selfTest(runSim){
       ok('enemy aim: 00 AGENT tracks better than AGENT', runHard > run, runHard.toFixed(2));
       P.speed = s0; P.crouch = c0; G.diff = d0; }
 
+    /* ---- touch cluster: the handlers are installed unconditionally, so a
+       plain Event with a changedTouches expando drives them even on a page
+       that cannot construct a real TouchEvent ---- */
+    {
+      const tev = (type, el, touches) => {
+        const ev = new Event(type, { bubbles:true, cancelable:true });
+        ev.changedTouches = touches || [{ identifier:71, clientX:0, clientY:0 }];
+        (el || window).dispatchEvent(ev);
+      };
+      tev('touchstart', document.getElementById('tpause'));
+      ok('touch: PAUSE button pauses play', G.state === 'pause');
+      resume(false);
+
+      tev('touchstart', document.getElementById('taim'));
+      for (let i=0;i<20;i++) step(0.016);
+      ok('touch: AIM toggle raises the aim', M.aim === true && P.aim > .6, 'aim='+P.aim.toFixed(2));
+      tev('touchstart', document.getElementById('taim'));
+      for (let i=0;i<25;i++) step(0.016);
+      ok('touch: second AIM tap drops it', M.aim === false && P.aim < .25, 'aim='+P.aim.toFixed(2));
+
+      tev('touchstart', document.getElementById('tcrouch'));
+      ok('touch: CROUCH toggle latches', held.crouch === true);
+      tev('touchstart', document.getElementById('tcrouch'));
+      ok('touch: second CROUCH tap stands up', !held.crouch);
+
+      /* the stick needs real geometry, so borrow the touch classes briefly */
+      const hadTouch = document.body.classList.contains('touch');
+      const tdiv = document.getElementById('touch'), hadOn = tdiv.classList.contains('on');
+      document.body.classList.add('touch'); tdiv.classList.add('on');
+      const r = document.getElementById('tstick').getBoundingClientRect();
+      if (r.width < 10) ok('touch: (no stick geometry to test on)', true);
+      else {
+        const cx = r.left + r.width/2, cy = r.top + r.height/2;
+        const at = (x,y) => [{ identifier:72, clientX:x, clientY:y }];
+        tev('touchstart', document.getElementById('tstick'), at(cx, cy - r.height/2*.99));
+        ok('touch: full stick deflection sprints', held.run === true);
+        tev('touchmove', null, at(cx, cy - r.height/2*.88));
+        ok('touch: rim jitter keeps the sprint', held.run === true);
+        tev('touchmove', null, at(cx, cy - r.height/2*.5));
+        ok('touch: easing off the rim stops sprinting', held.run === false);
+        tev('touchend', null, at(cx, cy));
+        ok('touch: releasing the stick stops walking', !held.tx && !held.ty && !held.run);
+      }
+      if (!hadTouch) document.body.classList.remove('touch');
+      if (!hadOn) tdiv.classList.remove('on');
+
+      /* direct-drag look: vertical finger travel must pitch the view with the
+         reticle pinned to centre — the frozen-pitch bug this mode replaces */
+      const savedLM = LOOKMODE; LOOKMODE = 'touch';
+      clearInput(); P.pitch = 0;
+      tev('touchstart', view, [{ identifier:73, clientX:200, clientY:200 }]);
+      tev('touchmove', null, [{ identifier:73, clientX:200, clientY:140 }]);
+      step(0.016);
+      ok('touch: vertical drag pitches the view', P.pitch > 2 && P.rx === 0, 'pitch='+P.pitch.toFixed(1));
+      const ta0 = P.ang;
+      tev('touchmove', null, [{ identifier:73, clientX:260, clientY:140 }]);
+      step(0.016);
+      ok('touch: horizontal drag turns the view', angDiff(ta0, P.ang) > .05,
+         (angDiff(ta0, P.ang)*57.3).toFixed(1)+'deg');
+      tev('touchend', null, [{ identifier:73, clientX:260, clientY:140 }]);
+      LOOKMODE = savedLM;
+
+      P.w = 0; P.mag[0] = 3; P.ammo.p9 = Math.max(P.ammo.p9, 20); P.reload = 0;
+      tev('touchstart', document.getElementById('trel'));
+      ok('touch: RELOAD button starts the reload', P.reload > 0, 'reload='+P.reload.toFixed(2));
+      for (let i=0;i<90;i++) step(0.016);
+      ok('touch: the reload completes', P.reload === 0 && P.mag[0] === WEAPS[0].mag, 'mag='+P.mag[0]);
+    }
+
     /* clicking another window (blur without hide) pauses like tab-hide does */
     dispatchEvent(new Event('blur'));
     ok('blur pauses a live mission', G.state === 'pause');
@@ -3530,7 +3708,8 @@ const LOOK_BLURB = {
 };
 function syncLookLabel(){
   const b = document.getElementById('o-look');
-  if (b) b.textContent = LOOK.toUpperCase() + (LOOK==='capture' && lockGivenUp() ? ' (BLOCKED HERE)' : '');
+  if (b) b.textContent = isTouch ? 'TOUCH DRAG'
+    : LOOK.toUpperCase() + (LOOK==='capture' && lockGivenUp() ? ' (BLOCKED HERE)' : '');
 }
 function syncAimLabel(){
   const b = document.getElementById('o-aim');
@@ -3552,6 +3731,9 @@ function act(a){
     case 'abort': G.state='title'; show('s-title'); clearToasts(); break;
     case 'facereset': drawDefaultFace(); bakeAllActors(); toast('DEFAULT FACE RESTORED','cyan'); break;
     case 'cyclelook': {
+      /* Touch has exactly one look mode. Offering CAPTURE here put phones into
+         a mode that waits forever for a pointer lock no touch screen grants. */
+      if (isTouch){ toast('TOUCH USES DIRECT DRAG — DRAG THE VIEW TO LOOK', 'cyan', 3600); break; }
       if (M.locked) unlock();
       LOOK = LOOK_ORDER[(LOOK_ORDER.indexOf(LOOK)+1) % LOOK_ORDER.length];
       M.lockFails = 0; M.lockNagged = false;   // a fresh choice gets a fresh chance
@@ -3584,6 +3766,9 @@ function act(a){
 }
 document.addEventListener('click', e=>{
   audioInit();
+  /* The tap/click that skips the boot splash fires its click AFTER the title
+     menu appears, squarely on whatever row landed under the finger. */
+  if (performance.now() - bootExitAt < 350) return;
   const b = e.target.closest('[data-act]');
   if (b) act(b.dataset.act);
 });
@@ -3613,7 +3798,7 @@ function onKey(e){
   if (e.code==='F2'){ e.preventDefault(); M.diag2 = !M.diag2; return; }
   if (e.code==='F3'){ e.preventDefault(); M.diag = !M.diag; return; }
   if (e.code==='Backspace'){ e.preventDefault(); panic(); return; }
-  if (G.state==='boot'){ bootDone(); return; }
+  if (G.state==='boot'){ if (bootSkippable()) bootDone(); return; }
   if (e.code==='KeyM'){ A.musOn = !A.musOn; toast(A.musOn?'MUSIC ON':'MUSIC OFF','cyan',1400); }
   if (e.code==='KeyN'){ act('togglemap'); }
   if (e.code==='KeyP'){
@@ -3673,11 +3858,16 @@ const BOOTLINES = [
   'PATCH LEVEL ................. TUESDAY',
   'ARMING AGENT ................ READY'
 ];
-let bootI = 0, bootT = null;
+let bootI = 0, bootT = null, bootAt = 0, bootExitAt = 0;
+/* Skip is armed 400ms in, not immediately: the tap that launched the page (or
+   a key still settling) must not blow through the splash unseen. */
+const bootSkippable = () => G.state==='boot' && performance.now() - bootAt > 400;
 function bootDone(){
   if (bootT) { clearInterval(bootT); bootT = null; }
+  bootExitAt = performance.now();
   G.state = 'title'; show('s-title');
 }
+addEventListener('pointerdown', ()=>{ if (bootSkippable()) bootDone(); });
 function boot(){
   bakeProps();
   PROP.paint = [];
@@ -3693,6 +3883,12 @@ function boot(){
   resolveLook(); syncLookLabel(); syncKeysLabel(); syncAimLabel();
   selfTest(false);                      // fail loudly if a level is unwinnable
   const bl = document.getElementById('bootline');
+  bootAt = performance.now();
+  const bs = document.getElementById('bootskip');
+  bs.textContent = isTouch ? 'TAP TO SKIP' : 'CLICK TO SKIP';
+  setTimeout(()=>{ if (G.state==='boot') bs.hidden = false; }, 400);
+  if (isTouch) document.getElementById('titlehint').textContent =
+    'Left pad moves. Drag the view to look, FIRE to shoot. Headphones recommended.';
   bootT = setInterval(()=>{
     bl.textContent = BOOTLINES[bootI] || '';
     if (++bootI >= BOOTLINES.length + 1) bootDone();
