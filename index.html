@@ -4450,9 +4450,12 @@ function selfTest(runSim){
 
     /* per-cell floor/ceiling zones, the sky index, and a render smoke check.
        These reload M01 with temporary zones; the sim's final loadLevel below
-       restores the caller's mission either way. */
+       restores the caller's mission either way. M01 SHIPS with real zones (the
+       server-hall grate), so they are saved and put back — `delete` here once
+       stripped that floor for the rest of the session after any F4 run. */
     {
       const L0 = LEVELS[0];
+      const realZones = L0.zones;
       L0.zones = [{x0:1,y0:1,x1:2,y1:2,f:18,c:19}];
       loadLevel(0,1);
       ok('zones: cell inside the zone gets the zone textures',
@@ -4465,8 +4468,10 @@ function selfTest(runSim){
       render();
       ok('sky: ceiling 255 renders the sky gradient', buf[RW>>1] === SKYROW[0],
          buf[RW>>1].toString(16)+' vs '+SKYROW[0].toString(16));
-      delete L0.zones;
+      L0.zones = realZones;
       loadLevel(0,1); render();
+      ok('zones: M01 keeps its shipped grate floor after the zone tests',
+         G.zoned && G.ftex[idx(5,11)]===11);
       const seen = new Set(); for (let i=0;i<buf.length;i+=997) seen.add(buf[i]);
       let solidCols = 0; for (let x=0;x<RW;x++) if (zbuf[x] < 1e9) solidCols++;
       ok('render: frame is not a single colour', seen.size > 4, seen.size+' colours');

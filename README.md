@@ -110,7 +110,7 @@ title-screen corner tracks `VERSION` in `index.html`, which must match the
 
 ## Development
 
-- **F4** runs the in-game self-test suite — now **170 assertions**: level
+- **F4** runs the in-game self-test suite — now **171 assertions**: level
   reachability audits, input model invariants (pointer-lock linearity,
   free-look symmetry, aim-assist never fighting the player's turn), movement
   and collision checks, touch-cluster behaviour, palette/zone rendering,
