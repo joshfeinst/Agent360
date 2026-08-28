@@ -1,6 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
 <title>Agent 360</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#05070c">
+<!-- iOS treats an installed PWA as a web clip unless told otherwise; these are
+     inert on file:// and on every non-Apple browser. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Agent 360">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -20,24 +28,39 @@ html,body{height:100%}
 body{
   margin:0; background:var(--void); color:var(--paper);
   font-family:var(--tech); overflow:hidden;
-  -webkit-user-select:none; user-select:none; touch-action:none;
+  -webkit-user-select:none; user-select:none; touch-action:manipulation;
 }
+canvas#view,#touch,#touch *{touch-action:none}
 #stage{position:fixed; inset:0; display:grid; place-items:center; background:
   radial-gradient(ellipse at 50% 45%, #0b1420 0%, #05070c 70%, #000 100%);}
 #frame{position:relative; line-height:0; box-shadow:0 0 0 1px #1e3a52, 0 0 60px -10px #35d0ff33, 0 30px 80px -20px #000;}
 canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:block; background:#000; cursor:crosshair;}
+/* Plain translucent stripes, not mix-blend-mode:multiply: over a game this dark
+   the two are indistinguishable, and multiply forced a full-display blend pass
+   every frame. background-size is set from fit() so the stripe period is an
+   exact multiple of the game-pixel size — a fractional period shimmered as the
+   stripes beat against the upscaled pixels on phones. */
 #scan{position:absolute; inset:0; pointer-events:none; opacity:.5;
-  background:repeating-linear-gradient(to bottom, rgba(0,0,0,.28) 0 1px, rgba(0,0,0,0) 1px 3px);
-  mix-blend-mode:multiply;}
+  background-image:linear-gradient(rgba(0,0,0,.28) 0 1px, rgba(0,0,0,0) 1px);
+  background-size:100% 3px; background-repeat:repeat;}
 #vig{position:absolute; inset:0; pointer-events:none;
   background:radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,.55) 100%);}
 body.noscan #scan{display:none}
 
 /* ---------- overlay screens ---------- */
-.screen{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+.screen{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
   gap:clamp(10px,2.2vh,22px); padding:clamp(14px,3vh,36px); line-height:1.5; text-align:center;
   background:linear-gradient(180deg, rgba(5,7,12,.93), rgba(5,7,12,.97));
-  backdrop-filter:blur(2px);}
+  backdrop-filter:blur(2px); overflow-y:auto; overflow-x:hidden; touch-action:pan-y;
+  scrollbar-width:thin; scrollbar-color:var(--line) transparent;}
+/* centred while it fits, top-aligned and scrollable once it doesn't — the auto
+   margins absorb equal free space and collapse to zero on overflow. Without
+   this, flex centring clips tall screens at BOTH ends and the pause / controls
+   screens strand their buttons off-screen on phones. */
+.screen::before,.screen::after{content:""; flex:0 0 0; display:block}
+.screen::before{margin-top:auto}
+.screen::after{margin-bottom:auto}
+.screen>*{flex-shrink:0}
 .screen[hidden]{display:none}
 .eyebrow{font-family:var(--pix); font-size:clamp(7px,1.15vh,10px); letter-spacing:.18em; color:var(--cyan); text-transform:uppercase}
 h1.logo{font-family:var(--pix); margin:0; line-height:1.25; text-wrap:balance;
@@ -49,6 +72,8 @@ h2.ttl{font-family:var(--pix); font-size:clamp(11px,2.1vh,18px); margin:0; color
 .blink{font-family:var(--pix); font-size:clamp(8px,1.4vh,12px); color:var(--paper); animation:bl 1.1s steps(2,end) infinite}
 @keyframes bl{50%{opacity:.15}}
 @media (prefers-reduced-motion:reduce){.blink{animation:none}}
+#ver{position:absolute; right:10px; bottom:7px; font-family:var(--pix); font-size:8px;
+  letter-spacing:.08em; color:#3b485c; pointer-events:none}
 
 .panel{background:linear-gradient(180deg,#0d1725,#080e18); border:1px solid var(--line);
   box-shadow:inset 0 1px 0 #ffffff0d; padding:clamp(12px,2.4vh,22px) clamp(14px,2.6vw,26px); position:relative;}
@@ -86,22 +111,57 @@ h2.ttl{font-family:var(--pix); font-size:clamp(11px,2.1vh,18px); margin:0; color
 .hint{font-size:clamp(10px,1.5vh,13px); color:var(--dim); max-width:70ch}
 .hint b{color:var(--cyan); font-weight:700}
 kbd{font-family:var(--pix); font-size:.72em; background:#101c2c; border:1px solid var(--line); padding:3px 5px; color:var(--paper)}
+/* vw units measure the viewport, but these live inside #frame, which is
+   narrower than the viewport on phones — without the 100% cap the panels
+   clip at both edges under the screen's overflow-x:hidden. */
+.grid2,.dossier,.menu,.panel{max-width:100%}
 .grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px 22px; text-align:left; width:min(760px,92vw)}
 .ctl{display:flex; justify-content:space-between; gap:10px; font-size:clamp(11px,1.6vh,14px); border-bottom:1px dotted #1e3a52; padding:5px 0}
 .ctl span:last-child{color:var(--dim); text-align:right}
 input[type=range]{accent-color:var(--cyan); width:150px}
+.ctl .sv{font-family:var(--pix); font-size:.78em; color:var(--cyan); display:inline-block;
+  min-width:3.4em; text-align:right; font-variant-numeric:tabular-nums; vertical-align:middle}
+/* The shared .touch-only rule below restores display:grid, which stacks a .ctl
+   row's label on top of its slider — a control row is a flex row. */
+.ctl.touch-only{display:none}
+body.touch .ctl.touch-only{display:flex}
+.mi .best{display:block; font-size:.72em; color:var(--gold); margin-top:5px; letter-spacing:.06em}
 .stat{font-family:var(--pix); color:var(--gold); font-size:clamp(9px,1.5vh,13px)}
 #touch{position:absolute; inset:0; pointer-events:none; display:none}
 body.touch #touch.on{display:block}
+/* Buttons float over the canvas but take pointer events ONLY on themselves, so
+   every uncovered pixel stays part of the look surface. 44px floors keep them
+   tappable on small phones where vmin shrinks below thumb size. */
 .tbtn{position:absolute; pointer-events:auto; border:2px solid #35d0ff66; border-radius:50%;
-  background:#35d0ff14; color:var(--paper); font-family:var(--pix); font-size:9px; display:grid; place-items:center}
-#tstick{left:3%; bottom:5%; width:33vmin; height:33vmin; border-radius:50%; position:absolute; pointer-events:auto;
+  background:#35d0ff14; color:var(--paper); font-family:var(--pix); font-size:10px;
+  min-width:44px; min-height:44px; display:grid; place-items:center}
+.tbtn.on{border-color:var(--gold); background:#ffb02e2b; color:var(--gold)}
+#tstick{left:calc(3% + env(safe-area-inset-left,0px)); bottom:5%; width:33vmin; height:33vmin; border-radius:50%; position:absolute; pointer-events:auto;
   border:2px dashed #35d0ff44}
 #tnub{position:absolute; left:50%; top:50%; width:12vmin; height:12vmin; margin:-6vmin 0 0 -6vmin; border-radius:50%;
   background:#35d0ff33; border:2px solid #35d0ff88}
-#tfire{right:4%; bottom:8%; width:20vmin; height:20vmin}
-#tuse{right:26%; bottom:6%; width:13vmin; height:13vmin}
-#tswap{right:5%; bottom:32%; width:13vmin; height:13vmin}
+/* Cluster geometry is picked around the canvas HUD: the radar owns the top 37%
+   of the right 21% (RW-80..RW, 0..80 at render scale) and the ammo plate the
+   bottom-right corner, so PAUSE sits inboard of the radar and the right-hand
+   arc curls around the ammo plate rather than across it. */
+#tfire{right:calc(4% + env(safe-area-inset-right,0px)); bottom:8%; width:20vmin; height:20vmin}
+#tuse{right:calc(26% + env(safe-area-inset-right,0px)); bottom:6%; width:13vmin; height:13vmin}
+#taim{right:calc(6% + env(safe-area-inset-right,0px)); bottom:36%; width:13vmin; height:13vmin}
+#tswap{right:calc(23% + env(safe-area-inset-right,0px)); bottom:24%; width:13vmin; height:13vmin}
+#trel{right:calc(25% + env(safe-area-inset-right,0px)); bottom:47%; width:13vmin; height:13vmin}
+#tcrouch{left:calc(4.5% + env(safe-area-inset-left,0px)); bottom:44%; width:13vmin; height:13vmin}
+#tpause{right:calc(23% + env(safe-area-inset-right,0px)); top:calc(6px + env(safe-area-inset-top,0px));
+  width:13vmin; height:13vmin; min-width:48px; min-height:48px; border-radius:10px}
+#rothint{position:absolute; left:50%; top:14%; transform:translateX(-50%); pointer-events:none;
+  font-family:var(--pix); font-size:9px; letter-spacing:.06em; color:var(--cyan); white-space:nowrap;
+  background:rgba(7,13,22,.9); border:1px solid var(--cyan); padding:8px 12px}
+#rothint[hidden]{display:none}
+/* Touch players get taught touch first; the pointer-lock prose would only
+   confuse a device that can never hold a lock. */
+.touch-only{display:none}
+body.touch .touch-only{display:grid}
+body.touch .no-touch{display:none}
+@media (pointer:coarse){ .mi,.btn{min-height:44px} }
 .toastwrap{position:absolute; left:0; right:0; top:17%; display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none}
 </style>
 
@@ -115,19 +175,21 @@ body.touch #touch.on{display:block}
       <div class="eyebrow" id="bootline">initializing</div>
       <h1 class="logo" style="font-size:clamp(26px,6vh,58px)">360</h1>
       <div class="sub" style="font-family:var(--pix);font-size:clamp(7px,1.1vh,10px)">SMART&nbsp;NETWORKS</div>
+      <div class="blink" id="bootskip" hidden>CLICK TO SKIP</div>
     </div>
 
     <!-- TITLE -->
     <div class="screen" id="s-title" hidden>
       <div class="eyebrow">a managed services thriller</div>
-      <h1 class="logo">AGENT&nbsp;360<small>GOLDENSHARE</small></h1>
+      <h1 class="logo">AGENT&nbsp;360<small id="logosub">GOLDENSHARE</small></h1>
       <div class="menu" role="menu" id="titlemenu">
         <button class="mi" data-act="missions">SELECT MISSION <span class="k">▶</span></button>
         <button class="mi" data-act="controls">CONTROLS <span class="k">▶</span></button>
         <button class="mi" data-act="options">OPTIONS &amp; FACE UPLOAD <span class="k">▶</span></button>
         <button class="mi" data-act="cheats">CHEAT MENU <span class="k">▶</span></button>
       </div>
-      <p class="hint">Click the viewport, then drag to look and tap to fire. Headphones recommended.</p>
+      <p class="hint" id="titlehint">Click the viewport, then drag to look and tap to fire. Headphones recommended.</p>
+      <div id="ver"></div>
     </div>
 
     <!-- MISSION SELECT -->
@@ -172,7 +234,7 @@ body.touch #touch.on{display:block}
                   style="image-rendering:pixelated;width:100%;height:auto;border:1px solid var(--line)"></canvas>
           <p class="hint" style="margin:8px 0 0;font-size:clamp(9px,1.3vh,12px)">
             Lettered markers are your outstanding objectives. Amber terminals, cyan consoles,
-            red hostiles, orange doors need a keycard, green is the way out.</p>
+            red hostiles, green is the way out. Doors with a dark keyhole pip need a keycard.</p>
         </div>
         <div>
           <div class="eyebrow" style="margin-bottom:10px">objectives</div>
@@ -200,8 +262,20 @@ body.touch #touch.on{display:block}
     <div class="screen" id="s-controls" hidden>
       <div class="eyebrow">field manual</div>
       <h2 class="ttl">CONTROLS</h2>
-      <p class="hint" style="margin:0">Every action has a right-hand mirror, so you can drive the mouse with either hand.
+      <p class="hint no-touch" style="margin:0">Every action has a right-hand mirror, so you can drive the mouse with either hand.
       Switch the arrow keys between turning and strafing under <b>Movement keys</b> in Options.</p>
+      <div class="grid2 panel touch-only" id="ctl-touch">
+        <div class="ctl"><span>Move / strafe</span><span>Left pad — speed follows deflection</span></div>
+        <div class="ctl"><span>Sprint</span><span>Push the pad all the way to its rim</span></div>
+        <div class="ctl"><span>Look</span><span>Drag anywhere on the view</span></div>
+        <div class="ctl"><span>Fire</span><span>FIRE — hold for automatics</span></div>
+        <div class="ctl"><span>Aim mode (zoom)</span><span>AIM — tap on, tap off</span></div>
+        <div class="ctl"><span>Reload</span><span>RLD</span></div>
+        <div class="ctl"><span>Next weapon</span><span>GUN</span></div>
+        <div class="ctl"><span>Interact &amp; hack</span><span>Hold USE</span></div>
+        <div class="ctl"><span>Crouch</span><span>CRCH — tap on, tap off</span></div>
+        <div class="ctl"><span>Pause / floor plan</span><span>❚❚ — top right</span></div>
+      </div>
       <div class="grid2 panel">
         <div class="ctl"><span>Move / strafe</span><span>W A S D</span></div>
         <div class="ctl"><span>Move / strafe (left-handed)</span><span>↑ ↓ ← →</span></div>
@@ -223,7 +297,7 @@ body.touch #touch.on{display:block}
         <div class="ctl"><span>Mute music</span><span>M</span></div>
         <div class="ctl"><span>Toggle scanlines</span><span>P</span></div>
       </div>
-      <p class="hint">Click the viewport and the mouse is <b>captured</b>: it disappears, raw movement turns the view, and
+      <p class="hint no-touch">Click the viewport and the mouse is <b>captured</b>: it disappears, raw movement turns the view, and
       <b>Esc</b> hands it back (and pauses). That is the default and it works exactly like a native FPS. If the page is
       embedded somewhere that refuses pointer lock, the game falls back to <b>free look</b> — the mouse moves your
       reticle and pushing it past the two tick marks swings the view — and every click asks for capture again.
@@ -243,14 +317,17 @@ body.touch #touch.on{display:block}
       <div class="eyebrow">options</div>
       <h2 class="ttl">SETTINGS</h2>
       <div class="grid2 panel">
-        <div class="ctl"><span>Mouse sensitivity</span><span><input type="range" id="o-sens" min="15" max="220" value="70"></span></div>
+        <div class="ctl"><span>Mouse sensitivity</span><span><input type="range" id="o-sens" min="15" max="220" value="70"> <b class="sv" id="v-sens">70</b></span></div>
+        <div class="ctl touch-only"><span>Touch look sensitivity</span><span><input type="range" id="o-tsens" min="30" max="220" value="100"> <b class="sv" id="v-tsens">100</b></span></div>
         <div class="ctl"><span>Look mode</span><span><button class="btn ghost" id="o-look" data-act="cyclelook" style="padding:4px 9px;font-size:8px">CAPTURE</button></span></div>
+        <div class="ctl"><span>Invert Y axis</span><span><button class="btn ghost" id="o-inv" data-act="toggleinv" aria-pressed="false" style="padding:4px 9px;font-size:8px">OFF</button></span></div>
         <div class="ctl"><span>Aim assist</span><span><button class="btn ghost" id="o-aim" data-act="cycleaim" style="padding:4px 9px;font-size:8px">SNAP + PULL</button></span></div>
         <div class="ctl"><span>Movement keys</span><span><button class="btn ghost" id="o-keys" data-act="togglekeys" style="padding:4px 9px;font-size:8px">WASD</button></span></div>
-        <div class="ctl"><span>Corner radar</span><span><button class="btn ghost" data-act="togglemap" style="padding:4px 9px;font-size:8px">N</button></span></div>
-        <div class="ctl"><span>Sound effects</span><span><input type="range" id="o-sfx" min="0" max="100" value="70"></span></div>
-        <div class="ctl"><span>Music</span><span><input type="range" id="o-mus" min="0" max="100" value="34"></span></div>
-        <div class="ctl"><span>Scanlines</span><span><input type="range" id="o-scan" min="0" max="100" value="50"></span></div>
+        <div class="ctl"><span>Corner radar</span><span><button class="btn ghost" id="o-radar" data-act="togglemap" aria-pressed="true" style="padding:4px 9px;font-size:8px">ON</button></span></div>
+        <div class="ctl"><span>Soundtrack</span><span><button class="btn ghost" id="o-muson" data-act="togglemus" aria-pressed="true" style="padding:4px 9px;font-size:8px">ON</button></span></div>
+        <div class="ctl"><span>Sound effects</span><span><input type="range" id="o-sfx" min="0" max="100" value="70"> <b class="sv" id="v-sfx">70%</b></span></div>
+        <div class="ctl"><span>Music</span><span><input type="range" id="o-mus" min="0" max="100" value="34"> <b class="sv" id="v-mus">34%</b></span></div>
+        <div class="ctl"><span>Scanlines</span><span><input type="range" id="o-scan" min="0" max="100" value="50"> <b class="sv" id="v-scan">50%</b></span></div>
       </div>
       <div class="panel" style="width:min(760px,92vw);text-align:left">
         <div class="eyebrow" style="margin-bottom:8px">enemy face</div>
@@ -283,7 +360,12 @@ body.touch #touch.on{display:block}
       <div class="tbtn" id="tfire">FIRE</div>
       <div class="tbtn" id="tuse">USE</div>
       <div class="tbtn" id="tswap">GUN</div>
+      <div class="tbtn" id="trel">RLD</div>
+      <div class="tbtn" id="taim" role="button" aria-pressed="false">AIM</div>
+      <div class="tbtn" id="tcrouch" role="button" aria-pressed="false">CRCH</div>
+      <div class="tbtn" id="tpause" role="button" aria-label="Pause">❚❚</div>
     </div>
+    <div id="rothint" hidden>ROTATE FOR A WIDER VIEW</div>
   </div>
 </div>
 
@@ -298,6 +380,7 @@ body.touch #touch.on{display:block}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
+const VERSION = '1.10';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -323,7 +406,7 @@ const pack = (r,g,b,a=255) => ((a<<24)|(b<<16)|(g<<8)|r)>>>0;
 
 /* ---------------------------------- input -------------------------------- */
 const keys = new Set();
-const M = { locked:false, dragging:false, dx:0, dy:0, fire:false, aim:false, sens:.7, wheel:0, wheelAt:0,
+const M = { locked:false, dragging:false, dx:0, dy:0, fire:false, aim:false, sens:.7, tsens:1, wheel:0, wheelAt:0,
             justLocked:0, moved:0, downT:0, lx:null, ly:null, tapDone:false, fireEdge:0, pressNew:false, tlook:false,
             /* pointer-lock bookkeeping */
             lockPending:false, lockPromise:false, lockAt:0, unlockAt:0, lockFails:0,
@@ -341,11 +424,17 @@ const M = { locked:false, dragging:false, dx:0, dy:0, fire:false, aim:false, sen
                so the game stays playable, and the next click asks again.
      free    — the mouse moves a reticle; push it past the ticks and the view
                turns. Delta driven, never absolute cursor position.
-     drag    — hold and drag to turn, tap to fire.                              */
+     drag    — hold and drag to turn, tap to fire.
+     touch   — (forced on touch devices) the look finger drives the view 1:1,
+               both axes. The reticle gate exists for a mouse that must also
+               reach the edge of the screen; a thumb has no such errand, and
+               free look's RET_RELAX decay re-centred the reticle faster than
+               a thumb could travel from the look surface to FIRE.             */
 let LOOK = 'capture';
 let LOOKMODE = 'capture';
+let INVERT_Y = false;             // one flag for every look mode; the step() applies it to all pitch paths
 const LOOK_ORDER = ['capture','free','drag'];
-function resolveLook(){ LOOKMODE = LOOK; }
+function resolveLook(){ LOOKMODE = isTouch ? 'touch' : LOOK; }
 const wantsLock  = () => LOOK === 'capture' && !isTouch && !!view.requestPointerLock;   // no API, no mouse: play as free look
 const LOCK_STRIKES = 3;                      // refusals before we stop nagging
 const lockGivenUp = () => M.lockFails >= LOCK_STRIKES;
@@ -372,7 +461,11 @@ const TURN_MAX  = 4.3;            // rad/s at full push
 const RET_RELAX = .38;            // reticle eases back toward CENTRE while moving
 const RET_IDLE  = 2.4;            // and snaps back once the mouse stops
 const isTouch = matchMedia('(hover:none) and (pointer:coarse)').matches;
-if (isTouch){ document.body.classList.add('touch'); LOOK = 'free'; }   // touch feeds the reticle, never a lock
+/* Reduced motion is honoured where the game shakes or strobes the whole frame:
+   camera shake is capped to a nudge and the meltdown wash to a faint tint. The
+   CSS .blink rule above handles the DOM side. */
+const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (isTouch){ document.body.classList.add('touch'); LOOK = 'free'; }   // LOOK is moot on touch (resolveLook forces 'touch'); 'free' just keeps it off 'capture'
 
 /* Two movement layouts. Every action also has a right-hand mirror, so a
    left-hander driving the mouse with their left hand can reach reload, use,
@@ -408,7 +501,10 @@ addEventListener('keydown', e => {
   const playing = (typeof G !== 'undefined') && G && G.state === 'play';
   const a = playing ? KEYMAP[e.code] : null;
   if (e.repeat) { if (a) e.preventDefault(); return; }
-  if (a) { held[a] = true; e.preventDefault(); }
+  if (a) { held[a] = true; e.preventDefault();
+    /* Space/X get the same press buffer a click does: a tap that lands during
+       the weapon's cool-down deserves the next available shot, not nothing. */
+    if (a === 'fire'){ M.fireEdge = performance.now(); M.pressNew = true; } }
   keys.add(e.code);
   onKey(e);
 }, {passive:false});
@@ -433,6 +529,9 @@ function clearInput(){
   /* Reticle state lives on the player object, which is declared in a later
      script block, so reach it through a hook rather than a bare reference. */
   if (typeof resetLookState === 'function') resetLookState();
+  /* The AIM / CROUCH touch toggles are latches over M.aim / held.crouch, which
+     the lines above just dropped — leave the buttons lit and they lie. */
+  if (typeof resetTouchUI === 'function') resetTouchUI();
 }
 /* Losing focus without losing visibility — a click on another window — is the
    same loss of control as tab-hide or Esc-unlock: never leave the sim running
@@ -445,6 +544,10 @@ addEventListener('focus', () => { M.dx = 0; M.dy = 0; M.lx = null; M.ly = null; 
 document.addEventListener('visibilitychange', () => {
   clearInput();
   if (document.hidden && typeof G !== 'undefined' && G.state === 'play') pause();
+  /* coming back: iOS parks the context 'interrupted', not 'suspended' — nudge
+     it awake (audioInit resumes anything not 'running', and never creates
+     a context before the first real gesture has). */
+  if (!document.hidden && typeof audioInit === 'function' && A.ctx) audioInit();
 });
 
 /* The mouse belongs to the game across the WHOLE window while playing: in the
@@ -632,17 +735,23 @@ function unlock(){
   catch(_){}
 }
 
-/* touch controls */
+/* touch controls — handlers are installed unconditionally (they only ever fire
+   on touch events), so the F4 suite can drive them with synthetic events on a
+   mouse-only page and a desktop with a touchscreen is not a dead surface. */
 (function(){
-  if (!isTouch) return;
   const stick = document.getElementById('tstick'), nub = document.getElementById('tnub');
   const T = { move:null, look:null };
+  /* Sprint lives on the stick rim with hysteresis: past .92 engages, and only
+     easing back under .85 releases, so finger jitter at full deflection does
+     not flutter run on and off every frame. */
+  const runGate = m => { if (m > .92) held.run = true; else if (m < .85) held.run = false; };
   function stickVec(t, el){
     const r = el.getBoundingClientRect();
     const cx = r.left + r.width/2, cy = r.top + r.height/2;
     let dx = (t.clientX-cx)/(r.width/2), dy = (t.clientY-cy)/(r.height/2);
     const m = Math.hypot(dx,dy); if (m>1){ dx/=m; dy/=m; }
     nub.style.transform = `translate(${dx*40}%, ${dy*40}%)`;
+    runGate(m);
     return [dx,dy];
   }
   stick.addEventListener('touchstart', e=>{ T.move = e.changedTouches[0].identifier; [held.tx,held.ty]=stickVec(e.changedTouches[0],stick); e.preventDefault(); }, {passive:false});
@@ -651,21 +760,24 @@ function unlock(){
       if (t.identifier === T.move){ [held.tx,held.ty] = stickVec(t,stick); }
       else if (T.look && t.identifier === T.look.id){
         M.dx += (t.clientX - T.look.x)*1.6; T.look.x = t.clientX;
+        M.dy += (t.clientY - T.look.y)*1.6; T.look.y = t.clientY;
         M.lastMove = performance.now();   // without this the idle guard ate every touch delta
       }
     }
   }, {passive:false});
   const touchDone = e => {
     for (const t of e.changedTouches){
-      if (t.identifier===T.move){ T.move=null; held.tx=held.ty=0; nub.style.transform=''; }
+      if (t.identifier===T.move){ T.move=null; held.tx=held.ty=0; held.run=false; nub.style.transform=''; }
       if (T.look && t.identifier===T.look.id){ T.look=null; M.tlook=false; }
     }
   };
   addEventListener('touchend', touchDone);
-  addEventListener('touchcancel', touchDone);   // else a cancelled stick walks forever
-  view.addEventListener('touchstart', e=>{ const t=e.changedTouches[0]; T.look={id:t.identifier,x:t.clientX}; M.tlook = true; e.preventDefault(); }, {passive:false});
+  addEventListener('touchcancel', touchDone);   // else a cancelled stick walks (or sprints) forever
+  view.addEventListener('touchstart', e=>{ const t=e.changedTouches[0]; T.look={id:t.identifier,x:t.clientX,y:t.clientY}; M.tlook = true; e.preventDefault(); }, {passive:false});
   const bind=(id,fn,fn2)=>{ const el=document.getElementById(id);
-    el.addEventListener('touchstart',e=>{e.preventDefault();fn();},{passive:false});
+    /* preventDefault means these touches never become the document click that
+       unlocks audio — so the cluster unlocks it itself (idempotent, cheap) */
+    el.addEventListener('touchstart',e=>{e.preventDefault();audioInit();fn();},{passive:false});
     el.addEventListener('touchend',e=>{e.preventDefault();fn2&&fn2();},{passive:false});
     /* The OS can steal a button touch (edge swipe, notification shade) and end
        it with touchcancel, never touchend — without this, USE stayed held and
@@ -674,12 +786,24 @@ function unlock(){
   bind('tfire',()=>{ M.fire=true; M.fireEdge=performance.now(); M.pressNew=true; },()=>M.fire=false);
   bind('tuse',()=>held.use=true,()=>held.use=false);
   bind('tswap',()=>{ M.wheel += 1; });
+  bind('trel',()=>startReload());
+  bind('tpause',()=>pause());
+  /* AIM and CROUCH are toggles, not holds: a thumb parked on a hold-button is a
+     thumb that cannot drag the view. They latch the same state the desktop hold
+     bindings drive, so step() cannot tell the difference. */
+  const setTog = (el,on) => { el.classList.toggle('on', on); el.setAttribute('aria-pressed', String(on)); };
+  const taim = document.getElementById('taim'), tcr = document.getElementById('tcrouch');
+  bind('taim',   ()=>setTog(taim, M.aim = !M.aim));
+  bind('tcrouch',()=>setTog(tcr, held.crouch = !held.crouch));
+  window.resetTouchUI = () => { setTog(taim,false); setTog(tcr,false); };
 })();
 
 /* ---------------------------------- audio -------------------------------- */
-const A = { ctx:null, master:null, sfx:null, mus:null, noise:null, sfxVol:.7, musVol:.34, musOn:true, step:0, next:0, timer:0 };
+const A = { ctx:null, master:null, sfx:null, mus:null, noise:null, sfxVol:.7, musVol:.34, musOn:true, step:0, next:0, timer:0, hatN:0, hbT:0, stepI:0 };
 function audioInit(){
-  if (A.ctx) { if (A.ctx.state === 'suspended') A.ctx.resume(); return; }
+  /* 'suspended' alone misses iOS's 'interrupted' (phone call, Siri): resume on
+     anything that is not running, and let a no-op resume be a no-op. */
+  if (A.ctx) { if (A.ctx.state !== 'running') A.ctx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   A.ctx = new AC();
   /* Limiter: 8 pellet impacts plus the shot itself used to sum to ~300%% of full
@@ -697,9 +821,26 @@ function audioInit(){
   A.noise = n;
   musicStart();
 }
+/* Distance attenuation rides THROUGH the existing pipeline: sfxAt() parks a
+   scale (and a pan) here for the duration of one SFX closure call, and env()
+   folds it into every peak. Player-originated sfx() calls never touch it. */
+let SFXSCALE = 1, SFXPAN = 0;
+const SFXRANGE = 20;                                  // world units to inaudible-ish
+const sfxDist = d => clamp(1 - Math.sqrt(Math.max(0,d)/SFXRANGE), .2, 1);
+function sfxAt(name, x, y){
+  const d = Math.hypot(x-P.x, y-P.y);
+  SFXSCALE = sfxDist(d);
+  SFXPAN = clamp(Math.sin(angDiff(P.ang, Math.atan2(y-P.y, x-P.x))) * Math.min(1, d/3), -.8, .8);
+  try { sfx(name); } finally { SFXSCALE = 1; SFXPAN = 0; }
+}
+/* one throwaway panner per burst — only when a pan is asked for and supported */
+function sfxBus(){
+  if (!SFXPAN || !A.ctx.createStereoPanner) return A.sfx;
+  const p = A.ctx.createStereoPanner(); p.pan.value = SFXPAN; p.connect(A.sfx); return p;
+}
 function env(g, t, a, dcy, peak){
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(peak, t+a);
+  g.gain.exponentialRampToValueAtTime(Math.max(.0002, peak*SFXSCALE), t+a);
   g.gain.exponentialRampToValueAtTime(0.0001, t+a+dcy);
 }
 function noiseBurst(t, dur, f0, f1, peak, q=1, type='lowpass'){
@@ -709,7 +850,7 @@ function noiseBurst(t, dur, f0, f1, peak, q=1, type='lowpass'){
   const bp = A.ctx.createBiquadFilter(); bp.type = type; bp.Q.value = q;
   bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(Math.max(60,f1), t+dur);
   const g = A.ctx.createGain(); env(g, t, .004, dur, peak);
-  s.connect(bp); bp.connect(g); g.connect(A.sfx);
+  s.connect(bp); bp.connect(g); g.connect(sfxBus());
   s.start(t); s.stop(t+dur+.05);
 }
 function tone(t, f0, f1, dur, peak, type='square'){
@@ -717,7 +858,7 @@ function tone(t, f0, f1, dur, peak, type='square'){
   const o = A.ctx.createOscillator(); o.type = type;
   o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20,f1), t+dur);
   const g = A.ctx.createGain(); env(g, t, .006, dur, peak);
-  o.connect(g); g.connect(A.sfx); o.start(t); o.stop(t+dur+.05);
+  o.connect(g); g.connect(sfxBus()); o.start(t); o.stop(t+dur+.05);
 }
 const now = () => A.ctx ? A.ctx.currentTime : 0;
 const SFX = {
@@ -740,7 +881,19 @@ const SFX = {
   fail(){ const t=now(); [392,330,262,196].forEach((f,i)=>tone(t+i*.16,f,f,.3,.3,'sawtooth')); },
   explode(){ const t=now(); noiseBurst(t,.7,900,60,.55,.6); tone(t,90,25,.6,.35,'triangle'); },
   boss(){ const t=now(); tone(t,110,55,.9,.4,'sawtooth'); noiseBurst(t,.9,300,80,.35,.7); },
-  shield(){ const t=now(); tone(t,1600,400,.25,.25,'triangle'); }
+  shield(){ const t=now(); tone(t,1600,400,.25,.25,'triangle'); },
+  /* UI + foley round */
+  click(){ tone(now(),1240,1240,.035,.14,'square'); },
+  swap(){ const t=now(); noiseBurst(t,.04,4200,2200,.16,2.5,'bandpass'); tone(t+.03,860,640,.03,.1,'square'); },
+  denied(){ const t=now(); tone(t,220,220,.11,.22,'square'); tone(t+.13,165,165,.16,.22,'square'); },
+  bolt(){ const t=now(); noiseBurst(t,.045,2400,1200,.2,2,'bandpass'); tone(t,520,320,.03,.08,'square'); },
+  tink(){ const t=now(); tone(t,2100,1500,.06,.22,'triangle'); noiseBurst(t,.04,5200,3400,.12,3,'bandpass'); },
+  heart(){ const t=now(); tone(t,60,52,.1,.3,'sine'); tone(t+.17,45,40,.09,.2,'sine'); },
+  tick(){ tone(now(),1180,1180,.04,.16,'square'); },
+  tick2(){ const t=now(); tone(t,1560,1560,.04,.18,'square'); tone(t+.12,1560,1560,.04,.14,'square'); },
+  stepP(){ noiseBurst(now(),.05,520,150,.055,.8); },
+  stepE(){ noiseBurst(now(),.05,430,130,.07,.8); },
+  stepBoss(){ const t=now(); noiseBurst(t,.09,300,70,.14,.7); tone(t,72,48,.08,.08,'sine'); }
 };
 const SFXLAST = Object.create(null);
 function sfx(name){
@@ -750,6 +903,8 @@ function sfx(name){
   SFXLAST[name] = t;
   SFX[name]();
 }
+/* low-HP heartbeat cadence: ~1.2s at 29hp closing to ~.5s near death */
+const hbPeriod = hp => .5 + clamp(hp,0,30)/30*.7;
 
 /* ------- soundtrack: original spy-adjacent loop in B minor, 104 bpm ------ */
 const NOTE = f => f;
@@ -760,6 +915,22 @@ const LEAD = [0,0,0,0, 0,0,0,0, Fs3,0,A3,0, B3,0,0,0,
               0,0,0,0, D4,0,Cs3*2,0, B3,0,A3,0, Fs3,0,0,0];
 const HAT  = [0,0,1,0, 0,0,1,0, 0,0,1,0, 0,1,1,0,
               0,0,1,0, 0,0,1,0, 0,0,1,0, 0,1,1,1];
+/* B section: same B-minor pool, answering contour — bars alternate via
+   (A.step>>5)&1 so the effective loop is ~9s instead of ~4.6s of wallpaper. */
+const BASS2 = [B1,0,D2,0, E2,0,Fs2,0, G2,0,Fs2,0, E2,0,B1,0,
+               B1,0,D2,0, E2,0,G2,0, A2,0,G2,0, Fs2,0,D2,0];
+const LEAD2 = [B3,0,0,0, D4,0,B3,0, 0,0,0,0, A3,0,Fs3,0,
+               0,0,G3,0, 0,0,B3,0, D4,0,Fs4,0, D4,0,B3,0];
+/* One decision point for what the loop should sound like this step. Pure on
+   G/A state so F4 can assert every branch without an AudioContext. */
+function musMood(){
+  const menu = typeof G === 'undefined' || G.state !== 'play';
+  const bossFight = !menu && G.bossAlive;
+  const escape = !menu && G.meltdown > 0;
+  return { menu, bossFight, escape,
+           combat: bossFight || escape || (!menu && G.heat > 0.4),
+           bar2: (A.step>>5)&1 };
+}
 function musNote(t, f, dur, type, peak, dest){
   const o = A.ctx.createOscillator(); o.type = type; o.frequency.value = f;
   const g = A.ctx.createGain();
@@ -779,17 +950,21 @@ function musicStart(){
     if (A.next < A.ctx.currentTime) A.next = A.ctx.currentTime + .05;
     while (A.next < A.ctx.currentTime + .25) {
       const s = A.step % 32, t = A.next;
-      const combat = G.state === 'play' && G.heat > 0.4;
+      const m = musMood(), combat = m.combat;
+      const BB = m.bar2 ? BASS2 : BASS, LL = m.bar2 ? LEAD2 : LEAD;
+      /* escape: the whole bass line up a semitone — same song, wrong-feeling */
+      const xp = m.escape ? 1.0595 : 1;
       if (A.musOn) {
-        if (BASS[s]) musNote(t, BASS[s], spb*1.7, 'sawtooth', .5, A.mus);
-        if (LEAD[s] && combat) musNote(t, LEAD[s], spb*1.4, 'square', .12, A.mus);
-        if (HAT[s]) {
+        if (BB[s]) musNote(t, BB[s]*xp, spb*1.7, 'sawtooth', m.menu ? .25 : .5, A.mus);
+        if (LL[s] && combat) musNote(t, LL[s]*xp, spb*1.4, 'square', .12, A.mus);
+        /* menus keep every other hat — sparse ambience, so mission start kicks */
+        if (HAT[s] && !(m.menu && (A.hatN++ & 1))) {
           const n = A.ctx.createBufferSource(); n.buffer = A.noise; n.loop=true;
           const hp = A.ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value = combat?7000:9000;
           const g = A.ctx.createGain(); g.gain.setValueAtTime(combat?.10:.05,t); g.gain.exponentialRampToValueAtTime(.0001,t+.05);
           n.connect(hp); hp.connect(g); g.connect(A.mus); n.start(t); n.stop(t+.08);
         }
-        if (combat && s===0) musNote(t, B2, spb*3, 'triangle', .16, A.mus);
+        if (combat && s===0) musNote(t, B2*xp, spb*3, 'triangle', m.bossFight ? .24 : .16, A.mus);
       }
       A.next += spb; A.step++;
     }
@@ -841,8 +1016,16 @@ const TEXFN = [
     R(g,0,0,s,s,'#242a35');
     for(let x=2;x<s;x+=8){ R(g,x,0,4,s,'#7b8494'); R(g,x,0,1,s,'#a3adbc'); R(g,x+3,0,1,s,'#4b5462'); }
     for(let y=0;y<s;y+=30){ R(g,0,y,s,4,'#6b7484'); R(g,0,y,s,1,'#98a2b1'); } },
-  /* 4 cubicle partition */ (g,s)=>{ R(g,0,0,s,s,'#5c6152'); grain(g,s,.42);
-    R(g,0,0,s,4,'#8d9382'); R(g,0,4,s,1,'#3f4438'); R(g,0,s-3,s,3,'#3f4438'); },
+  /* 4 cubicle partition — fabric pinboard with rails and pinned paper; the old
+     bake was featureless olive noise and read as mould at any distance */ (g,s)=>{
+    R(g,0,0,s,s,'#5c6152'); grain(g,s,.42);
+    for(let x=0;x<s;x+=16) R(g,x,0,1,s,'#464b3e');                    // panel seams
+    R(g,0,0,s,3,'#9aa0a8'); R(g,0,0,s,1,'#c2c8cf'); R(g,0,3,s,1,'#3f4438');   // top rail
+    R(g,0,40,s,3,'#9aa0a8'); R(g,0,40,s,1,'#c2c8cf'); R(g,0,43,s,1,'#3f4438'); // waist rail
+    R(g,0,s-8,s,8,'#3f4438'); R(g,0,s-8,s,1,'#565b4c');               // kick panel
+    for(const [px,py] of [[6,10],[38,14],[22,26]]){                   // pinned paper
+      R(g,px,py,4,5,'#e8e8e0'); R(g,px+1,py+2,2,1,'#6a6a60'); }
+    },
   /* 5 glass */ (g,s)=>{ R(g,0,0,s,s,'#2d4a5a');
     for(let i=0;i<s;i+=4) R(g,i,0,1,s,'#33566a');
     R(g,0,0,s,3,'#7d98a8'); R(g,0,s-3,s,3,'#1d3240'); R(g,0,0,3,s,'#5f7f92');
@@ -853,7 +1036,12 @@ const TEXFN = [
     R(g,4,8,s-8,s-18,'#22475a'); R(g,4,8,s-8,1,'#3f7692');
     R(g,s/2-1,8,2,s-18,'#16303e');
     R(g,8,s-22,14,4,'#ffb02e'); R(g,s-22,s-22,14,4,'#ffb02e');
-    g.fillStyle='#9fd9f0'; g.font='bold 9px monospace'; g.fillText('360',s/2-11,s/2+3); },
+    /* explicit pixel digits: the 9px canvas font smeared '360' into '368' */
+    const DIG={ '3':['1111','0001','0111','0001','1111'],
+                '6':['1111','1000','1111','1001','1111'],
+                '0':['1111','1001','1001','1001','1111'] };
+    '360'.split('').forEach((d,i)=>DIG[d].forEach((row,y)=>row.split('').forEach((b,x)=>{
+      if (b==='1') R(g, s/2-14+i*10+x*2, s/2-5+y*2, 2, 2, '#9fd9f0'); }))); },
   /* 7 locked door */ (g,s)=>{ R(g,0,0,s,s,'#5a3a2b'); grain(g,s,.16);
     R(g,0,0,s,4,'#8d6244'); R(g,0,s-4,s,4,'#332016');
     R(g,4,8,s-8,s-18,'#4a3023'); R(g,s/2-1,8,2,s-18,'#2a1a12');
@@ -881,12 +1069,64 @@ const TEXFN = [
   /* 12 hazard floor (boss room) */ (g,s)=>{ R(g,0,0,s,s,'#4a4438'); grain(g,s,.22);
     for(let i=-s;i<s;i+=16){ g.save(); g.fillStyle='#c8992e'; g.globalAlpha=.5;
       g.beginPath(); g.moveTo(i,0); g.lineTo(i+8,0); g.lineTo(i+8+s,s); g.lineTo(i+s,s); g.fill(); g.restore(); }
-    R(g,0,0,s,1,'#5d5646'); }
+    R(g,0,0,s,1,'#5d5646'); },
+  /* 13 office plaster (M02) */ (g,s)=>{ R(g,0,0,s,s,'#93897a'); grain(g,s,.16);
+    R(g,0,0,s,2,'#a89e8d'); R(g,0,10,s,1,'#a49a89');                  // picture rail
+    R(g,0,s-7,s,7,'#6a6152'); R(g,0,s-7,s,1,'#7d7464');               // skirting
+    for(let i=0;i<8;i++){ const x=rr(0,s); R(g,x,rr(12,s-10),1,rr(2,6),'#857b6c'); } },
+  /* 14 office window with blinds (M02) */ (g,s)=>{ R(g,0,0,s,s,'#1a222c');
+    for(let y=6;y<s-6;y+=4){ R(g,4,y,s-8,2,'#b7ae98'); R(g,4,y+2,s-8,1,'#4a4a44'); } // slats
+    R(g,s/2-1,4,2,s-8,'#3a3a34');                                     // lift cord
+    R(g,0,0,s,4,'#5a5548'); R(g,0,s-4,s,4,'#494439');                 // frame
+    R(g,0,0,4,s,'#5a5548'); R(g,s-4,0,4,s,'#494439'); R(g,0,0,s,1,'#6d6759'); },
+  /* 15 rusted panel (M03) */ (g,s)=>{ R(g,0,0,s,s,'#5d5248'); grain(g,s,.28);
+    for(let y=0;y<s;y+=32) R(g,0,y,s,1,'#3d352e');
+    R(g,31,0,1,s,'#3d352e');
+    for(let i=0;i<26;i++){ const x=rr(2,s-4),y=rr(2,s-4),r=rr(1,4);
+      g.fillStyle=Math.random()<.5?'#7a4a28':'#8a5a30'; g.beginPath(); g.arc(x,y,r,0,7); g.fill(); }
+    for(let i=0;i<7;i++){ const x=rr(2,s-2); R(g,x,rr(30,s-16),2,rr(6,16),'#2e2620'); } // scorch runs
+    for(let x=4;x<s;x+=8){ R(g,x,3,2,2,'#766a5e'); R(g,x,s-5,2,2,'#766a5e'); } },
+  /* 16 warning chevrons (M03) */ (g,s)=>{ R(g,0,0,s,s,'#2a2622');
+    for(let i=-s;i<s+16;i+=16){ g.fillStyle='#c8992e'; g.beginPath();
+      g.moveTo(i,s); g.lineTo(i+8,s); g.lineTo(i+8+s,0); g.lineTo(i+s,0); g.fill(); }
+    grain(g,s,.20);
+    R(g,0,0,s,4,'#1c1916'); R(g,0,s-4,s,4,'#1c1916'); R(g,0,4,s,1,'#3a352e'); },
+  /* 17 painted cinderblock with conduit (M01) */ (g,s)=>{ R(g,0,0,s,s,'#5b6a7c'); grain(g,s,.24);
+    for(let y=0;y<s;y+=16){ R(g,0,y,s,2,'#43505f');
+      const off=(y/16)%2?0:16; for(let x=off;x<s;x+=32) R(g,x,y,2,16,'#43505f'); }
+    R(g,0,22,s,6,'#8d97a1'); R(g,0,22,s,2,'#b3bcc5'); R(g,0,27,s,1,'#5b636e');   // conduit run
+    for(let x=6;x<s;x+=16) R(g,x,20,3,10,'#6c757e');                  // brackets
+    R(g,44,18,10,14,'#4a525c'); R(g,46,20,6,3,'#39d7ff'); },          // junction box
+  /* 18 carpet floor (M02) */ (g,s)=>{ R(g,0,0,s,s,'#4a5560');
+    for(let y=0;y<s;y+=32) for(let x=0;x<s;x+=32)
+      if ((x/32+y/32)%2) R(g,x,y,32,32,'#414b55');
+    for(let i=0;i<120;i++){ const n=Math.random();
+      R(g,rr(0,s),rr(0,s),1,1, n<.5?'#525d68':'#3a444e'); } },
+  /* 19 warm office ceiling (M02) — diffuser in half the tiles only, so the
+     grid does not strobe when every cell carries a light */ (g,s)=>{
+    R(g,0,0,s,s,'#7b7568'); grain(g,s,.12);
+    for(let y=0;y<s;y+=32) for(let x=0;x<s;x+=32){
+      R(g,x,y,32,1,'#5d584d'); R(g,x,y,1,32,'#5d584d'); R(g,x+1,y+1,31,1,'#8c8678');
+      if ((x/32+y/32)%2===0){ R(g,x+7,y+11,18,10,'#efe9d2'); R(g,x+7,y+11,18,2,'#fffbe8');
+        for(let i=0;i<3;i++) R(g,x+7,y+14+i*3,18,1,'#c9c3ab'); } } },
+  /* 20 exposed duct ceiling (M01/M03) */ (g,s)=>{ R(g,0,0,s,s,'#20252d'); grain(g,s,.14);
+    R(g,0,8,s,20,'#49525e'); R(g,0,8,s,3,'#5f6a78'); R(g,0,25,s,3,'#333b45');    // main duct
+    for(let x=0;x<s;x+=16){ R(g,x,8,1,20,'#3a424e'); }                // duct seams
+    R(g,0,38,s,4,'#3a424e'); R(g,0,38,s,1,'#4a525e');                 // pipe pair
+    R(g,0,46,s,3,'#54473a'); R(g,0,46,s,1,'#6a5b4a');
+    for(let x=10;x<s;x+=24){ R(g,x,0,2,46,'#181c22'); }               // hangers
+    R(g,40,56,16,4,'#cfe0ea'); R(g,40,56,16,1,'#ffffff'); }           // one strip light
 ];
 const TEX = TEXFN.map(makeTex);
 
-function shade(px, levels, dark=.86, fog=.55){
+/* tint is a per-channel multiplier (the mission grade) and fogc the colour the
+   far levels sink into; both default to neutral so the sprite bakes — which
+   must stay mission-agnostic, they are baked once at boot — never pick up a
+   grade. The min() clamps matter: a 1.1 tint on a 240 channel overflows into
+   the neighbouring byte and paints magenta sparkles on every bright texel. */
+function shade(px, levels, dark=.86, fog=.55, tint=null, fogc=FOG){
   const out=[];
+  const tr=tint?tint[0]:1, tg=tint?tint[1]:1, tb=tint?tint[2]:1;
   for (let l=0;l<levels;l++){
     const t=l/(levels-1), f=1-t*dark, fm=t*fog;
     const d=new Uint32Array(px.length);
@@ -894,13 +1134,26 @@ function shade(px, levels, dark=.86, fog=.55){
       const p=px[i]; const a=p & 0xff000000;
       if (!a) { d[i]=0; continue; }              // keep cut-outs fully transparent
       const r=p&255, gg=(p>>8)&255, b=(p>>16)&255;
-      d[i]=(a | ((((b*f)+FOG[2]*fm)|0)<<16) | ((((gg*f)+FOG[1]*fm)|0)<<8) | (((r*f)+FOG[0]*fm)|0))>>>0;
+      d[i]=(a | (Math.min(255,(b*tb*f)+fogc[2]*fm)|0)<<16
+              | (Math.min(255,(gg*tg*f)+fogc[1]*fm)|0)<<8
+              | (Math.min(255,(r*tr*f)+fogc[0]*fm)|0))>>>0;
     }
     out.push(d);
   }
   return out;
 }
-const TEXL = TEX.map(t => shade(t.px, LV));
+/* Wall/floor shade tables are REBUILT by applyPalette when a mission's grade
+   differs from the one currently baked — ~1.3M ops, imperceptible on load. */
+let TEXL = TEX.map(t => shade(t.px, LV));
+let TEXPAL = '';                       // grade key currently baked into TEXL
+function applyPalette(pal, fogc){
+  pal = pal || [1,1,1]; fogc = fogc || FOG;
+  const key = pal.join()+'/'+fogc.join();
+  if (key === TEXPAL) return;
+  TEXPAL = key;
+  TEXL = TEX.map(t => shade(t.px, LV, .86, .55, pal, fogc));
+  FOGPX = pack(Math.min(255,fogc[0]+6), Math.min(255,fogc[1]+8), Math.min(255,fogc[2]+12));
+}
 
 /* --------------------------------- the face ------------------------------ */
 /* A 48x48 head plate. Default is drawn from scratch; the player can drop in a
@@ -1200,6 +1453,86 @@ PROP = {
               g.arc(40+Math.cos(a)*r,40+Math.sin(a)*r,rr(4,11),0,7); g.fill(); }
             g.globalAlpha=1; g.fillStyle='#ff8a3d'; g.beginPath(); g.arc(40,40,12,0,7); g.fill(); })
 };
+
+/* bullet-impact decals — 4 variants so a wall of pocks doesn't tile visibly */
+PROP.decal = [];
+for (let i=0;i<4;i++) PROP.decal.push(bake(12,12,(g,w,h)=>{
+  const cx=6+rr(-1,1), cy=6+rr(-1,1);
+  g.fillStyle='#20262e'; g.beginPath(); g.arc(cx,cy,rr(2.6,3.6),0,7); g.fill();
+  g.fillStyle='#0e1114'; g.beginPath(); g.arc(cx,cy,rr(1.2,1.9),0,7); g.fill();
+  for(let k=0;k<4;k++){ const a=rnd(7);
+    R(g,cx+Math.cos(a)*3.4,cy+Math.sin(a)*3.4,1,1, k%2?'#7a838e':'#3c434f'); }
+  if (i===3){ g.globalAlpha=.5; g.fillStyle='#191410';                // one scorchier variant
+    g.beginPath(); g.arc(cx,cy,5,0,7); g.fill(); g.globalAlpha=1; }
+}));
+
+/* weapon pickups: silhouettes of the guns themselves — see spriteOf */
+PROP.gunS = bake(36,24,(g,w,h)=>{                                    // KB-Klobb, long SMG
+  g.globalAlpha=.3; R(g,4,h-3,28,2,'#000'); g.globalAlpha=1;
+  R(g,0,11,4,3,'#2b303a'); R(g,4,9,24,6,'#3a3f47'); R(g,4,9,24,2,'#565c66');
+  R(g,28,10,7,3,'#2b303a'); R(g,33,11,3,1,'#1a1e24');
+  R(g,12,15,5,7,'#23282f'); R(g,12,15,5,1,'#3a3f47'); });
+PROP.gunH = bake(40,24,(g,w,h)=>{                                    // CAT6: VM.cat6 palette
+  g.globalAlpha=.3; R(g,4,h-3,32,2,'#000'); g.globalAlpha=1;
+  R(g,2,12,8,5,'#8d5a2b');                                           // wood stock
+  R(g,8,10,24,6,'#b9c2c9'); R(g,8,10,24,2,'#e3eaef'); R(g,8,15,24,1,'#7d8792');
+  R(g,30,9,9,4,'#c9d2da'); R(g,30,9,9,1,'#eef2f5');
+  R(g,16,16,9,4,'#c0392b'); R(g,16,16,9,1,'#e0574a');                // red pump
+  R(g,11,12,3,3,'#c8992e'); R(g,16,12,3,3,'#c8992e'); });            // brass shells
+PROP.gunP = bake(40,26,(g,w,h)=>{                                    // patch cannon
+  g.globalAlpha=.3; R(g,4,h-3,32,2,'#000'); g.globalAlpha=1;
+  R(g,4,11,28,8,'#3d4650'); R(g,4,11,28,2,'#5d6874');
+  R(g,32,12,6,6,'#2b323c'); R(g,34,14,3,3,'#0b1218');
+  R(g,8,7,12,4,'#39d7ff'); R(g,8,7,12,1,'#8be6ff');                  // patch cartridge
+  R(g,14,13,4,5,'#ffb02e'); R(g,22,13,4,5,'#ffb02e'); });
+
+/* scenery — set dressing, never interactive (loadLevel flags them deco) */
+PROP.desk = bake(48,40,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,4,h-2,42,2,'#000'); g.globalAlpha=1;
+  R(g,2,24,10,3,'#243038'); R(g,2,12,3,12,'#243038'); R(g,6,27,2,9,'#14161a');  // chair
+  R(g,4,36,8,2,'#14161a');
+  R(g,14,18,32,4,'#8d6a44'); R(g,14,18,32,1,'#b08a58');              // desk top
+  R(g,16,22,3,16,'#5a4430'); R(g,42,22,3,16,'#5a4430');
+  R(g,24,7,12,10,'#2b323c'); R(g,26,9,8,6,'#0b1218'); R(g,26,9,8,1,'#39d7ff');  // monitor
+  R(g,28,17,4,2,'#1a1e24'); });
+PROP.cooler = bake(28,48,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,5,h-2,18,2,'#000'); g.globalAlpha=1;
+  R(g,8,3,12,11,'#7fc4e0'); R(g,9,4,3,9,'#b8e2f2');                  // bottle
+  R(g,6,14,16,28,'#e8eef2'); R(g,6,14,16,2,'#ffffff'); R(g,20,14,2,28,'#b9c2c9');
+  R(g,10,27,3,3,'#39d7ff'); R(g,15,27,3,3,'#ff5d4a');                // taps
+  R(g,9,32,10,5,'#c9d2da'); R(g,6,42,16,4,'#9aa3ad'); });
+PROP.plant = bake(32,44,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,8,h-2,16,2,'#000'); g.globalAlpha=1;
+  g.fillStyle='#3d7a3a';
+  for(const [lx,ly,lw,lh] of [[14,6,4,26],[8,12,4,20],[20,10,4,22],[4,20,5,12],[23,18,5,14]])
+    R(g,lx,ly,lw,lh,'#3d7a3a');
+  R(g,15,8,2,22,'#4f9a48'); R(g,9,14,2,16,'#2c5c2a'); R(g,21,12,2,18,'#4f9a48');
+  R(g,10,30,12,10,'#8a5a30'); R(g,9,30,14,3,'#a8703c'); R(g,10,38,12,2,'#6a4322'); });
+PROP.pallet = bake(44,36,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,3,h-2,38,2,'#000'); g.globalAlpha=1;
+  R(g,6,16,16,14,'#a8845a'); R(g,6,16,16,3,'#c09a68'); R(g,13,16,2,14,'#6a4c2c');
+  R(g,22,8,16,22,'#98744a'); R(g,22,8,16,3,'#b08a58'); R(g,29,8,2,22,'#6a4c2c');
+  R(g,25,14,8,5,'#e8e8e0'); R(g,26,16,6,1,'#6a6a60');                // shipping label
+  R(g,4,30,36,4,'#8d6a44'); R(g,4,30,36,1,'#5a4430');
+  R(g,6,32,4,2,'#5a4430'); R(g,20,32,4,2,'#5a4430'); R(g,34,32,4,2,'#5a4430'); });
+PROP.sign = bake(28,44,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,4,h-2,20,2,'#000'); g.globalAlpha=1;
+  R(g,5,8,18,26,'#e8c840'); R(g,5,8,18,2,'#f4dc6a'); R(g,5,32,18,2,'#a8901e');
+  R(g,13,13,3,10,'#1a1508'); R(g,13,26,3,3,'#1a1508');               // the !
+  R(g,4,34,4,8,'#5a5548'); R(g,20,34,4,8,'#5a5548'); });
+PROP.cables = bake(44,26,(g,w,h)=>{
+  g.lineWidth=2;
+  for(const [c,dy] of [['#1a1e24',0],['#54473a',4],['#2b323c',7]]){
+    g.strokeStyle=c; g.beginPath(); g.moveTo(0,2+dy);
+    g.quadraticCurveTo(22,16+dy,44,2+dy); g.stroke(); }
+  R(g,18,12,8,5,'#3a3f47'); R(g,18,12,8,1,'#565c66'); });            // cable tie block
+PROP.ups = bake(32,40,(g,w,h)=>{
+  g.globalAlpha=.3; R(g,5,h-2,22,2,'#000'); g.globalAlpha=1;
+  R(g,6,6,20,32,'#14181e'); R(g,6,6,20,2,'#2a3038'); R(g,24,6,2,32,'#0a0d11');
+  for(let y=10;y<20;y+=3) R(g,9,y,10,1,'#242a32');                   // vents
+  R(g,21,10,3,3,'#4ade80'); R(g,21,15,3,3,'#ffb02e');
+  R(g,9,24,14,8,'#0d1015'); R(g,10,26,8,1,'#39d7ff');
+  g.fillStyle='#5b636e'; g.font='4px monospace'; g.fillText('UPS',10,37); });
 }
 
 /* ------------------------------- view models ---------------------------- */
@@ -1275,13 +1608,25 @@ function bakeViewModels(){
      #  concrete      %  bullet-scarred concrete   =  server rack
      |  cage bars     :  cubicle partition         G  glass
      +  door          L  keycard door              *  360 stencil
+     w  office plaster   B  window with blinds     C  cinderblock + conduit
+     r  rusted panel     V  warning chevrons
+     d  desk+chair  q  water cooler  p  potted plant  y  box pallet
+     g  standing sign  h  hanging cables  u  floor UPS  o  clean rack (scenery)
+     H  hidden door — wears the wall texture the level's secretTex names, so it
+        reads as plain wall until you are nearly touching it (one cache each)
      P  start         <  extraction                T  endpoint terminal
-     U  audit terminal (00 Agent only)             z  patch console
+     U  audit terminal (00 Agent only — the prop itself only spawns on 00,
+        otherwise lower clearances stare at a marker that completes nothing)
      X  rogue access point   $  ransomware node    n  the CFO
      b  backup tape   c  credential case           k  keycard
      a  ammo   m  medkit   v  body armour
      W  KB-Klobb   S  Cat6 shotgun   N  patch cannon
      1  phishing bot   2  ransomware goon   3  legacy tower   4  rogue AP drone
+   Optional per level: zones [{x0,y0,x1,y1,f,c}] paint per-cell floor/ceiling
+   (c:255 = open sky); agentSkip [[x,y],...] names the enemies AGENT clearance
+   goes without — hand-picked so every type the full map fields survives the
+   cut (the old ei%3 raster hack once deleted M01's only legacy tower);
+   secretTex is the wall texture the 'H' door imitates.
    ========================================================================== */
 const LEVELS = [
 {
@@ -1290,37 +1635,44 @@ const LEVELS = [
   brief:'Their previous provider left the domain unmanaged and the door propped open. '+
         'Get our agent onto the endpoints, kill the rogue access point somebody hung off the '+
         'core switch, and be out before the night shift arrives.',
-  floor:9, ceil:10, par:150,
+  /* cool cyan-blue night grade; exposed duct ceiling suits a sub-basement */
+  floor:9, ceil:20, par:150,
+  pal:[.88,.96,1.12], fog:[0x07,0x11,0x20], sky:[10,18,36],
+  /* the server hall stands on a raised grate floor; no skylight — this is a
+     sub-basement at 02:40, sky here would be a continuity error */
+  zones:[ {x0:1,y0:10,x1:30,y1:14,f:11} ],
+  secretTex:2,                      // the rack hollow's door wears a rack face
+  agentSkip:[ [25,1],[28,11],[17,18] ],   // two phish and the dock goon sit out
   map:[
-    '################################',
-    '#....a....#.........#....1.....#',
-    '#..P......#....T....#..........#',
+    '##*####*########################',
+    '#....a....C.........C....1.....#',
+    '#..P......C....T....C..........#',
     '#.........+.........+..===.....#',
-    '#..####...#..##+##..#..===..m..#',
-    '#..#..#...#..#...#..#..===.....#',
-    '#..#T.#...#..#.1.#..#.........2#',
-    '#..#+#....#..#####..#..........#',
-    '#.........#.........#..........#',
-    '####+#############+#######+#####',
-    '#..............4...............#',
-    '#..===..===..===..===..===..1..#',
-    '#..===..===..===..===..===.....#',
-    '#.......v.....W................#',
-    '#..3...........T...............#',
+    '#..CCCC...C..CC+CC..C..=v=..m..#',
+    '#..C..C...C..C...C..C..=H=.....#',
+    '#..CT.C...C..C.1.C..C.........2#',
+    '#..C+C....C..CCCCC..C..........#',
+    '#.........C.........C..........#',
+    '#CCC+CCCCCCCCCCCCC+CCCCCCC+CCCC#',
+    'C......h.......4.......h.......C',
+    'C..===..===..===..===..===..1..C',
+    'C..===..===..===..===..===.....C',
+    'C..u....v.....W............o...C',
+    'C..3...........T...............C',
     '%%%%%%%%%%%%%%%%+%%%%%%%%%%%%%%%',
-    '#.......|||||.........#.....2..#',
-    '#...X...|.k.|.........#..a.U...#',
-    '#.......||.||.........#........#',
-    '#.....................L........#',
-    '#.....................#...m..<.#',
-    '################################'
+    '%.......|||||.........#.....2..#',
+    '%...X...|.k.|..==.....#..a.U...#',
+    '%.......||.||....2....#.y..y...#',
+    '#.............a...==..L......g.#',
+    '#.............1.......*...m..<.#',
+    '#############################*##'
   ],
   objectives:[
     { tag:'A', text:'Deploy the management agent to every endpoint', kind:'term', need:3, diff:0 },
     { tag:'B', text:'Destroy the rogue access point on the core switch', kind:'ap', need:1, diff:0 },
     { tag:'C', text:'Recover the door keycard from the UPS cage', kind:'key', need:1, diff:0 },
     { tag:'D', text:'Pull the audit log from the terminal on the loading dock', kind:'audit', need:1, diff:2 },
-    { tag:'E', text:'Exit via the north stairwell', kind:'exit', need:1, diff:0 }
+    { tag:'E', text:'Exit down the loading-dock stairs, south-east', kind:'exit', need:1, diff:0 }
   ]
 },
 {
@@ -1329,30 +1681,40 @@ const LEVELS = [
   brief:'Somebody clicked. Ransomware is walking the share drives and the finance team is still '+
         'answering mail. Quarantine the infected nodes, get the CFO off the floor, and take the '+
         'last clean tape with you.',
-  floor:11, ceil:10, par:130,
+  /* warm beige fluorescent grade; carpet + office tile — daytime 14th floor */
+  /* par 170: the floor is the biggest map with the most objectives — the old
+     130 undercut M01's 150 and made the SLA line a foregone BREACHED */
+  floor:18, ceil:19, par:170,
+  pal:[1.12,1.04,.90], fog:[0x16,0x12,0x0b], sky:[150,158,172],
+  /* carpet stays the office default; the open plan and the service band get
+     hard tile with the exposed duct ceiling over the racks */
+  zones:[ {x0:1,y0:8,x1:30,y1:12,f:9,c:20},
+          {x0:1,y0:20,x1:30,y1:22,f:9,c:20} ],
+  secretTex:4,                  // the cubicle-island door is one more partition
+  agentSkip:[ [30,5],[25,12],[24,16] ],  // a phish, a goon, one legacy tower
   map:[
-    '################################',
-    '#....P.......#........#........#',
-    '#.......U....#...a....#...::...#',
-    '#..:::..:::..+........+...::...#',
-    '#..:.:..:.:..#...::...#...::...#',
-    '#..:::..:::..#...::...#.......1#',
-    '#..........1.#........#....2...#',
-    '#######+#########+########+#####',
-    '#..............................#',
+    '##BBBBBBBBB###BBBBBB###BBBBBBB##',
+    'B....P.....p.w........w........B',
+    'B.......q....w...a....w...::...B',
+    'B..:::..:::..+........+...::...B',
+    'B..:.:..:.:..w...::...w...::...B',
+    'B..:::..:::..w...::...w.......1B',
+    'B..d....d..1.w....d...w....2...B',
+    '#wwwwwG+Gwwwwwwww+wwwwwwww+wwww#',
+    '#....................4.........#',
     '#..===..$..===........===..===.#',
     '#..===.....===...n....===..===.#',
     '#..===..3..===........===..===.#',
-    '#..............................#',
-    '###########+########+###########',
-    '#.......#..........#....b.k....#',
-    '#...m...#...::::...#....S......#',
-    '#.......#...:..:...#....3...c..#',
-    '#...G...+...::::...+...........#',
-    '#.......#..........#...2.......#',
-    '#############+##################',
-    '#..........#.....$.......#.....#',
-    '#...v......+.............#..<..#',
+    '#........................2.....#',
+    '#wwwwwwwwww+wwwwwwww+wwwwwwwwww#',
+    '#.......G..........w....b.k....#',
+    '#...m...G...::::...w....S..d...#',
+    '#.......G...:c.:...w....3......#',
+    '#...d...+...:H::...+...........#',
+    '#.......G..........w...2.......#',
+    '#############+#############*#*##',
+    '#..........#.....$...1...#.....#',
+    '#...v..U...+.............#..<..#',
     '#..........#.............L..a..#',
     '################################'
   ],
@@ -1361,8 +1723,8 @@ const LEVELS = [
     { tag:'B', text:'Get the CFO out of the open-plan floor', kind:'npc', need:1, diff:0 },
     { tag:'C', text:'Recover the last clean backup tape', kind:'tape', need:1, diff:0 },
     { tag:'D', text:'Lift the elevator keycard from the finance desk', kind:'key', need:1, diff:0 },
-    { tag:'E', text:'Seize the compromised credential case', kind:'case', need:1, diff:1 },
-    { tag:'F', text:'Pull the audit log from the reception terminal', kind:'audit', need:1, diff:2 },
+    { tag:'E', text:'Seize the credential case nobody will admit to hiding', kind:'case', need:1, diff:1 },
+    { tag:'F', text:'Pull the audit log from the store-room terminal', kind:'audit', need:1, diff:2 },
     { tag:'G', text:'Leave by the service elevator', kind:'exit', need:1, diff:0 }
   ]
 },
@@ -1372,24 +1734,32 @@ const LEVELS = [
   brief:'Twenty-two years of uptime, no patches, and full domain admin. It has decided that '+
         'migration is an attack. Drop its shield at the patch consoles, decommission it, and '+
         'get clear before the room cooks.',
-  floor:12, ceil:10, par:180,
+  /* hot amber alert grade; the same duct ceiling reads sodium-lit under it */
+  floor:11, ceil:20, par:180,
+  pal:[1.14,.97,.86], fog:[0x1e,0x0e,0x07], sky:[46,18,10],
+  /* grate everywhere except a hazard-stripe apron ringing the DC itself — the
+     inner rect paints the centre back to grate so the stripes read as a ring */
+  zones:[ {x0:13,y0:3,x1:25,y1:11,f:12},
+          {x0:16,y0:5,x1:22,y1:9,f:11} ],
+  secretTex:2,                  // the escape closet hides behind a rack face
+  agentSkip:[ [28,2],[28,8],[20,12] ],   // a drone, the arena goon, one phish
   map:[
-    '################################',
-    '#..P.....#.....................#',
-    '#...v....#........m.........4..#',
+    '##################*#*###########',
+    '#..P.....r.....................#',
+    '#...v....V........m.........4..#',
     '#...z....+.....................#',
-    '#........#...==........==...a..#',
+    '#........V...==........==...a..#',
     '%%%%%+%%%%.....................#',
-    '#..2..S..#.....................#',
+    '#..2..S..V.....................#',
     '#...z....+.........Z...........#',
-    '#........#...==....a...==......#',
-    '#####+####.......b.............#',
-    '#..1..N..#.....................#',
-    '#...z....+..................v..#',
-    '#...a....#..4..................#',
-    '#####+##########################',
-    '#..m.a....................<....#',
-    '################################'
+    '#........V...==....a...==...2..#',
+    '#rrrr+rrrr.......b.............#',
+    '#..1..N..V.....................#',
+    '#...z....+..............==..v..#',
+    '#...a....V..4.......1..=am=....#',
+    '#%%%V+V%%%%%%%%%%%%%%%%%H%%%%%%#',
+    '#..m.a......h.......h.....<.g..#',
+    '#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#'
   ],
   objectives:[
     { tag:'A', text:'Drop the shield at all three patch consoles', kind:'console', need:3, diff:0 },
@@ -1400,15 +1770,24 @@ const LEVELS = [
 }
 ];
 
+/* Roster thinning is per-level agentSkip lists, not a count knob here — a
+   fraction can only cut in raster order, which is how M01 once lost its only
+   legacy tower to a %3. */
 const DIFFS = [
-  { name:'AGENT',        note:'Fewer hostiles, softer hits, four objectives.', dmg:.55, hp:.75, count:.7,  acc:.55 },
-  { name:'SECRET AGENT', note:'Full roster, one extra objective, they aim.',     dmg:1.0, hp:1.0, count:1.0, acc:.78 },
-  { name:'00 AGENT',     note:'Every objective, every hostile, and they hit.',   dmg:1.6, hp:1.4, count:1.0, acc:.93 }
+  { name:'AGENT',        note:'Fewer hostiles, softer hits, four objectives.', dmg:.55, hp:.75, acc:.55 },
+  /* dmg .8/acc .7, not the old 1.0/.78: with AGENT at .55/.55 and 00 at
+     1.6/.93 the middle rung sat within a whisker of 00's punishment — a
+     measured cliff (playtest bot: 15/15 AGENT, dead in 9s median on SECRET). */
+  { name:'SECRET AGENT', note:'Full roster, one extra objective, they aim.',     dmg:.8, hp:1.0, acc:.7 },
+  { name:'00 AGENT',     note:'Every objective, every hostile, and they hit.',   dmg:1.6, hp:1.4, acc:.93 }
 ];
 
 /* map chars -> wall texture (anything not listed is walkable floor) */
-const WALLTEX = { '#':0, '%':1, '=':2, '|':3, ':':4, 'G':5, '*':8 };
-const DOORTEX = { '+':6, 'L':7 };
+const WALLTEX = { '#':0, '%':1, '=':2, '|':3, ':':4, 'G':5, '*':8,
+                  'w':13, 'B':14, 'r':15, 'V':16, 'C':17 };
+/* 'H' is the hidden door; its value is only the FALLBACK disguise — loadLevel
+   prefers the level's own secretTex so each cache matches the wall it is in. */
+const DOORTEX = { '+':6, 'L':7, 'H':2 };
 </script>
 
 <script>
@@ -1422,7 +1801,8 @@ const G = {
   solid:null, tex:null, doorIx:null, doors:[], ents:[], objs:[], L:null,
   floorTex:9, ceilTex:10,
   time:0, kills:0, shots:0, hits:0, dmgTaken:0, heat:0,
-  meltdown:-1, shieldDown:true, bossAlive:false, tscale:1, shake:0, mapOn:true,
+  meltdown:-1, meltMax:0, shieldDown:true, bossAlive:false, tscale:1, shake:0, mapOn:true,
+  deadT:0, ckpt:null, bossSeen:false,
   cheats:{ god:false, ammo:false, allguns:false, bighead:false, paint:false, slow:false },
   tainted:false, doorNag:0
 };
@@ -1433,6 +1813,7 @@ const P = {
   mag:[7,0,0,0], ammo:{p9:24,smg:0,sh:0,pt:0},
   fireCd:0, reload:0, aim:0, recoil:0, muzzle:0, crouch:0,
   useHold:0, useTarget:null, hurt:0, alive:true, aimU:0, rx:0,
+  hitT:0, killT:0, dmgDir:[], lastFireT:-9,
   lockT:null, lockSX:0, lockSY:0
 };
 const AMMOCAP = { p9:120, smg:300, sh:48, pt:14 };
@@ -1467,18 +1848,21 @@ const BOSSTUNE = {
      player at keep range — a wider pair straddled the hit radius and made
      holding still the best dodge, the exact opposite of the design. */
   fan:      [[0], [-.35,.35], [-1,0,1]], // projectiles per volley
-  pspd:     [4.6, 5.8, 6.6],             // projectile speed, u/s (run speed is 3.48)
-  rof:      [1.8, 1.25, 1.0],            // fire-period multiplier
-  keep:     [8, 6.5, 5.5],               // range the rack tries to hold: farther = longer slug flight
-  droneCap: [1, 2, 4],                   // rogue APs alive at once
-  droneCd:  [16, 10, 8],                 // seconds between spawns
+  /* SECRET's middle rung was a cliff — a mediocre bot lived 10-15s where the
+     same bot went 15/15 on AGENT. 5.2 u/s at 7.5 keep gives the slug pair a
+     dodgeable flight time while the pair spacing still punishes standing. */
+  pspd:     [4.6, 4.9, 6.6],             // projectile speed, u/s (run speed is 3.48)
+  rof:      [1.8, 1.45, 1.0],            // fire-period multiplier
+  keep:     [8, 7.5, 5.5],               // range the rack tries to hold: farther = longer slug flight
+  droneCap: [1, 1, 4],                   // rogue APs alive at once
+  droneCd:  [16, 13, 8],                 // seconds between spawns
   melt:     [50, 40, 35],                // thermal shutdown fuse, seconds
-  hp:       [.5, 1.0, 1.36]              // rack plating multiplier
+  hp:       [.5, .85, 1.36]              // rack plating multiplier
 };
 /* Hostile aim tracks a MOVING agent imperfectly, GoldenEye-style: sprinting
    and crouching are real evasion, and lower clearances track worst. P.speed is
    1 at a walk, 1.48 at a sprint. */
-const MOVE_DODGE = [.35, .22, .12];
+const MOVE_DODGE = [.35, .30, .12];  // SECRET .30: part of the same cliff-softening pass as DIFFS[1]
 function aimPenalty(){
   return (1 - clamp(P.speed, 0, 1.6) * MOVE_DODGE[G.diff]) * (1 - P.crouch * .25);
 }
@@ -1504,22 +1888,44 @@ function loadLevel(li, di){
   G.tex   = new Uint8Array(G.W*G.H);
   G.doorIx= new Int16Array(G.W*G.H).fill(-1);
   G.doors = []; G.ents = []; G.floorTex = L.floor; G.ceilTex = L.ceil;
+  applyPalette(L.pal, L.fog);          // rebakes TEXL only when the grade changes
+  /* Per-cell floor/ceiling maps, defaulted to the level's single indices; the
+     optional zones list paints rectangles over them. Ceiling 255 = open sky. */
+  G.ftex = new Uint8Array(G.W*G.H).fill(L.floor);
+  G.ctex = new Uint8Array(G.W*G.H).fill(L.ceil);
+  G.zoned = !!(L.zones && L.zones.length);   // gates the per-cell path in render()
+  if (L.zones) for (const z of L.zones)
+    for (let zy=z.y0; zy<=z.y1; zy++) for (let zx=z.x0; zx<=z.x1; zx++){
+      if (zx<0||zy<0||zx>=G.W||zy>=G.H) continue;
+      if (z.f !== undefined) G.ftex[idx(zx,zy)] = z.f;
+      if (z.c !== undefined) G.ctex[idx(zx,zy)] = z.c;
+    }
+  { const sk = L.sky || [90,110,140];
+    SKYROW = new Uint32Array(RH);
+    for (let y=0;y<RH;y++){ const t = y/RH;   // brighter at the zenith
+      SKYROW[y] = pack(Math.min(255,sk[0]*(1.25-.5*t))|0,
+                       Math.min(255,sk[1]*(1.25-.5*t))|0,
+                       Math.min(255,sk[2]*(1.25-.5*t))|0); } }
   G.time=0; G.kills=0; G.shots=0; G.hits=0; G.dmgTaken=0; G.heat=0;
-  G.meltdown=-1; G.bossAlive=false; G.shieldDown = true; G.doorNag=0; G.shake=0;
+  G.meltdown=-1; G.meltMax=0; G.bossAlive=false; G.shieldDown = true; G.doorNag=0; G.shake=0;
+  G.deadT=0; G.ckpt=null; G.bossSeen=false; A.hbT=0;
+  /* The results asterisk marks the RUN, not the install: once every cheat is
+     back off, the next mission starts clean. */
+  { let on=false; for (const k in G.cheats) if (G.cheats[k]) on=true;
+    if (!on) G.tainted=false; }
 
   G.objs = L.objectives.filter(o => o.diff <= di).map(o => ({...o, have:0, done:false}));
   if (G.objs.some(o=>o.kind==='console')) G.shieldDown = false;
-
-  const thin = DIFFS[di].count;
-  let ei = 0;
 
   for (let y=0;y<G.H;y++) for (let x=0;x<G.W;x++){
     const ch = L.map[y][x], c = idx(x,y);
     if (WALLTEX[ch] !== undefined){ G.solid[c]=1; G.tex[c]=WALLTEX[ch]; continue; }
     if (DOORTEX[ch] !== undefined){
-      G.solid[c]=1; G.tex[c]=DOORTEX[ch];
+      G.solid[c]=1;
+      G.tex[c] = ch==='H' ? (L.secretTex ?? DOORTEX.H) : DOORTEX[ch];
       G.doorIx[c] = G.doors.length;
-      G.doors.push({ c, x:x+.5, y:y+.5, open:0, locked: ch==='L', was:0 });
+      G.doors.push({ c, x:x+.5, y:y+.5, open:0, locked: ch==='L',
+                     secret: ch==='H', found:0, was:0 });
       continue;
     }
     const px=x+.5, py=y+.5;
@@ -1527,7 +1933,9 @@ function loadLevel(li, di){
       case 'P': P.x=px; P.y=py; P.ang=0; break;
       case '<': ent({kind:'exit', sub:'exit', x:px, y:py, size:.40, zoff:.52, r:.6}); break;
       case 'T': ent({kind:'prop', sub:'term', x:px, y:py, size:.62, r:.36, hacked:false, prog:0}); break;
-      case 'U': ent({kind:'prop', sub:'audit', x:px, y:py, size:.62, r:.36, hacked:false, prog:0}); break;
+      /* the audit objective is 00-only; below 00 the terminal itself stays
+         home too, or the radar dangles an amber marker that completes nothing */
+      case 'U': if (di>=2) ent({kind:'prop', sub:'audit', x:px, y:py, size:.62, r:.36, hacked:false, prog:0}); break;
       case 'z': ent({kind:'prop', sub:'console', x:px, y:py, size:.55, r:.36, hacked:false, prog:0}); break;
       case 'X': ent({kind:'prop', sub:'ap', x:px, y:py, size:.44, zoff:.36, r:.3, hp:26}); break;
       case '$': ent({kind:'prop', sub:'infected', x:px, y:py, size:.76, r:.42, hp:70}); break;
@@ -1538,12 +1946,23 @@ function loadLevel(li, di){
       case 'a': ent({kind:'item', sub:'ammo', x:px, y:py, size:.38, r:.5}); break;
       case 'm': ent({kind:'item', sub:'med',  x:px, y:py, size:.38, r:.5}); break;
       case 'v': ent({kind:'item', sub:'vest', x:px, y:py, size:.40, r:.5}); break;
+      /* scenery: solid to nothing, hackable by nothing (deco flags them out of
+         the USE scan), shot straight through (no hp field) — set dressing only */
+      case 'd': case 'q': case 'p': case 'y': case 'g': case 'h': case 'u': case 'o': {
+        const art = {d:'desk', q:'cooler', p:'plant', y:'pallet',
+                     g:'sign', h:'cables', u:'ups', o:'clean'}[ch];
+        ent({kind:'prop', sub:'scenery', deco:true, art, x:px, y:py,
+             size: ch==='o' ? .74 : (ch==='h' ? .34 : .52),
+             zoff: ch==='h' ? .62 : 0, r:.3});
+        break;
+      }
       case 'W': ent({kind:'item', sub:'wpn1', x:px, y:py, size:.38, r:.5}); break;
       case 'S': ent({kind:'item', sub:'wpn2', x:px, y:py, size:.38, r:.5}); break;
       case 'N': ent({kind:'item', sub:'wpn3', x:px, y:py, size:.38, r:.5}); break;
       case '1': case '2': case '3': case '4': {
         const sub = {'1':'phish','2':'goon','3':'legacy','4':'drone'}[ch];
-        ei++; if (di===0 && ei%3===0) break;                 // Agent: lighter roster
+        /* AGENT sits out the level's hand-picked agentSkip cells (see legend) */
+        if (di===0 && L.agentSkip && L.agentSkip.some(s => s[0]===x && s[1]===y)) break;
         spawnEnemy(sub, px, py); break;
       }
       case 'Z': spawnEnemy('boss', px, py); G.bossAlive=true; break;
@@ -1555,13 +1974,14 @@ function loadLevel(li, di){
   P.mag=[7, G.cheats.allguns?20:0, G.cheats.allguns?5:0, G.cheats.allguns?3:0];
   P.ammo={ p9:42, smg:G.cheats.allguns?120:0, sh:G.cheats.allguns?20:0, pt:G.cheats.allguns?6:0 };
   P.fireCd=0; P.reload=0; P.aim=0; P.recoil=0; P.muzzle=0; P.useHold=0; P.hurt=0;
+  P.hitT=0; P.killT=0; P.dmgDir.length=0; P.lastFireT=-9;
 }
 
 /* ---------------------------- level self-audit --------------------------- */
 /* Objective logic passing tells you nothing about whether a player can WALK to
    the objective. M01 once shipped with its exit, keycard and objective B sealed
    behind a cage bar. This flood-fills every level at boot so that can't recur. */
-function auditLevel(li, lockedAreSolid){
+function auditLevel(li, lockedAreSolid, secretsAreSolid){
   const L = LEVELS[li], H = L.map.length, W = L.map[0].length;
   const solid = [], ents = [];
   let start = null;
@@ -1571,7 +1991,8 @@ function auditLevel(li, lockedAreSolid){
       const ch = L.map[y][x];
       const wall = WALLTEX[ch] !== undefined;
       const door = DOORTEX[ch] !== undefined;
-      solid[y][x] = wall || (door && lockedAreSolid && ch === 'L') ? 1 : 0;
+      solid[y][x] = wall || (door && ((lockedAreSolid && ch === 'L') ||
+                                      (secretsAreSolid && ch === 'H'))) ? 1 : 0;
       if (ch === 'P') start = [x,y];
       else if (!wall && !door && ch !== '.') ents.push({ ch, x, y });
     }
@@ -1634,7 +2055,7 @@ function spawnEnemy(sub, x, y){
 function fx(sub,x,y,z){ ent({kind:'fx', sub, x, y, zoff:z===undefined?.5:z, size:sub==='boom'?.9:.26, life:0, dead2:false}); }
 function boom(x,y,z,radius,dmg,fromPlayer){
   ent({kind:'fx', sub:'boom', x, y, zoff:z, size:1.0, life:0});
-  sfx('explode'); G.shake = Math.max(G.shake||0, 7);
+  sfxAt('explode', x, y); G.shake = Math.max(G.shake||0, 7);
   /* Splash respects walls like every other damage path (hitscan, enemy fire,
      aim assist all do): a rocket on a closed door must not clear the room
      behind it, and a corner is real cover from your own blast. */
@@ -1644,12 +2065,12 @@ function boom(x,y,z,radius,dmg,fromPlayer){
     if (d > radius) continue;
     if (!los(x, y, e.x, e.y)) continue;
     const f = 1 - d/radius;
-    if (e.kind==='enemy' && e.state!=='dead') hurtEnemy(e, dmg*f, true);
+    if (e.kind==='enemy' && e.state!=='dead') hurtEnemy(e, dmg*f, true, fromPlayer);
     else if (e.kind==='prop' && e.hp>0) hurtProp(e, dmg*f);
   }
   if (fromPlayer){
     const d = Math.sqrt(dist2(P.x,P.y,x,y));
-    if (d < radius*.75 && los(x, y, P.x, P.y)) hurtPlayer(dmg*.35*(1-d/(radius*.75)));
+    if (d < radius*.75 && los(x, y, P.x, P.y)) hurtPlayer(dmg*.35*(1-d/(radius*.75)), x, y);
   }
 }
 function los(ax,ay,bx,by){
@@ -1706,7 +2127,11 @@ function bump(kind, n=1){
       sfx('hack'); toast('OBJECTIVE '+o.tag+' — '+o.have+' OF '+o.need, 'cyan', 2000);
     }
     if (kind==='console' && G.objs.find(q=>q.kind==='console').done){
-      G.shieldDown = true; sfx('shield');
+      G.shieldDown = true; sfx('shield'); sfx('boss');   // the growl marks the duel opening, not only its end
+      /* Duel checkpoint: what the agent carried the moment the shield fell.
+         retryDuel restores exactly this, so the retry is the fight they earned. */
+      G.ckpt = { has:P.has.slice(), mag:P.mag.slice(),
+                 ammo:Object.assign({}, P.ammo), armor:P.armor };
       toast('LEGACY-DC01 SHIELD DOWN', 'red', 3600);
     }
     return;
@@ -1715,66 +2140,109 @@ function bump(kind, n=1){
 const objsLeft = () => G.objs.filter(o => !o.done && o.kind!=='exit');
 
 /* --------------------------------- damage ------------------------------- */
-function hurtPlayer(dmg){
+function hurtPlayer(dmg, sx, sy){
   if (G.cheats.god || !P.alive) return;
   dmg *= DIFFS[G.diff].dmg;
   G.dmgTaken += dmg;
-  if (P.armor > 0){ const a = Math.min(P.armor, dmg*.72); P.armor -= a; dmg -= a; }
+  let armored = false;
+  if (P.armor > 0){ const a = Math.min(P.armor, dmg*.72); P.armor -= a; dmg -= a; armored = a > dmg; }
   P.hp -= dmg; P.hurt = Math.min(1, P.hurt + dmg/55);
+  /* Directional pain: remember WHERE it came from, as a world bearing — the
+     HUD re-derives the screen side every frame so the arc rides a turning
+     view. Ring of 4: a boss triple-fan is three arcs, never an unbounded list. */
+  if (sx !== undefined){
+    if (P.dmgDir.length >= 4) P.dmgDir.shift();
+    P.dmgDir.push({ ang: Math.atan2(sy-P.y, sx-P.x), t:.8 });
+  }
   G.shake = Math.max(G.shake||0, Math.min(6, dmg/4));
-  sfx('hurt');
-  if (P.hp <= 0){ P.hp=0; P.alive=false; endMission(false, 'AGENT DOWN'); }
+  /* armour ate most of it: a metallic tink, not a flesh grunt — pairs with the
+     game-feel round's shorter hurt wash for absorbed hits */
+  sfx(armored ? 'tink' : 'hurt');
+  if (P.hp <= 0){
+    P.hp=0; P.alive=false;
+    /* Death beat: hold 'play' for a second while the camera drops and the hurt
+       wash pins — step() files the ticket when G.deadT runs out. Cutting to the
+       debrief on the same frame read as a crash, not a death. */
+    G.deadT = 1.0; G.deadWhy = 'AGENT DOWN'; P.hurt = 1;
+  }
 }
-function hurtEnemy(e, dmg, splash){
+function hurtEnemy(e, dmg, splash, fromPlayer){
   if (e.state==='dead') return;
-  if (e.sub==='boss' && !G.shieldDown){ sfx('shield'); fx('spark', e.x, e.y, .6); return; }
+  if (e.sub==='boss' && !G.shieldDown){ sfxAt('shield', e.x, e.y); fx('spark', e.x, e.y, .6); return; }
   e.hp -= dmg; e.pain = .22; e.alert = 1; e.state='chase';
-  if (!splash) sfx('flesh');
+  if (fromPlayer) P.hitT = .15;
+  if (!splash) sfxAt('flesh', e.x, e.y);
   if (e.hp <= 0){
     e.state='dead'; e.dying=0; e.deadFrame=0; e.zoff=0; G.kills++;
-    sfx('die'); G.heat = Math.min(1, G.heat+.2);
+    if (fromPlayer) P.killT = .3;
+    sfxAt('die', e.x, e.y); G.heat = Math.min(1, G.heat+.2);
     if (e.sub==='boss'){
       boom(e.x,e.y,.2,3.2,60,false); bump('boss');
-      G.bossAlive=false; G.meltdown = BOSSTUNE.melt[G.diff];
+      G.bossAlive=false; G.meltdown = G.meltMax = BOSSTUNE.melt[G.diff];
       toast('THERMAL SHUTDOWN IN '+BOSSTUNE.melt[G.diff]+' SECONDS — GET OUT', 'red', 5000);
       sfx('boss');
     } else if (ESPEC[e.sub].drop > 0 && Math.random() < .8){
       ent({kind:'item', sub:'wpn'+ESPEC[e.sub].drop, x:e.x, y:e.y, size:.4, r:.55});
     }
+    /* Dry-agent insurance: every reserve empty, and the mission has no vending
+       machine — a downed phish or goon always coughs up a crate (24 p9 minimum
+       via the pickup, since the PP7 is always carried). */
+    if ((e.sub==='phish' || e.sub==='goon') && !G.cheats.ammo &&
+        P.ammo.p9<=0 && P.ammo.smg<=0 && P.ammo.sh<=0 && P.ammo.pt<=0)
+      ent({kind:'item', sub:'ammo', x:e.x, y:e.y, size:.38, r:.5});
   }
 }
 function hurtProp(p, dmg){
   if (p.hp <= 0) return;
   p.hp -= dmg; fx('spark', p.x, p.y, .6);
   if (p.hp <= 0){
-    sfx('explode'); fx('boom', p.x, p.y, .1);
+    sfxAt('explode', p.x, p.y); fx('boom', p.x, p.y, .1);
     if (p.sub==='ap'){ bump('ap'); toast('ROGUE ACCESS POINT DESTROYED','gold'); }
     if (p.sub==='infected'){ bump('infected'); }
   }
 }
 
 /* --------------------------------- shooting ----------------------------- */
-function hitscan(ox,oy,ang,range,dmg,fromPlayer){
+/* Persistent bullet pocks. FIFO-capped: past DECAL_MAX the oldest one is
+   evicted, so a long CAT6 exchange never grows the entity list without bound
+   (every decal is a sprite sort+blit per frame). They sit at the same .12-in-
+   front-of-the-wall offset the impact puff uses, for the same reason: flush
+   with the wall they z-fight the zbuf and flicker column by column. */
+const DECAL_MAX = 48, DECAL_LIFE = 20;
+function spawnDecal(x,y,z){
+  let n=0, oldest=null;
+  for (const e of G.ents) if (e.kind==='fx' && e.sub==='decal' && !e.dead2){
+    n++; if (!oldest || e.life > oldest.life) oldest = e;
+  }
+  if (n >= DECAL_MAX && oldest) oldest.dead2 = true;
+  ent({kind:'fx', sub:'decal', x, y, zoff:z, size:.12,
+       life:0, decI:(Math.random()*4)|0, dead2:false});
+}
+/* pock: decals left on a wall hit — the CAT6 passes 2 per pellet so a blast
+   leaves a proper cluster, everything else marks once. */
+function hitscan(ox,oy,ang,range,dmg,fromPlayer,pock=1){
   const dx=Math.cos(ang), dy=Math.sin(ang);
   const st=.07;
   for (let t=.24; t<range; t+=st){
     const x=ox+dx*t, y=oy+dy*t;
     if (isSolid(x,y)){
       fx(G.cheats.paint?'paint':'puff', x-dx*.12, y-dy*.12, .32+rnd(.1));
-      sfx('impact'); return false;
+      for (let i=0;i<pock;i++)
+        spawnDecal(x-dx*.12+rr(-.03,.03), y-dy*.12+rr(-.03,.03), .30+rnd(.16));
+      sfxAt('impact', x, y); return false;
     }
     if (fromPlayer){
       for (const e of G.ents){
         if (e.dead2) continue;
         if (e.kind==='enemy' && e.state!=='dead'){
-          if (dist2(e.x,e.y,x,y) < e.r*e.r){ hurtEnemy(e, dmg); G.hits++;
+          if (dist2(e.x,e.y,x,y) < e.r*e.r){ hurtEnemy(e, dmg, false, true); G.hits++;
             fx(G.cheats.paint?'paint':'spark', x, y, .3+rnd(.3)); return true; }
         } else if (e.kind==='prop' && e.hp>0){
           if (dist2(e.x,e.y,x,y) < e.r*e.r){ hurtProp(e, dmg); G.hits++; return true; }
         }
       }
     } else {
-      if (dist2(P.x,P.y,x,y) < .10){ hurtPlayer(dmg); return true; }
+      if (dist2(P.x,P.y,x,y) < .10){ hurtPlayer(dmg, ox, oy); return true; }
     }
   }
   return false;
@@ -1880,7 +2348,7 @@ function playerFire(){
   P.fireCd = w.rof;
   P.recoil = 1; P.muzzle = .07;
   sfx(w.sfx);
-  G.shots++; G.heat = Math.min(1, G.heat + .18);
+  G.shots++; G.heat = Math.min(1, G.heat + .18); P.lastFireT = G.time;
   const tgt = (AIM_ASSIST && P.lockT && !P.lockT.dead2 && P.lockT.state!=='dead') ? P.lockT : null;
   /* A locked shot goes to the body's centre with most of the spread taken off;
      the shotgun keeps its pattern, it just centres it. */
@@ -1901,7 +2369,7 @@ function playerFire(){
          spd:11, life:0, size:.24, zoff:.48, mine:true, dmg:w.dmg});
   } else {
     const h0 = G.hits;
-    for (let i=0;i<w.pellets;i++) hitscan(P.x,P.y,aim + rr(-sp,sp), w.range, w.dmg, true);
+    for (let i=0;i<w.pellets;i++) hitscan(P.x,P.y,aim + rr(-sp,sp), w.range, w.dmg, true, w.pellets>1?2:1);
     if (G.hits > h0) G.hits = h0 + 1;          // one trigger pull = at most one hit
   }
   for (const e of G.ents) if (e.kind==='enemy' && e.state!=='dead' && dist2(e.x,e.y,P.x,P.y)<144) wake(e);
@@ -1915,6 +2383,7 @@ function startReload(){
 }
 function finishReload(){
   const w=WEAPS[P.w];
+  sfx('bolt');                       // the 2.3-2.85s reloads used to end silently
   if (G.cheats.ammo){ P.mag[P.w]=w.mag; return; }
   const want = w.mag - P.mag[P.w], got = Math.min(want, P.ammo[w.ammo]);
   P.mag[P.w] += got; P.ammo[w.ammo] -= got;
@@ -1922,10 +2391,10 @@ function finishReload(){
 function switchWeapon(d){
   for (let i=1;i<=4;i++){
     const n = (P.w + d*i + 8) % 4;
-    if (P.has[n]){ if (n!==P.w){ P.w=n; P.reload=0; P.fireCd=Math.max(P.fireCd,.18); sfx('reload'); } return; }
+    if (P.has[n]){ if (n!==P.w){ P.w=n; P.reload=0; P.fireCd=Math.max(P.fireCd,.18); sfx('swap'); } return; }
   }
 }
-function pickWeapon(n){ if (P.has[n] && n!==P.w){ P.w=n; P.reload=0; P.fireCd=Math.max(P.fireCd,.18); sfx('reload'); } }
+function pickWeapon(n){ if (P.has[n] && n!==P.w){ P.w=n; P.reload=0; P.fireCd=Math.max(P.fireCd,.18); sfx('swap'); } }
 
 /* ----------------------------------- AI --------------------------------- */
 /* Guards need a beat to react, or a doorway becomes an instant death sentence. */
@@ -1933,7 +2402,7 @@ function wake(e){
   if (e.alert || e.state==='dead') return;
   e.alert = 1; e.state = 'chase';
   e.cd = Math.max(e.cd, rr(.55, 1.05) * (G.diff===2 ? .7 : 1));
-  sfx('alert');
+  sfxAt('alert', e.x, e.y);
 }
 
 function updateEnemy(e, dt){
@@ -1982,18 +2451,43 @@ function updateEnemy(e, dt){
       } else e.stuck = 0;
       if (moved){ e.moving=true; e.walk += dt*(sp*2.2); }
     }
+    /* Legacy tower wind-up: the queued 5-pellet burst from the block below.
+       It fires at wherever the player IS when the capacitors finish, sight or
+       not — breaking the line during the whine is the counterplay. */
+    if (e.pending > 0){
+      e.pending -= dt;
+      e.fireFlash = Math.max(e.fireFlash, .1);
+      if (e.pending % .12 < dt)
+        fx('spark', e.x+Math.cos(e.ang)*.55, e.y+Math.sin(e.ang)*.55, .5);
+      if (e.pending <= 0){
+        const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)) * aimPenalty(), .06, .95);
+        const spread = (1-acc) * .44;
+        const fall = clamp(1 - dd/(s.sight*1.5), .34, 1);
+        sfxAt('shotgun', e.x, e.y);
+        for (let i=0;i<(s.pellets||1);i++)
+          hitscan(e.x, e.y, Math.atan2(P.y-e.y, P.x-e.x) + rr(-spread,spread), s.sight+2, s.dmg*fall, false);
+        for (const o of G.ents) if (o.kind==='enemy' && o!==e && dist2(o.x,o.y,e.x,e.y)<100) wake(o);
+      }
+    }
     e.cd -= dt;
     if (see && e.cd <= 0 && dd < s.sight){
       e.cd = s.rof * rr(.8,1.3);
       e.fireFlash = .12;
-      const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)) * aimPenalty(), .06, .95);
-      const spread = (1-acc) * .44;
-      const pel = s.pellets || 1;
-      const fall = clamp(1 - dd/(s.sight*1.5), .34, 1);      // range falloff
-      sfx(e.sub==='legacy' ? 'shotgun' : (e.sub==='drone' ? 'smg' : 'pistol'));
-      for (let i=0;i<pel;i++)
-        hitscan(e.x, e.y, Math.atan2(P.y-e.y, P.x-e.x) + rr(-spread,spread), s.sight+2, s.dmg*fall, false);
-      for (const o of G.ents) if (o.kind==='enemy' && o!==e && dist2(o.x,o.y,e.x,e.y)<100) wake(o);
+      if (e.sub==='legacy'){
+        /* .4s tell before the burst: whining caps, sparks off the barrel arm,
+           the fire pose held early — reuses existing fx/sfx, no new audio */
+        e.pending = .4; e.fireFlash = .45; sfxAt('hack', e.x, e.y);
+        fx('spark', e.x+Math.cos(e.ang)*.55, e.y+Math.sin(e.ang)*.55, .5);
+      } else {
+        const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)) * aimPenalty(), .06, .95);
+        const spread = (1-acc) * .44;
+        const pel = s.pellets || 1;
+        const fall = clamp(1 - dd/(s.sight*1.5), .34, 1);      // range falloff
+        sfxAt(e.sub==='drone' ? 'smg' : 'pistol', e.x, e.y);
+        for (let i=0;i<pel;i++)
+          hitscan(e.x, e.y, Math.atan2(P.y-e.y, P.x-e.x) + rr(-spread,spread), s.sight+2, s.dmg*fall, false);
+        for (const o of G.ents) if (o.kind==='enemy' && o!==e && dist2(o.x,o.y,e.x,e.y)<100) wake(o);
+      }
     }
   } else {
     e.cd -= dt;
@@ -2002,6 +2496,12 @@ function updateEnemy(e, dt){
       moveActor(e, e.x+Math.cos(e.ang)*s.spd*.35*dt, e.y+Math.sin(e.ang)*s.spd*.35*dt, s.r);
       e.moving=true; e.walk += dt*1.6;
     } else e.ang += 2.4*dt;
+  }
+  /* footsteps for the near ones only — a full room of striding guards under
+     gunfire is mud, but the one flanking you at 3 tiles is information */
+  if (e.moving && dd < 3.2){
+    const wi = (e.walk/2.6)|0;
+    if (wi !== e.stepI){ e.stepI = wi; sfxAt('stepE', e.x, e.y); }
   }
 }
 
@@ -2017,12 +2517,16 @@ function updateBoss(e, dt, dd, see){
   const n = Math.hypot(ax,ay)||1;
   moveActor(e, e.x+ax/n*s.spd*dt, e.y+ay/n*s.spd*dt, s.r);
   e.retarget -= dt; if (e.retarget<=0){ e.retarget=rr(1.4,3); e.strafe*=-1; }
+  /* boss intro stinger: the growl on FIRST line of sight, not just at death */
+  if (see && !G.bossSeen){ G.bossSeen = true; sfx('boss'); }
+  { const wi = (e.walk/2.2)|0;
+    if (wi !== e.stepI){ e.stepI = wi; sfxAt('stepBoss', e.x, e.y); } }
 
   e.cd -= dt;
   if (see && e.cd <= 0){
     e.cd = s.rof * (G.shieldDown ? .8 : 1.15) * BOSSTUNE.rof[G.diff];
     e.fireFlash = .18;
-    sfx('cannon');
+    sfxAt('cannon', e.x, e.y);
     for (const i of BOSSTUNE.fan[G.diff])
       ent({kind:'proj', sub:'boss', x:e.x, y:e.y, ang:toP + i*.16 + rr(-.05,.05),
            spd:BOSSTUNE.pspd[G.diff], life:0, size:.30, zoff:.56, mine:false, dmg:s.dmg});
@@ -2041,10 +2545,31 @@ function updateBoss(e, dt, dd, see){
 
 /* -------------------------------- the step ------------------------------ */
 function step(dt){
+  /* Death beat: the corpse is not steerable. The camera sinks, the hurt wash
+     holds, the world waits a breath, then endMission reopens the ticket. */
+  if (!P.alive){
+    G.deadT -= dt;
+    P.camZ = lerp(P.camZ, .12, Math.min(1, dt*3.2));
+    P.hurt = Math.max(P.hurt, .85);
+    if (G.shake) G.shake = Math.max(0, G.shake - dt*22);
+    if (G.deadT <= 0) endMission(false, G.deadWhy || 'AGENT DOWN');
+    return;
+  }
   G.time += dt;
   G.heat = Math.max(0, G.heat - dt*.14);
   if (G.shake) G.shake = Math.max(0, G.shake - dt*22);
   P.hurt = Math.max(0, P.hurt - dt*1.5);
+  /* low-HP heartbeat: quickens as hp drops, stops on death (early return above)
+     and the moment a medkit lifts hp back over the line */
+  if (P.hp < 30){
+    A.hbT -= dt;
+    if (A.hbT <= 0){ A.hbT = hbPeriod(P.hp); sfx('heart'); }
+  } else A.hbT = 0;
+  if (P.hitT > 0) P.hitT -= dt;
+  if (P.killT > 0) P.killT -= dt;
+  for (let i=P.dmgDir.length-1; i>=0; i--){
+    P.dmgDir[i].t -= dt; if (P.dmgDir[i].t <= 0) P.dmgDir.splice(i,1);
+  }
 
   /* Look. Captured input is raw and linear: every pixel the mouse moved turns
      the view by LOOK_PX * sensitivity, this frame, no cap. That is what every
@@ -2053,12 +2578,19 @@ function step(dt){
      and can jump when the pointer re-enters the window.                      */
   const idle = performance.now() - M.lastMove > MOVE_STALE_MS;
   let yaw = 0;
+  /* Aim mode narrows the FOV 42%; the same raw counts must cover 42% less
+     world, or zooming in makes the reticle FASTER across the target. Every
+     look path below (captured, touch, drag, free-look reticle) scales by it. */
+  const zsens = 1 - P.aim*.42;
+  /* Applied to every pitch path below — an invert option that only covered the
+     captured mouse would silently un-invert on fallback to free look. */
+  const ydir = INVERT_Y ? -1 : 1;
 
   if (M.locked){                                   /* captured: classic mouse look */
     const mdx = M.dx, mdy = M.dy;
     M.dx = 0; M.dy = 0;
-    yaw = mdx * LOOK_PX * M.sens;
-    P.pitch = clamp(P.pitch - mdy * PITCH_PX * M.sens, -PITCH_MAX, PITCH_MAX);
+    yaw = mdx * LOOK_PX * M.sens * zsens;
+    P.pitch = clamp(P.pitch - mdy*ydir * PITCH_PX * M.sens * zsens, -PITCH_MAX, PITCH_MAX);
     P.rx = 0; P.turning = false;
     M.sumF = mdx;
   } else {
@@ -2067,15 +2599,22 @@ function step(dt){
     const mdy = clamp(M.dy, -MAX_FRAME_PX, MAX_FRAME_PX);
     M.dx = 0; M.dy = 0;
     M.sumF = mdx;
-    if (LOOKMODE === 'drag'){                      /* only turns while held */
+    if (LOOKMODE === 'touch'){                     /* the look finger IS the view */
+      /* Direct drag, both axes, no gate, no decay: the reticle stays pinned to
+         centre and P.pitch finally answers a vertical thumb. M.tsens is the
+         touch sensitivity dial (Options slider, persisted).                   */
+      yaw = mdx * LOOK_PX * DRAG_MUL * M.sens * M.tsens * zsens;
+      P.pitch = clamp(P.pitch - mdy*ydir * .10 * M.sens * M.tsens * zsens, -PITCH_MAX, PITCH_MAX);
+      P.rx = 0; P.turning = false;
+    } else if (LOOKMODE === 'drag'){               /* only turns while held */
       if (M.dragging || M.tlook){                /* a look finger counts as holding */
-        yaw = mdx * LOOK_PX * DRAG_MUL * M.sens;
-        P.pitch = clamp(P.pitch - mdy * .10 * M.sens, -PITCH_MAX, PITCH_MAX);
+        yaw = mdx * LOOK_PX * DRAG_MUL * M.sens * zsens;
+        P.pitch = clamp(P.pitch - mdy*ydir * .10 * M.sens * zsens, -PITCH_MAX, PITCH_MAX);
       }
       P.rx = 0; P.turning = false;
     } else {                                       /* free: reticle + edge turn */
-      P.rx = clamp(P.rx + mdx * RET_PX * M.sens, -RET_EDGE, RET_EDGE);
-      P.pitch = clamp(P.pitch - mdy * .085 * M.sens, -PITCH_MAX, PITCH_MAX);
+      P.rx = clamp(P.rx + mdx * RET_PX * M.sens * zsens, -RET_EDGE, RET_EDGE);
+      P.pitch = clamp(P.pitch - mdy*ydir * .085 * M.sens * zsens, -PITCH_MAX, PITCH_MAX);
       /* Aim mode widens the free travel before the view swings, the way holding R
          let you place a shot without turning. */
       P.turnAt = RET_TURN + P.aim * .18;
@@ -2146,6 +2685,10 @@ function step(dt){
     moveActor(P, P.x+dx*dt, P.y+dy*dt, .26);
     P.speed = base*g/2.35;
     P.bob += dt*base*g*3.4;
+    /* footsteps ride the same bob cycle the camera does — one stride per half
+       period, quiet enough to sit under any gunfire, silent when creeping */
+    const bi = (P.bob/Math.PI)|0;
+    if (bi !== A.stepI){ A.stepI = bi; if (!held.crouch && P.speed > .3) sfx('stepP'); }
   } else P.bob += dt*1.1;
   unstick(P);
 
@@ -2163,23 +2706,24 @@ function step(dt){
     if (w.auto || !P.firedOnce){ if (playerFire()){ P.firedOnce = true; M.fireEdge = 0; } }
   } else P.firedOnce = false;
 
-  /* doors */
+  /* doors. A secret door holds its disguise until the player is nearly
+     touching it — the normal radius would pop it open from the next aisle. */
   for (const d of G.doors){
-    let want = dist2(P.x,P.y,d.x,d.y) < 2.6;
+    let want = dist2(P.x,P.y,d.x,d.y) < (d.secret ? 1.2 : 2.6);
     if (want && d.locked && P.keys<=0){
       want = false;
-      if (G.doorNag <= 0){ G.doorNag = 3; sfx('dryfire'); toast('KEYCARD REQUIRED','red',2200); }
+      if (G.doorNag <= 0){ G.doorNag = 3; sfx('denied'); toast('KEYCARD REQUIRED','red',2200); }
     }
     if (!want) for (const e of G.ents){
       if (e.kind!=='enemy' || e.state==='dead') continue;
       const ed = dist2(e.x,e.y,d.x,d.y);
       /* never drop a door on a body standing in it; alert guards may hold any
-         door the player can already open */
-      if ((ed < 1 && d.open > 0) || (e.alert && (!d.locked || P.keys>0) && ed < 1.9)){ want=true; break; }
+         door the player can already open — but never give a secret away */
+      if ((ed < 1 && d.open > 0) || (!d.secret && e.alert && (!d.locked || P.keys>0) && ed < 1.9)){ want=true; break; }
     }
     d.open = clamp(d.open + (want ? dt*2.1 : -dt*1.3), 0, 1);
     G.solid[d.c] = d.open >= .9 ? 0 : 1;
-    if (want && !d.was){ d.was=1; sfx('door'); } else if (!want && d.was && d.open<=0) d.was=0;
+    if (want && !d.was){ d.was=1; d.found=1; sfxAt('door', d.x, d.y); } else if (!want && d.was && d.open<=0) d.was=0;
   }
   G.doorNag -= dt;
 
@@ -2196,6 +2740,7 @@ function step(dt){
     if (e.kind==='fx'){
       e.life += dt;
       if (e.sub==='boom'){ e.size = .8 + e.life*2.0; if (e.life>.42) e.dead2=true; }
+      else if (e.sub==='decal'){ if (e.life>DECAL_LIFE) e.dead2=true; }   // pocks linger, never drift
       else if (e.life>.30) e.dead2=true;
       continue;
     }
@@ -2211,7 +2756,7 @@ function step(dt){
       }
       if (isSolid(nx,ny) || cut || e.life>4){
         e.dead2=true;
-        if (e.mine) boom(e.x,e.y,.15,2.4,e.dmg*2.6,true); else { fx('spark',e.x,e.y,e.zoff); sfx('impact'); }
+        if (e.mine) boom(e.x,e.y,.15,2.4,e.dmg*2.6,true); else { fx('spark',e.x,e.y,e.zoff); sfxAt('impact',e.x,e.y); }
         continue;
       }
       e.x=nx; e.y=ny;
@@ -2223,7 +2768,10 @@ function step(dt){
             e.dead2=true; G.hits++; boom(e.x,e.y,.15,2.4,e.dmg*2.6,true); break;
           }
         }
-      } else if (dist2(P.x,P.y,e.x,e.y) < .18){ e.dead2=true; hurtPlayer(e.dmg); fx('spark',e.x,e.y,1.0); }
+      /* the slug is ON the player at impact, so its position is a useless pain
+         bearing — hand hurtPlayer a point back along its flight instead */
+      } else if (dist2(P.x,P.y,e.x,e.y) < .18){ e.dead2=true;
+        hurtPlayer(e.dmg, P.x - Math.cos(e.ang), P.y - Math.sin(e.ang)); fx('spark',e.x,e.y,1.0); }
       continue;
     }
     if (e.kind==='item' && dist2(P.x,P.y,e.x,e.y) < .38) pickup(e);
@@ -2236,7 +2784,7 @@ function step(dt){
   let best = 9;
   for (const e of G.ents){
     if (e.kind!=='prop') continue;
-    if (e.sub==='ap' || e.sub==='infected') continue;
+    if (e.sub==='ap' || e.sub==='infected' || e.deco) continue;
     if (e.hacked || e.rescued) continue;
     const d2 = dist2(P.x,P.y,e.x,e.y);
     if (d2 > 2.4 || d2 > best) continue;
@@ -2253,7 +2801,15 @@ function step(dt){
 
   /* meltdown */
   if (G.meltdown > 0){
+    const prev = G.meltdown;
     G.meltdown -= dt;
+    /* the fuse is audible: a blip on every whole-second boundary, doubled and
+       higher once ten seconds remain — the visual pulse already landed */
+    if ((prev|0) !== (G.meltdown|0)){
+      sfx(G.meltdown < 10 ? 'tick2' : 'tick');
+      /* last five seconds: a room-shudder heartbeat on each remaining second */
+      if (G.meltdown < 5) G.shake = Math.max(G.shake, 2.5);
+    }
     if (G.meltdown <= 0) endMission(false, 'THERMAL SHUTDOWN');
   }
 }
@@ -2295,10 +2851,18 @@ function pickup(e){
       if (!isNew && P.ammo[a] >= AMMOCAP[a]) return;          // full: leave it on the floor
       P.has[i]=true; P.ammo[a]=Math.min(AMMOCAP[a], P.ammo[a]+add);
       if (isNew){
-        P.mag[i]=w[i].mag; toast(PICKLINE[i],'gold',3400); P.w=i;
-        /* Inherit a switch, not the old gun's reload: picking this up mid-reload
-           used to leave a full magazine unfireable for up to 2.9 seconds. */
-        P.reload = 0; P.fireCd = Math.max(P.fireCd, .18);
+        P.mag[i]=w[i].mag; toast(PICKLINE[i],'gold',3400);
+        /* Auto-switch only an UPGRADE, and only to a calm hand: yanking the
+           shotgun away from a trigger pulled half a second ago lost fights.
+           A completely dry current gun switches to anything, regardless. */
+        const dry  = !G.cheats.ammo && P.mag[P.w]<=0 && P.ammo[w[P.w].ammo]<=0;
+        const calm = P.fireCd<=0 && G.time - P.lastFireT > 1.5;
+        if ((i > P.w && calm) || dry){
+          P.w=i;
+          /* Inherit a switch, not the old gun's reload: picking this up mid-reload
+             used to leave a full magazine unfireable for up to 2.9 seconds. */
+          P.reload = 0; P.fireCd = Math.max(P.fireCd, .18);
+        }
       }
       else toast('AMMUNITION','cyan',1200);
       break;
@@ -2318,7 +2882,12 @@ function tryExit(){
 }
 
 /* -------------------------------- renderer ------------------------------ */
-const FOGPX = pack(FOG[0]+6, FOG[1]+8, FOG[2]+12);
+/* `let`, not const: applyPalette retints it with each mission's fog colour. */
+let FOGPX = pack(FOG[0]+6, FOG[1]+8, FOG[2]+12);
+/* Ceiling index 255 is open sky: a per-row gradient built by loadLevel from the
+   level's sky colour, indexed by screen row (close enough — the horizon only
+   wanders a few rows with pitch and bob). */
+let SKYROW = null;
 
 /* One wall column. dOff > 0 means a rising door: the rows whose texture row
    would fall past the bottom of the texture are the gap under the door, and
@@ -2355,27 +2924,46 @@ function render(){
   const PROJ = RH / zoom;
   const dirX = Math.cos(P.ang), dirY = Math.sin(P.ang);
   const planeX = -dirY*FOV_N*zoom, planeY = dirX*FOV_N*zoom;
-  const shk = G.shake ? (Math.random()-.5)*G.shake : 0;
+  const shk = G.shake ? (Math.random()-.5)*(REDUCED_MOTION ? Math.min(G.shake, 1.2) : G.shake) : 0;
   const bobY = Math.sin(P.bob*2)*1.6*P.speed + Math.sin(P.bob)*.6;
   const horizon = Math.round(HALFH + P.pitch + bobY + shk - P.recoil*7);
 
-  /* floor + ceiling */
-  const ft = TEXL[G.floorTex], ct = TEXL[G.ceilTex];
+  /* floor + ceiling — per-CELL texture via G.ftex/G.ctex, so zones can carpet
+     one office or open one atrium to the sky (ceiling index 255). The per-pixel
+     cell lookup measured +0.3ms on a 0.42ms render, so an unzoned level takes
+     the old uniform row loop instead and pays nothing. Rays run out to rowD 70,
+     far outside the map, so out-of-bounds falls back to the level default. */
+  const gw = G.W, gh = G.H, ftex = G.ftex, ctex = G.ctex;
   const rx0 = dirX - planeX, ry0 = dirY - planeY;
   const rx1 = dirX + planeX, ry1 = dirY + planeY;
   for (let y=0;y<RH;y++){
     const p = y - horizon;
-    let rowD, tset;
-    if (p > 0){ rowD = (P.camZ*PROJ)/p; tset = ft; }
-    else if (p < 0){ rowD = ((1-P.camZ)*PROJ)/(-p); tset = ct; }
+    let rowD, tmap, dflt;
+    if (p > 0){ rowD = (P.camZ*PROJ)/p; tmap = ftex; dflt = G.floorTex; }
+    else if (p < 0){ rowD = ((1-P.camZ)*PROJ)/(-p); tmap = ctex; dflt = G.ceilTex; }
     else { buf.fill(FOGPX, y*RW, y*RW+RW); continue; }
     if (rowD > 70 || !isFinite(rowD)){ buf.fill(FOGPX, y*RW, y*RW+RW); continue; }
     const sl = clamp((rowD/MAXDIST*(LV-1))|0, 0, LV-1);
-    const t = tset[sl];
     const sx = rowD*(rx1-rx0)/RW, sy = rowD*(ry1-ry0)/RW;
     let wx = P.x + rowD*rx0, wy = P.y + rowD*ry0;
     let o = y*RW;
+    if (!G.zoned){
+      /* uniform level: skip the per-pixel cell lookup entirely — it costs a
+         real ~0.3ms/frame and buys nothing when every cell is the default */
+      const t = TEXL[dflt][sl];
+      for (let x=0;x<RW;x++){
+        buf[o++] = t[((((wy*64)|0)&63)<<6) + (((wx*64)|0)&63)];
+        wx += sx; wy += sy;
+      }
+      continue;
+    }
+    let lastTi = -1, t = null;
+    const sky = SKYROW ? SKYROW[y] : FOGPX;
     for (let x=0;x<RW;x++){
+      const mx = wx|0, my = wy|0;
+      const ti = (wx>=0 && wy>=0 && mx<gw && my<gh) ? tmap[my*gw+mx] : dflt;
+      if (ti === 255){ buf[o++] = sky; wx += sx; wy += sy; continue; }
+      if (ti !== lastTi){ t = TEXL[ti][sl]; lastTi = ti; }
       buf[o++] = t[((((wy*64)|0)&63)<<6) + (((wx*64)|0)&63)];
       wx += sx; wy += sy;
     }
@@ -2453,6 +3041,7 @@ function spriteOf(e){
       case 'ap': return e.hp>0 ? PROP.ap : PROP.apDead;
       case 'infected': return e.hp>0 ? PROP.infected : PROP.clean;
       case 'npc': return PROP.npc;
+      case 'scenery': return PROP[e.art] || null;
     }
   }
   if (e.kind==='item'){
@@ -2460,7 +3049,9 @@ function spriteOf(e){
       case 'ammo': return PROP.ammo9; case 'med': return PROP.med;
       case 'vest': return PROP.vest; case 'key': return PROP.key;
       case 'case': return PROP.case; case 'tape': return PROP.tape;
-      case 'wpn1': return PROP.ammoS; case 'wpn2': return PROP.ammoH; case 'wpn3': return PROP.ammoP;
+      /* gun silhouettes, not the matching ammo crates: a dropped weapon that
+         looked identical to its refill box made every drop read as ammo */
+      case 'wpn1': return PROP.gunS; case 'wpn2': return PROP.gunH; case 'wpn3': return PROP.gunP;
     }
   }
   if (e.kind==='exit') return PROP.exit;
@@ -2468,6 +3059,7 @@ function spriteOf(e){
   if (e.kind==='fx'){
     if (e.sub==='boom') return e.life<.14 ? PROP.boom0 : (e.life<.28 ? PROP.boom1 : PROP.boom2);
     if (e.sub==='paint'){ if (e.paintI===undefined) e.paintI = Math.random()*6|0; return PROP.paint[e.paintI]; }
+    if (e.sub==='decal') return PROP.decal[e.decI];
     if (e.sub==='spark') return PROP.spark;
     return PROP.puff;
   }
@@ -2604,9 +3196,18 @@ function drawMinimap(){
   for (let my=ay;my<=by;my++) for (let mx=ax;mx<=bx;mx++){
     const c = my*G.W+mx, di = G.doorIx[c];
     if (!G.solid[c] && di < 0) continue;
-    ctx.fillStyle = di>=0 ? (G.doors[di].locked ? '#c86a2a' : '#2f7f9c')
-                          : (G.tex[c]===2 ? '#28323f' : '#3b485c');
+    /* an unfound secret door keeps its wall disguise on the radar too — and
+       never the locked amber, which would flag it as interesting */
+    const dr = di>=0 && !(G.doors[di].secret && !G.doors[di].found) ? G.doors[di] : null;
+    ctx.fillStyle = dr ? (dr.locked ? '#c86a2a' : '#2f7f9c')
+                       : (G.tex[c]===2 ? '#28323f' : '#3b485c');
     ctx.fillRect((mx-P.x)*k, (my-P.y)*k, cell, cell);
+    /* amber alone is what a locked door has over an open one, and amber and
+       teal converge for a deutan eye — a dark keyhole pip says LOCKED in shape */
+    if (dr && dr.locked){
+      ctx.fillStyle = '#0b0f16';
+      ctx.fillRect((mx-P.x)*k + cell/2 - .5, (my-P.y)*k + cell/2 - .5, 1, 1);
+    }
   }
   ctx.restore();
   ctx.save();
@@ -2685,7 +3286,7 @@ function drawWaypoint(){
     ctx.moveTo(x+6*s, y); ctx.lineTo(x-2*s, y-5); ctx.lineTo(x-2*s, y+5);
   } else { ctx.moveTo(x, y-6); ctx.lineTo(x-5, y+2); ctx.lineTo(x+5, y+2); }
   ctx.closePath(); ctx.fill();
-  txt('OBJ '+t.tag+' · '+metres(t.dist)+'M', clamp(x, 44, RW-44), y+14, '#ffd76a', 6, 'center');
+  txtP('OBJ '+t.tag+' · '+metres(t.dist)+'M', clamp(x, 44, RW-44), y+14, '#ffd76a', 6);
 }
 
 /* The watch: a full floor plan with the outstanding objectives lettered on it. */
@@ -2700,9 +3301,16 @@ function drawPauseMap(){
   for (let y=0;y<G.H;y++) for (let x=0;x<G.W;x++){
     const i = y*G.W+x, di = G.doorIx[i];
     if (!G.solid[i] && di < 0) continue;
-    g.fillStyle = di>=0 ? (G.doors[di].locked ? '#c86a2a' : '#2f7f9c')
-                        : (G.tex[i]===2 ? '#232c38' : '#39465a');
+    /* unfound secret doors draw as their disguise wall here too */
+    const dr = di>=0 && !(G.doors[di].secret && !G.doors[di].found) ? G.doors[di] : null;
+    g.fillStyle = dr ? (dr.locked ? '#c86a2a' : '#2f7f9c')
+                     : (G.tex[i]===2 ? '#232c38' : '#39465a');
     g.fillRect(Math.round(ox+x*k), Math.round(oy+y*k), cell, cell);
+    /* locked doors carry a dark keyhole pip as well as the amber — see radar */
+    if (dr && dr.locked){
+      g.fillStyle = '#060b12';
+      g.fillRect(Math.round(ox+x*k + cell/2) - 1, Math.round(oy+y*k + cell/2) - 1, 2, 2);
+    }
   }
   const tagFor = e => {
     for (const o of G.objs){
@@ -2762,6 +3370,16 @@ function bar(x,y,w,h,frac,col,bg){
   for (let i=1;i<8;i++) ctx.fillRect(x+Math.round(w*i/8),y,1,h);
 }
 function fmt(t){ const m=Math.floor(t/60), s=Math.floor(t%60); return m+':'+(s<10?'0':'')+s; }
+/* Centred text on a dark strip. In-world hints (the waypoint tag, the USE
+   prompt) sit over live wall pixels and were unreadable naked on a lit wall. */
+function txtP(s,x,y,col,size){
+  size = Math.max(6, size||8);
+  ctx.font = size+'px "Press Start 2P", monospace';
+  const w = Math.ceil(ctx.measureText(s).width);
+  ctx.fillStyle = 'rgba(5,8,14,.72)';
+  ctx.fillRect(Math.round(x - w/2) - 4, y - size - 2, w + 8, size + 7);
+  txt(s, x, y, col, size, 'center');
+}
 
 function drawHUD(horizon){
   if (!G.solid) return;
@@ -2775,6 +3393,15 @@ function drawHUD(horizon){
     ctx.fillStyle=g; ctx.fillRect(0,0,RW,RH);
   }
   if (P.hurt > 0){ ctx.fillStyle='rgba(255,40,30,'+(P.hurt*.36).toFixed(3)+')'; ctx.fillRect(0,0,RW,RH); }
+
+  /* directional pain: a short red arc on a 70px ring, one per remembered hit
+     source. rel 0 = dead ahead = top of the ring; behind lands at the bottom. */
+  for (const dd of P.dmgDir){
+    const rel = angDiff(P.ang, dd.ang) - Math.PI/2;
+    ctx.strokeStyle = 'rgba(255,45,30,'+clamp(dd.t*1.4, 0, .85).toFixed(2)+')';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(RW/2, RH/2, 70, rel-.38, rel+.38); ctx.stroke();
+  }
 
   /* crosshair */
   const spread = w.spread*(1-P.aim*.62)*(1+P.speed*.28);
@@ -2804,6 +3431,22 @@ function drawHUD(horizon){
   }
   ctx.globalAlpha = 1;
 
+  /* hit marker: four diagonal ticks around the crosshair while a shot of ours
+     is landing; red while the landing shot was a kill. Retro-small on purpose. */
+  if (P.hitT > 0 || P.killT > 0){
+    ctx.strokeStyle = P.killT > 0 ? '#ff5040' : '#e8f4ff';
+    ctx.globalAlpha = clamp(Math.max(P.hitT*6, P.killT*3), 0, .9);
+    ctx.lineWidth = 1;
+    const r0 = 5 + P.recoil*2, r1 = r0 + 4;
+    ctx.beginPath();
+    for (const [ux,uy] of [[1,1],[-1,1],[1,-1],[-1,-1]]){
+      ctx.moveTo(cx + ux*r0 + .5, cy + uy*r0 + .5);
+      ctx.lineTo(cx + ux*r1 + .5, cy + uy*r1 + .5);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
   /* health + armour, top left */
   bar(10, 10, 92, 6, P.armor/100, '#35d0ff');
   bar(10, 20, 92, 8, P.hp/100, P.hp>35?'#ffb02e':'#ff3b30');
@@ -2825,9 +3468,17 @@ function drawHUD(horizon){
   /* meltdown */
   if (G.meltdown > 0){
     const t = G.meltdown;
+    /* red wash breathing faster and deeper as the fuse burns down */
+    const frac = G.meltMax > 0 ? 1 - t/G.meltMax : .5;
+    const pulse = REDUCED_MOTION ? .5 : .5 + .5*Math.sin(G.time*(t < 10 ? 9 : 4));
+    const wash = Math.min(REDUCED_MOTION ? .05 : 1, (.04 + .16*frac)*pulse);
+    ctx.fillStyle = 'rgba(255,30,15,'+wash.toFixed(3)+')';
+    ctx.fillRect(0,0,RW,RH);
+    /* the countdown sits under the waypoint row — the DOM toast stack (top:17%)
+       parks squarely over canvas y36 for the first seconds of the escape */
     if (t > 10 || Math.floor(t*4)%2===0){
-      ctx.fillStyle='rgba(5,8,14,.72)'; ctx.fillRect((RW>>1)-58, 36, 116, 12);
-      txt('MELTDOWN '+fmt(Math.max(0,t)), RW>>1, 45, t<15?'#ff3b30':'#ffb02e', 8, 'center');
+      ctx.fillStyle='rgba(5,8,14,.72)'; ctx.fillRect((RW>>1)-58, 126, 116, 12);
+      txt('MELTDOWN '+fmt(Math.max(0,t)), RW>>1, 135, t<15?'#ff3b30':'#ffb02e', 8, 'center');
     }
   }
 
@@ -2867,35 +3518,37 @@ function drawHUD(horizon){
     sx2 += 13;
   }
 
-  /* interaction prompt */
+  /* interaction prompt — name the control the player actually has */
   if (P.useTarget){
-    const label = P.useTarget.sub==='npc' ? 'HOLD F — ESCORT THE CFO'
-      : P.useTarget.sub==='console' ? 'HOLD F — APPLY PATCH'
-      : P.useTarget.sub==='audit' ? 'HOLD F — PULL AUDIT LOG'
-      : 'HOLD F — DEPLOY AGENT';
-    txt(label, RW>>1, RH-57, '#4ade80', 7, 'center');
+    const hf = isTouch ? 'HOLD USE' : 'HOLD F';
+    const label = P.useTarget.sub==='npc' ? hf+' — ESCORT THE CFO'
+      : P.useTarget.sub==='console' ? hf+' — APPLY PATCH'
+      : P.useTarget.sub==='audit' ? hf+' — PULL AUDIT LOG'
+      : hf+' — DEPLOY AGENT';
+    txtP(label, RW>>1, RH-57, '#4ade80', 7);
     if (P.useHold > .05) bar((RW>>1)-50, RH-54, 100, 5, P.useTarget.prog, '#4ade80');
   }
 
   /* control state — keyboard only reaches a focused frame, so say so plainly */
   if (!document.hasFocus()){
     ctx.fillStyle = 'rgba(5,8,14,.78)'; ctx.fillRect(0, HALFH-15, RW, 28);
-    txt('CLICK THE VIEWPORT TO TAKE CONTROL', RW>>1, HALFH+3, '#ffb02e', 7, 'center');
+    txt((isTouch?'TAP':'CLICK')+' THE VIEWPORT TO TAKE CONTROL', RW>>1, HALFH+3, '#ffb02e', 7, 'center');
   } else if (!M.locked && wantsLock() && !lockGivenUp()){
     /* Capture wanted but not held: say exactly what to do, for as long as it
        applies — not just for the first fifteen seconds. */
     ctx.fillStyle = 'rgba(5,8,14,.70)'; ctx.fillRect(0, RH-80, RW, 16);
     txt('CLICK THE VIEW TO CAPTURE THE MOUSE', RW>>1, RH-69, '#ffb02e', 6, 'center');
   } else if (G.time < 15){
-    txt(M.locked ? 'MOUSE CAPTURED · ESC TO RELEASE'
+    txtP(M.locked ? 'MOUSE CAPTURED · ESC TO RELEASE'
+       : LOOKMODE==='touch' ? 'DRAG THE VIEW TO LOOK · FIRE TO SHOOT'
        : LOOKMODE==='drag' ? 'DRAG TO LOOK · TAP TO FIRE'
        : 'MOVE MOUSE TO AIM · PUSH PAST THE TICKS TO TURN',
-        RW>>1, RH-72, '#7d93ab', 6, 'center');
+        RW>>1, RH-72, '#7d93ab', 6);
   }
 
   /* Free look: mark the turn zone so it is obvious what makes the view swing,
      and flash a chevron while it is actually turning. */
-  if (!M.locked && LOOKMODE !== 'drag'){      // refused capture plays as free look too
+  if (!M.locked && LOOKMODE !== 'drag' && LOOKMODE !== 'touch'){   // refused capture plays as free look too; touch has no gate to mark
     /* Ticks mark the REAL gate (aim mode widens it) and sit on the reticle's
        own row — never on the lock target's height, which sent them bouncing
        to wherever a locked drone happened to fly. The chevron follows
@@ -2978,15 +3631,39 @@ const SCREENS = ['s-boot','s-title','s-select','s-brief','s-pause','s-result','s
 function show(id){
   G.screenId = id;
   for (const s of SCREENS){ const el=document.getElementById(s); if (el) el.hidden = (s!==id); }
+  /* the persisted campaign flag earns the title screen a permanent gold line */
+  if (id === 's-title'){
+    const sub = document.getElementById('logosub');
+    if (sub){
+      sub.textContent = campaignDone ? 'GOLDENSHARE · COMPLETE' : 'GOLDENSHARE';
+      sub.style.color = campaignDone ? 'var(--gold)' : '';
+    }
+  }
   document.getElementById('touch').classList.toggle('on', id===null && isTouch);
+  syncRotHint();
 }
+/* Portrait on a phone is a letterboxed strip a third of the screen tall. Say
+   so, mid-mission only, without ever blocking input — the hint is pointer-
+   events:none and clears itself the moment the device turns. */
+const portMQ = matchMedia('(orientation: portrait)');
+function syncRotHint(){
+  const el = document.getElementById('rothint');
+  if (el) el.hidden = !(isTouch && G.state==='play' && portMQ.matches);
+}
+try { portMQ.addEventListener('change', syncRotHint); }
+catch(_){ if (portMQ.addListener) portMQ.addListener(syncRotHint); }   // pre-2019 WebKit
 let selLevel = 0;
 
 function buildSelect(){
   const list = document.getElementById('misslist'); list.innerHTML='';
   LEVELS.forEach((L,i)=>{
     const b=document.createElement('button'); b.className='mi';
-    b.innerHTML = '<span>'+L.code+' · '+L.name+'</span><span class="k">'+(i===selLevel?'◀ SELECTED':'▶')+'</span>';
+    /* Only a WIN earns the gold line — a stored loss holds the slot until one
+       arrives, and 'BEST 0:12 · AGENT DOWN' is nobody's trophy. */
+    const bb = BEST[i + ':' + G.diff];
+    b.innerHTML = '<span>'+L.code+' · '+L.name+
+      (bb && bb.win ? '<small class="best">BEST '+fmt(bb.time)+' · '+bb.rank+'</small>' : '')+
+      '</span><span class="k">'+(i===selLevel?'◀ SELECTED':'▶')+'</span>';
     b.onclick = ()=>{ selLevel=i; buildSelect(); };
     list.appendChild(b);
   });
@@ -3047,7 +3724,42 @@ function startMission(gesture){
      player click the viewport a second time. Never from the self-test, which
      has no gesture and would only log a refusal. */
   if (gesture) tryLock();
+  /* Touch: the mission-start tap is the one user gesture available — spend it
+     on fullscreen plus a landscape lock. Strictly best-effort: file://, iOS
+     Safari and split-screen all refuse variously, and a refusal must cost
+     nothing (orientation.lock itself usually needs the fullscreen to land). */
+  if (gesture && isTouch){
+    try {
+      const fs = document.documentElement.requestFullscreen
+        && document.documentElement.requestFullscreen({ navigationUI:'hide' });
+      const ori = () => { try {
+        const l = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape');
+        if (l && l.catch) l.catch(()=>{});
+      } catch(_){} };
+      if (fs && fs.then) fs.then(ori, ori); else ori();
+    } catch(_){}
+  }
   toast('MISSION '+G.L.code+' — '+G.L.name, 'gold', 3200);
+}
+/* M03 checkpoint: dying past shield-down restarts AT the duel, not at the
+   door. Same setup the scripted playtest applies — consoles done, shield off,
+   staged outside the arena — plus whatever loadout the agent actually carried
+   when the shield fell (G.ckpt); a first-visit fallback matches the playtest. */
+function retryDuel(gesture){
+  const ck = G.ckpt;                       // startMission's loadLevel wipes it
+  selLevel = LEVELS.length-1;
+  startMission(gesture);
+  for (const o of G.objs) if (o.kind==='console'){ o.done = true; o.have = o.need; }
+  for (const e of G.ents) if (e.kind==='prop' && e.sub==='console') e.hacked = true;
+  G.shieldDown = true;
+  G.ckpt = ck;                             // the NEXT death needs it too
+  P.x = 15.5; P.y = 3.5; P.ang = 0;
+  if (ck){ P.has = ck.has.slice(); P.mag = ck.mag.slice();
+           P.ammo = Object.assign({}, ck.ammo); P.armor = Math.max(P.armor, ck.armor); }
+  else { P.has = [true,false,true,true]; P.mag = [7,0,5,3];
+         P.ammo = { p9:42, smg:0, sh:16, pt:8 }; }
+  P.armor = Math.max(P.armor, 60);
+  toast('CHECKPOINT — THE SHIELD IS ALREADY DOWN', 'cyan', 3600);
 }
 function pause(){
   if (G.state!=='play') return;
@@ -3087,28 +3799,62 @@ function endMission(win, why){
   if (G.state!=='play') return;
   G.state='result'; unlock(); clearInput();
   sfx(win?'objective':'fail');
-  document.getElementById('r-eyebrow').textContent = G.L.code+' · '+G.L.name+' · '+DIFFS[G.diff].name;
-  document.getElementById('r-title').textContent = win ? 'MISSION COMPLETE' : why;
-  document.getElementById('r-title').style.color = win ? '#4ade80' : '#ff3b30';
+  /* Winning the last mission is the campaign, and it reads like it: gold
+     eyebrow-and-title treatment plus a career line over the stored bests. */
+  const finale = win && G.level === LEVELS.length-1;
+  document.getElementById('r-eyebrow').textContent = finale
+    ? 'CONTRACT COMPLETE — '+G.L.code+' · '+DIFFS[G.diff].name
+    : G.L.code+' · '+G.L.name+' · '+DIFFS[G.diff].name;
+  document.getElementById('r-title').textContent =
+    finale ? 'THE NETWORK IS MANAGED' : (win ? 'MISSION COMPLETE' : why);
+  document.getElementById('r-title').style.color = finale ? '#ffb02e' : win ? '#4ade80' : '#ff3b30';
   const acc = G.shots ? Math.round(G.hits/G.shots*100) : 0;
   const done = G.objs.filter(o=>o.done).length;
   const ticket = 'INC-' + (104200 + G.level*137 + G.diff*11);
   const sla = G.time <= G.L.par;
+  /* Personal bests, filed BEFORE the stats render so the finale's career line
+     counts this very win. A tainted run never reaches the blob — one cheat
+     toggle poisons the whole run and cheated times shadowing honest ones
+     forever is worse than losing the entry. A win always displaces a loss, a
+     loss never displaces anything but an empty slot, and between wins the
+     clock decides. */
+  if (!G.tainted){
+    const bk = G.level + ':' + G.diff, prev = BEST[bk];
+    if (!prev || (win && !prev.win) || (win && prev.win && G.time < prev.time))
+      BEST[bk] = { time: Math.round(G.time*100)/100, acc, rank: win ? rankName() : '', win: !!win };
+    if (finale) campaignDone = true;
+    saveSettings();
+  }
+  let career = '';
+  if (finale){
+    let cw = 0, ct = 0;
+    for (const k in BEST) if (BEST[k].win){ cw++; ct += BEST[k].time; }
+    career = '<dt>Career to date</dt><dd style="color:#ffb02e">'+cw+' of '+
+             (LEVELS.length*DIFFS.length)+' engagements resolved · '+fmt(ct)+' on the clock</dd>';
+  }
   document.getElementById('r-stats').innerHTML =
     '<dt>Ticket</dt><dd>'+ticket+(win?' — RESOLVED':' — REOPENED')+'</dd>'+
     '<dt>Objectives</dt><dd>'+done+' of '+G.objs.length+'</dd>'+
     '<dt>Time to resolution</dt><dd>'+fmt(G.time)+'</dd>'+
-    '<dt>SLA window</dt><dd style="color:'+(sla?'#4ade80':'#ff3b30')+'">'+fmt(G.L.par)+
-      ' — '+(sla?'MET':'BREACHED')+'</dd>'+
+    /* a reopened ticket has no SLA verdict — 'MET' in green under AGENT DOWN
+       read as a bug, not a consolation */
+    '<dt>SLA window</dt>'+(win
+      ? '<dd style="color:'+(sla?'#4ade80':'#ff3b30')+'">'+fmt(G.L.par)+' — '+(sla?'MET':'BREACHED')+'</dd>'
+      : '<dd style="color:#8fa8c0">N/A — TICKET REOPENED</dd>')+
     '<dt>First-shot accuracy</dt><dd>'+acc+'%  ('+G.hits+'/'+G.shots+')</dd>'+
     '<dt>Hostiles decommissioned</dt><dd>'+G.kills+'</dd>'+
     '<dt>Damage taken</dt><dd>'+Math.round(G.dmgTaken)+'</dd>'+
     (win ? '<dt>Performance review</dt><dd style="color:#ffb02e">'+rankName()+(G.tainted?' *':'')+'</dd>' : '')+
+    career +
     (G.tainted ? '<dt>Note</dt><dd style="color:#8fa8c0">* cheats were enabled</dd>' : '');
   const act = document.getElementById('r-actions'); act.innerHTML='';
   const mk=(label,fn,ghost)=>{ const b=document.createElement('button');
     b.className='btn'+(ghost?' ghost':''); b.textContent=label; b.onclick=fn; act.appendChild(b); };
   if (win && selLevel < LEVELS.length-1) mk('NEXT MISSION ▶', ()=>{ selLevel++; gotoBrief(); });
+  /* dying PAST the consoles offers the duel checkpoint, front and centre */
+  { const con = G.objs.find(o=>o.kind==='console');
+    if (!win && G.level === LEVELS.length-1 && con && con.done)
+      mk('RETRY AT THE DUEL ▶', ()=>retryDuel(true)); }
   mk(win?'REPLAY':'RETRY', ()=>startMission(true), true);
   mk('MISSION SELECT', ()=>{ buildSelect(); G.state='select'; show('s-select'); }, true);
   show('s-result');
@@ -3153,12 +3899,31 @@ function selfTest(runSim){
   const R = [];
   const ok = (name, pass, detail) => R.push({ name, pass, detail: detail || '' });
 
+  /* the one hidden cache per mission, by cell — the flood-fill tests below
+     prove each is sealed by its 'H' door and open through it */
+  const SECRETS = [ [[24,4]], [[13,16],[14,16]], [[24,12],[25,12]] ];
+
   for (let i=0;i<LEVELS.length;i++){
     const L = LEVELS[i], W = L.map[0].length;
     const bad = L.map.map((r,y) => r.length!==W ? y+':'+r.length : null).filter(Boolean);
     ok(L.code+' map is rectangular', bad.length===0, bad.join(' '));
+    ok(L.code+' rows are the canonical 32 wide', W===32, 'W='+W);
     ok(L.code+' has a player start', L.map.join('').indexOf('P')>=0);
     ok(L.code+' has an exit', L.map.join('').indexOf('<')>=0);
+    if (L.zones){
+      const zb = L.zones.filter(z => !(z.x0>=0 && z.y0>=0 && z.x1>=z.x0 && z.y1>=z.y0
+        && z.x1<W && z.y1<L.map.length
+        && (z.f===undefined || z.f===255 || z.f<TEX.length)
+        && (z.c===undefined || z.c===255 || z.c<TEX.length)));
+      ok(L.code+' zone rects in bounds', zb.length===0, JSON.stringify(zb));
+    }
+    {
+      const h = L.map.join('').split('H').length-1;
+      ok(L.code+' has exactly one hidden door', h===1, 'found '+h);
+      const shut = auditLevel(i, false, true);
+      ok(L.code+' secret cache is sealed until found',
+         SECRETS[i].every(([sx,sy]) => !shut.seen[sy][sx]));
+    }
 
     const a = auditLevel(i, false);
     ok(L.code+' everything reachable', a.unreachable.length===0, a.unreachable.join(' '));
@@ -3182,6 +3947,124 @@ function selfTest(runSim){
     });
   }
 
+  /* ---- art: the mission grade rebakes the wall tables; sprites stay neutral ---- */
+  {
+    const psum = () => { let n=0; const p=PROP.puff.lv[0]; for (let i=0;i<p.length;i++) n=(n+p[i])>>>0; return n; };
+    applyPalette(LEVELS[0].pal, LEVELS[0].fog);
+    const t01 = TEXL[0][0][2080], f01 = FOGPX, s01 = psum();
+    applyPalette(LEVELS[2].pal, LEVELS[2].fog);
+    ok('palette: M01 vs M03 grades bake different walls', t01 !== TEXL[0][0][2080]);
+    ok('palette: fog colour follows the grade', FOGPX !== f01);
+    ok('palette: sprite bakes stay neutral', psum() === s01);
+    if (G.L) applyPalette(G.L.pal, G.L.fog);
+    else { TEXPAL=''; TEXL = TEX.map(t => shade(t.px, LV)); FOGPX = pack(FOG[0]+6, FOG[1]+8, FOG[2]+12); }
+  }
+  {
+    /* a dropped gun must not render as its own ammo crate */
+    const sum = s => { let n=0; const p=s.lv[0]; for (let i=0;i<p.length;i++) n=(n+p[i])>>>0; return n; };
+    ok('weapon pickup sprites differ from the ammo crates',
+       !!PROP.gunS && !!PROP.gunH && !!PROP.gunP &&
+       (PROP.gunS.w!==PROP.ammoS.w || sum(PROP.gunS)!==sum(PROP.ammoS)) &&
+       (PROP.gunH.w!==PROP.ammoH.w || sum(PROP.gunH)!==sum(PROP.ammoH)) &&
+       (PROP.gunP.w!==PROP.ammoP.w || sum(PROP.gunP)!==sum(PROP.ammoP)));
+  }
+
+  /* ---- persistence: the roundtrip must ride the REAL save/load path ---- */
+  {
+    let raw0 = null, lsOK = true;
+    try { raw0 = localStorage.getItem(SAVE_KEY); } catch(_){ lsOK = false; }
+    if (lsOK){
+      const s0 = { sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
+                   keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn, scan:SCANOP,
+                   map:G.mapOn, cd:campaignDone, god:G.cheats.god, taint:G.tainted,
+                   best:JSON.stringify(BEST) };
+      M.sens = 1.23; M.tsens = .77; INVERT_Y = true; AIM_ASSIST = 0; KEYS_LAYOUT = 'arrows';
+      A.sfxVol = .12; A.musVol = .21; A.musOn = false; SCANOP = 15; G.mapOn = false;
+      if (!isTouch) LOOK = 'drag';
+      BEST['0:2'] = { time:99.5, acc:61, rank:'TIER 2 TECH', win:true };
+      G.cheats.god = true; G.tainted = true;          // must NOT reach the blob
+      saveSettings();
+      let blob = ''; try { blob = localStorage.getItem(SAVE_KEY) || ''; } catch(_){}
+      ok('save writes the blob', blob.length > 0);
+      ok('cheats never persisted', !/cheat|taint|god/i.test(blob));
+      M.sens = .5; M.tsens = 1; INVERT_Y = false; AIM_ASSIST = 2; KEYS_LAYOUT = 'wasd';
+      A.sfxVol = .7; A.musVol = .34; A.musOn = true; SCANOP = 50; G.mapOn = true;
+      delete BEST['0:2'];
+      loadSettings();
+      ok('settings roundtrip', Math.abs(M.sens-1.23)<1e-9 && Math.abs(M.tsens-.77)<1e-9
+         && INVERT_Y && AIM_ASSIST===0 && KEYS_LAYOUT==='arrows'
+         && Math.abs(A.sfxVol-.12)<1e-9 && !A.musOn && SCANOP===15 && !G.mapOn
+         && (isTouch || LOOK==='drag'));
+      const bb = BEST['0:2'];
+      ok('best result roundtrip', !!bb && bb.win && Math.abs(bb.time-99.5)<1e-6
+         && bb.rank==='TIER 2 TECH');
+      let threw = false;
+      try { localStorage.setItem(SAVE_KEY, '{"v":1,oops'); } catch(_){}
+      M.sens = .41;
+      try { loadSettings(); } catch(_){ threw = true; }
+      ok('malformed blob never throws', !threw && Math.abs(M.sens-.41)<1e-9);
+      try { localStorage.setItem(SAVE_KEY, '{"v":99,"sens":9}'); } catch(_){}
+      try { loadSettings(); } catch(_){ threw = true; }
+      ok('unknown schema version is dropped', !threw && Math.abs(M.sens-.41)<1e-9);
+      M.sens = s0.sens; M.tsens = s0.tsens; INVERT_Y = s0.inv; AIM_ASSIST = s0.aim;
+      KEYS_LAYOUT = s0.keys; A.sfxVol = s0.sfx; A.musVol = s0.mus; A.musOn = s0.musOn;
+      SCANOP = s0.scan; G.mapOn = s0.map; campaignDone = s0.cd;
+      G.cheats.god = s0.god; G.tainted = s0.taint;
+      if (!isTouch) LOOK = s0.look;
+      for (const k in BEST) delete BEST[k];
+      Object.assign(BEST, JSON.parse(s0.best));
+      applyLayout(); resolveLook();
+      try { raw0 === null ? localStorage.removeItem(SAVE_KEY)
+                          : localStorage.setItem(SAVE_KEY, raw0); } catch(_){}
+    }
+  }
+
+  /* ---- audio: scheduling decisions and plumbing, no AudioContext needed ---- */
+  {
+    ok('sfxAt: near is louder than far', sfxDist(2) > sfxDist(12),
+       sfxDist(2).toFixed(2)+' vs '+sfxDist(12).toFixed(2));
+    ok('sfxAt: point blank is full volume', sfxDist(0) === 1);
+    ok('sfxAt: far sounds floor at .2, never vanish', sfxDist(40) === .2 && sfxDist(999) === .2);
+    {
+      /* the scale must reset even when sfx() bails (no ctx, muted, unknown) */
+      const v0 = A.sfxVol; A.sfxVol = 0;
+      sfxAt('impact', P.x+30, P.y+5);
+      A.sfxVol = v0;
+      ok('sfxAt restores the scale after the call', SFXSCALE === 1 && SFXPAN === 0,
+         'scale='+SFXSCALE+' pan='+SFXPAN);
+    }
+    const need = ['click','swap','denied','bolt','tink','heart','tick','tick2','stepP','stepE','stepBoss'];
+    ok('foley round SFX entries all exist', need.every(n => typeof SFX[n] === 'function'),
+       need.filter(n => typeof SFX[n] !== 'function').join(' '));
+    ok('music B section is a real second pattern',
+       BASS2.length === 32 && LEAD2.length === 32 &&
+       BASS2.join() !== BASS.join() && LEAD2.join() !== LEAD.join());
+    {
+      const s0 = { st:G.state, boss:G.bossAlive, melt:G.meltdown, heat:G.heat, step:A.step };
+      G.state = 'play'; G.bossAlive = true; G.meltdown = -1; G.heat = 0;
+      const mBoss = musMood();
+      G.bossAlive = false; G.meltdown = 12;
+      const mEsc = musMood();
+      G.state = 'title'; G.heat = 1; G.meltdown = -1;
+      const mMenu = musMood();
+      A.step = 32; const bar = musMood().bar2; A.step = 0; const bar0 = musMood().bar2;
+      G.state = s0.st; G.bossAlive = s0.boss; G.meltdown = s0.melt; G.heat = s0.heat; A.step = s0.step;
+      ok('boss fight forces the combat layer', mBoss.bossFight && mBoss.combat && !mBoss.menu);
+      ok('meltdown forces escape scoring', mEsc.escape && mEsc.combat && !mEsc.bossFight);
+      ok('menus are menus even at full heat', mMenu.menu && !mMenu.combat && !mMenu.escape);
+      ok('bars alternate every 32 steps', bar === 1 && bar0 === 0);
+    }
+    ok('heartbeat quickens as hp drops',
+       hbPeriod(5) < hbPeriod(25) && hbPeriod(0) >= .45 && hbPeriod(29) <= 1.3);
+    {
+      const b = document.getElementById('o-muson'), m0 = A.musOn;
+      act('togglemus');
+      const flipped = A.musOn === !m0 && (!b || b.getAttribute('aria-pressed') === String(A.musOn));
+      act('togglemus');
+      ok('options music row exists and drives A.musOn', !!b && flipped && A.musOn === m0);
+    }
+  }
+
   if (runSim){
     /* Snapshot EVERYTHING the sim touches, so running it never resets the
        player's mission, difficulty, cheats or look settings. */
@@ -3195,6 +4078,9 @@ function selfTest(runSim){
     selLevel = 0; G.diff = 1; LOOK = 'free';
     M.lockFails = 0; M.lockNagged = false; M.sens = 0.7; M.locked = false; resolveLook();
     startMission(false); G.cheats.god = true; clearInput();
+    /* resolveLook pins touch devices to 'touch'; these assertions are about the
+       desktop modes, so drive LOOKMODE directly and F4 stays green on a phone. */
+    LOOKMODE = 'free';
 
     const spin = frames => { let n=0, p=P.ang;
       for (let i=0;i<frames;i++){ step(0.016); n += angDiff(p,P.ang); p=P.ang; } return n*180/Math.PI; };
@@ -3229,7 +4115,7 @@ function selfTest(runSim){
     ok('free: no drift once the mouse stops', Math.abs(angDiff(restAng,P.ang))*57.3 < .05);
 
     /* ---- pointer lock: the stream is raw, linear, symmetric and uncapped ---- */
-    LOOK='capture'; resolveLook(); clearInput();
+    LOOK='capture'; resolveLook(); LOOKMODE='capture'; clearInput();
     M.locked=true; M.justLocked=0; M.dx=0; M.dy=0; M.lastMove=performance.now(); P.rx=0; P.pitch=0;
     const mvL = (x,y) => { const ev = new MouseEvent('mousemove',{bubbles:true});
       Object.defineProperty(ev,'movementX',{value:x}); Object.defineProperty(ev,'movementY',{value:y});
@@ -3250,6 +4136,10 @@ function selfTest(runSim){
     ok('lock: a glitch jump is dropped', Math.abs(angDiff(a0,P.ang)) < 1e-12);
     const pp = P.pitch; mvL(0,-40); step(0.016);
     ok('lock: mouse up looks up', P.pitch > pp, 'pitch='+P.pitch.toFixed(1));
+    /* the same stream with the option on must come out flipped */
+    INVERT_Y = true; const pi = P.pitch; mvL(0,-40); step(0.016);
+    ok('lock: invert-Y flips mouse pitch', P.pitch < pi, 'pitch='+P.pitch.toFixed(1));
+    INVERT_Y = false;
     mvL(0,400); step(0.016);
     ok('lock: pitch is clamped', P.pitch >= -PITCH_MAX && P.pitch <= PITCH_MAX);
     a0 = P.ang; for (let i=0;i<60;i++) step(0.016);
@@ -3288,7 +4178,7 @@ function selfTest(runSim){
     M.locked = false;
     }
 
-    LOOK='drag'; resolveLook(); clearInput(); P.fireCd=0;
+    LOOK='drag'; resolveLook(); LOOKMODE='drag'; clearInput(); P.fireCd=0;
     const shotsBefore = G.shots;
     view.dispatchEvent(new MouseEvent('mousedown',{button:0,buttons:1,clientX:400,clientY:300,bubbles:true}));
     dispatchEvent(new PointerEvent('pointerup',{button:0,buttons:0,bubbles:true}));
@@ -3472,6 +4362,309 @@ function selfTest(runSim){
       ok('enemy aim: 00 AGENT tracks better than AGENT', runHard > run, runHard.toFixed(2));
       P.speed = s0; P.crouch = c0; G.diff = d0; }
 
+    /* ---- touch cluster: the handlers are installed unconditionally, so a
+       plain Event with a changedTouches expando drives them even on a page
+       that cannot construct a real TouchEvent ---- */
+    {
+      const tev = (type, el, touches) => {
+        const ev = new Event(type, { bubbles:true, cancelable:true });
+        ev.changedTouches = touches || [{ identifier:71, clientX:0, clientY:0 }];
+        (el || window).dispatchEvent(ev);
+      };
+      tev('touchstart', document.getElementById('tpause'));
+      ok('touch: PAUSE button pauses play', G.state === 'pause');
+      resume(false);
+
+      tev('touchstart', document.getElementById('taim'));
+      for (let i=0;i<20;i++) step(0.016);
+      ok('touch: AIM toggle raises the aim', M.aim === true && P.aim > .6, 'aim='+P.aim.toFixed(2));
+      tev('touchstart', document.getElementById('taim'));
+      for (let i=0;i<25;i++) step(0.016);
+      ok('touch: second AIM tap drops it', M.aim === false && P.aim < .25, 'aim='+P.aim.toFixed(2));
+
+      tev('touchstart', document.getElementById('tcrouch'));
+      ok('touch: CROUCH toggle latches', held.crouch === true);
+      tev('touchstart', document.getElementById('tcrouch'));
+      ok('touch: second CROUCH tap stands up', !held.crouch);
+
+      /* the stick needs real geometry, so borrow the touch classes briefly */
+      const hadTouch = document.body.classList.contains('touch');
+      const tdiv = document.getElementById('touch'), hadOn = tdiv.classList.contains('on');
+      document.body.classList.add('touch'); tdiv.classList.add('on');
+      const r = document.getElementById('tstick').getBoundingClientRect();
+      if (r.width < 10) ok('touch: (no stick geometry to test on)', true);
+      else {
+        const cx = r.left + r.width/2, cy = r.top + r.height/2;
+        const at = (x,y) => [{ identifier:72, clientX:x, clientY:y }];
+        tev('touchstart', document.getElementById('tstick'), at(cx, cy - r.height/2*.99));
+        ok('touch: full stick deflection sprints', held.run === true);
+        tev('touchmove', null, at(cx, cy - r.height/2*.88));
+        ok('touch: rim jitter keeps the sprint', held.run === true);
+        tev('touchmove', null, at(cx, cy - r.height/2*.5));
+        ok('touch: easing off the rim stops sprinting', held.run === false);
+        tev('touchend', null, at(cx, cy));
+        ok('touch: releasing the stick stops walking', !held.tx && !held.ty && !held.run);
+      }
+      if (!hadTouch) document.body.classList.remove('touch');
+      if (!hadOn) tdiv.classList.remove('on');
+
+      /* direct-drag look: vertical finger travel must pitch the view with the
+         reticle pinned to centre — the frozen-pitch bug this mode replaces */
+      const savedLM = LOOKMODE; LOOKMODE = 'touch';
+      clearInput(); P.pitch = 0;
+      tev('touchstart', view, [{ identifier:73, clientX:200, clientY:200 }]);
+      tev('touchmove', null, [{ identifier:73, clientX:200, clientY:140 }]);
+      step(0.016);
+      ok('touch: vertical drag pitches the view', P.pitch > 2 && P.rx === 0, 'pitch='+P.pitch.toFixed(1));
+      const ta0 = P.ang;
+      tev('touchmove', null, [{ identifier:73, clientX:260, clientY:140 }]);
+      step(0.016);
+      ok('touch: horizontal drag turns the view', angDiff(ta0, P.ang) > .05,
+         (angDiff(ta0, P.ang)*57.3).toFixed(1)+'deg');
+      tev('touchend', null, [{ identifier:73, clientX:260, clientY:140 }]);
+      /* invert-Y is one flag across input models: the identical upward finger
+         stroke must now pitch the view DOWN */
+      INVERT_Y = true; P.pitch = 0;
+      tev('touchstart', view, [{ identifier:74, clientX:200, clientY:200 }]);
+      tev('touchmove', null, [{ identifier:74, clientX:200, clientY:140 }]);
+      step(0.016);
+      ok('touch: invert-Y flips drag pitch', P.pitch < -2, 'pitch='+P.pitch.toFixed(1));
+      tev('touchend', null, [{ identifier:74, clientX:200, clientY:140 }]);
+      INVERT_Y = false;
+      LOOKMODE = savedLM;
+
+      P.w = 0; P.mag[0] = 3; P.ammo.p9 = Math.max(P.ammo.p9, 20); P.reload = 0;
+      tev('touchstart', document.getElementById('trel'));
+      ok('touch: RELOAD button starts the reload', P.reload > 0, 'reload='+P.reload.toFixed(2));
+      for (let i=0;i<90;i++) step(0.016);
+      ok('touch: the reload completes', P.reload === 0 && P.mag[0] === WEAPS[0].mag, 'mag='+P.mag[0]);
+    }
+
+    /* impact decals persist but are FIFO-capped */
+    {
+      for (let i=0;i<DECAL_MAX+12;i++) spawnDecal(P.x+1, P.y, .4);
+      const alive = G.ents.filter(e=>e.kind==='fx'&&e.sub==='decal'&&!e.dead2).length;
+      ok('decals: FIFO cap holds at '+DECAL_MAX, alive === DECAL_MAX, 'alive '+alive);
+      G.ents = G.ents.filter(e=>!(e.kind==='fx'&&e.sub==='decal'));
+    }
+
+    /* per-cell floor/ceiling zones, the sky index, and a render smoke check.
+       These reload M01 with temporary zones; the sim's final loadLevel below
+       restores the caller's mission either way. M01 SHIPS with real zones (the
+       server-hall grate), so they are saved and put back — `delete` here once
+       stripped that floor for the rest of the session after any F4 run. */
+    {
+      const L0 = LEVELS[0];
+      const realZones = L0.zones;
+      L0.zones = [{x0:1,y0:1,x1:2,y1:2,f:18,c:19}];
+      loadLevel(0,1);
+      ok('zones: cell inside the zone gets the zone textures',
+         G.ftex[idx(2,2)]===18 && G.ctex[idx(2,2)]===19);
+      ok('zones: cells outside keep the level default',
+         G.ftex[idx(5,5)]===L0.floor && G.ctex[idx(5,5)]===L0.ceil);
+      L0.zones = [{x0:0,y0:0,x1:99,y1:99,c:255}];
+      loadLevel(0,1);
+      P.pitch=0; P.bob=0; P.recoil=0; G.shake=0; P.aim=0;
+      render();
+      ok('sky: ceiling 255 renders the sky gradient', buf[RW>>1] === SKYROW[0],
+         buf[RW>>1].toString(16)+' vs '+SKYROW[0].toString(16));
+      L0.zones = realZones;
+      loadLevel(0,1); render();
+      ok('zones: M01 keeps its shipped grate floor after the zone tests',
+         G.zoned && G.ftex[idx(5,11)]===11);
+      const seen = new Set(); for (let i=0;i<buf.length;i+=997) seen.add(buf[i]);
+      let solidCols = 0; for (let x=0;x<RW;x++) if (zbuf[x] < 1e9) solidCols++;
+      ok('render: frame is not a single colour', seen.size > 4, seen.size+' colours');
+      ok('render: zbuf sees walls', solidCols > RW*.5, solidCols+'/'+RW+' cols');
+    }
+
+    /* roster composition per clearance: the full 00 muster and the hand-picked
+       AGENT cut, by type. A grid edit that silently rebalances either fails
+       here by name. The sim's final loadLevel restores the caller's mission. */
+    {
+      const WANT = [
+        { full:{phish:4,goon:3,legacy:1,drone:1}, agent:{phish:2,goon:2,legacy:1,drone:1} },
+        { full:{phish:3,goon:3,legacy:2,drone:1}, agent:{phish:2,goon:2,legacy:1,drone:1} },
+        { full:{phish:2,goon:2,drone:2,boss:1},   agent:{phish:1,goon:1,drone:1,boss:1} }
+      ];
+      const tally = () => { const t={};
+        for (const e of G.ents) if (e.kind==='enemy') t[e.sub]=(t[e.sub]||0)+1; return t; };
+      const fmt = t => Object.keys(t).sort().map(k=>k+':'+t[k]).join(' ');
+      const hasAudit = () => G.ents.some(e => e.kind==='prop' && e.sub==='audit');
+      for (let i=0;i<LEVELS.length;i++){
+        const mapHasU = LEVELS[i].map.join('').indexOf('U') >= 0;
+        loadLevel(i,2);
+        ok(LEVELS[i].code+' 00 roster composition', fmt(tally())===fmt(WANT[i].full), fmt(tally()));
+        if (mapHasU) ok(LEVELS[i].code+' audit terminal spawns on 00', hasAudit());
+        loadLevel(i,0);
+        ok(LEVELS[i].code+' AGENT roster composition', fmt(tally())===fmt(WANT[i].agent), fmt(tally()));
+        ok(LEVELS[i].code+' audit terminal absent below 00', !hasAudit());
+      }
+    }
+
+    /* ---- game-feel: pain direction, death beat, markers, checkpoint, finale ---- */
+    {
+      const g0 = G.cheats.god; G.cheats.god = false;
+
+      /* directional pain arcs ride hurtPlayer's source position */
+      const hp0 = P.hp, ar0 = P.armor; P.dmgDir.length = 0; P.hp = 100;
+      hurtPlayer(1, P.x+3, P.y);
+      ok('pain arc: a sourced hit records its bearing',
+         P.dmgDir.length===1 && Math.abs(P.dmgDir[0].ang) < 1e-6, 'n='+P.dmgDir.length);
+      for (let i=0;i<6;i++) hurtPlayer(.1, P.x, P.y+2);
+      ok('pain arc: the ring caps at 4', P.dmgDir.length===4, 'n='+P.dmgDir.length);
+      P.dmgDir.length = 0; P.hp = 100; P.hurt = 0;
+
+      /* hit marker + kill confirm follow the player's shots only */
+      const e1 = spawnEnemy('phish', P.x+1.2, P.y);
+      P.hitT = 0; P.killT = 0;
+      hurtEnemy(e1, 5, false, true);
+      ok('hit marker: player damage sets hitT', P.hitT > 0);
+      ok('kill confirm: a mere hit is not a kill', !(P.killT > 0));
+      hurtEnemy(e1, 1e5, false, true);
+      ok('kill confirm: the kill sets killT', P.killT > 0);
+      G.ents = G.ents.filter(o => o !== e1);
+
+      /* dry-agent insurance: a broke agent always gets a crate off a goon */
+      const am0 = Object.assign({}, P.ammo);
+      P.ammo = { p9:0, smg:0, sh:0, pt:0 };
+      const e2 = spawnEnemy('goon', P.x+1.2, P.y+.5);
+      const crates0 = G.ents.filter(o=>o.kind==='item'&&o.sub==='ammo').length;
+      hurtEnemy(e2, 1e5, false, true);
+      ok('dry insurance: an empty-handed kill always drops ammo',
+         G.ents.filter(o=>o.kind==='item'&&o.sub==='ammo').length === crates0+1);
+      P.ammo = am0; G.ents = G.ents.filter(o => o !== e2);
+      P.hitT = 0; P.killT = 0;
+
+      /* legacy tower: the 5-pellet burst is telegraphed, never instant */
+      {
+        let ls = null;
+        for (let a=0; a<6.28 && !ls; a+=.4) for (let d3=2.5; d3<=4 && !ls; d3+=.5){
+          const lx2 = P.x+Math.cos(a)*d3, ly2 = P.y+Math.sin(a)*d3;
+          if (!isSolid(lx2,ly2) && los(P.x,P.y,lx2,ly2)) ls = { x:lx2, y:ly2 };
+        }
+        if (!ls){ ok('legacy telegraph: (no open floor to test on)', true);
+                  ok('legacy telegraph fires: (no open floor to test on)', true); }
+        else {
+          const e3 = spawnEnemy('legacy', ls.x, ls.y);
+          e3.alert = 1; e3.state = 'chase'; e3.cd = 0;
+          e3.ang = Math.atan2(P.y-e3.y, P.x-e3.x);
+          updateEnemy(e3, .016);
+          ok('legacy: the burst is telegraphed, not instant', e3.pending > .3,
+             'pending='+(e3.pending||0).toFixed(2));
+          G.cheats.god = true;
+          for (let i=0;i<40;i++) updateEnemy(e3, .016);
+          G.cheats.god = false;
+          ok('legacy: the pending burst fires', !(e3.pending > 0));
+          G.ents = G.ents.filter(o => o !== e3);
+        }
+      }
+
+      /* weapon pickups: upgrades wait for a calm hand, dry hands take anything */
+      const w0 = { has:P.has.slice(), mag:P.mag.slice(), ammo:Object.assign({},P.ammo), w:P.w };
+      P.has = [true,false,false,false]; P.w = 0; P.mag = [7,0,0,0];
+      P.ammo = { p9:40, smg:0, sh:0, pt:0 }; P.lastFireT = G.time; P.fireCd = 0;
+      pickup(ent({kind:'item', sub:'wpn2', x:P.x, y:P.y, size:.38, r:.5}));
+      ok('pickup: an upgrade never yanks a firing hand', P.w === 0 && P.has[2]);
+      P.lastFireT = -9; P.fireCd = 0;
+      pickup(ent({kind:'item', sub:'wpn3', x:P.x, y:P.y, size:.38, r:.5}));
+      ok('pickup: a calm hand takes the upgrade', P.w === 3, 'w='+P.w);
+      P.has = [true,false,false,true]; P.w = 3; P.mag = [0,0,0,0];
+      P.ammo = { p9:0, smg:0, sh:0, pt:0 }; P.lastFireT = G.time;
+      pickup(ent({kind:'item', sub:'wpn2', x:P.x, y:P.y, size:.38, r:.5}));
+      ok('pickup: a completely dry hand switches to anything loaded', P.w === 2, 'w='+P.w);
+      P.has = w0.has; P.mag = w0.mag; P.ammo = w0.ammo; P.w = w0.w; P.lastFireT = -9;
+
+      /* aim zoom scales look sensitivity by the same 42% the FOV narrows */
+      {
+        const aa0 = AIM_ASSIST; AIM_ASSIST = 0;
+        M.locked = true; M.justLocked = 0; clearInput(); M.dx = 0; M.dy = 0;
+        const mvZ = x => { const ev = new MouseEvent('mousemove',{bubbles:true});
+          Object.defineProperty(ev,'movementX',{value:x});
+          Object.defineProperty(ev,'movementY',{value:0}); dispatchEvent(ev); };
+        P.aim = 0; let za = P.ang; mvZ(100); step(.016);
+        const yFull = angDiff(za, P.ang);
+        P.aim = 1; za = P.ang; mvZ(100); step(.016);
+        const yZoom = angDiff(za, P.ang);
+        ok('aim zoom: look sensitivity scales with the FOV',
+           Math.abs(yZoom - yFull*(1-.42)) < 1e-9, (yZoom/yFull).toFixed(2)+'x');
+        P.aim = 0; M.locked = false; AIM_ASSIST = aa0; clearInput();
+      }
+
+      /* Space taps get the same press buffer a click does */
+      M.fireEdge = 0; M.pressNew = false;
+      dispatchEvent(new KeyboardEvent('keydown', { code:'Space', bubbles:true }));
+      ok('keyboard fire is press-buffered', M.fireEdge > 0 && M.pressNew === true && held.fire === true);
+      dispatchEvent(new KeyboardEvent('keyup', { code:'Space', bubbles:true }));
+      M.fireEdge = 0; M.pressNew = false; held.fire = false;
+
+      ok('par: M02 outlasts M01\'s window', LEVELS[1].par === 170 && LEVELS[0].par === 150,
+         LEVELS[0].par+'/'+LEVELS[1].par+'/'+LEVELS[2].par);
+
+      /* boss death records the full fuse, so the HUD pulse can scale to it */
+      G.shieldDown = true;
+      const bz = spawnEnemy('boss', P.x+2, P.y);
+      hurtEnemy(bz, 1e6, false, true);
+      ok('meltdown: the full fuse is recorded for the pulse',
+         G.meltMax === BOSSTUNE.melt[G.diff] && Math.abs(G.meltdown - G.meltMax) < 1e-9);
+      G.meltdown = -1; G.meltMax = 0; G.ents = G.ents.filter(o => o !== bz);
+      P.hitT = 0; P.killT = 0; G.shake = 0; P.hurt = 0;
+
+      /* death beat: dying holds 'play' while the camera falls, then files the
+         ticket with a neutral SLA row. Tainted, so the saved bests stay clean. */
+      const t0 = G.tainted; G.tainted = true;
+      P.camZ = .5; P.hp = 5; P.armor = 0; P.alive = true;
+      hurtPlayer(500, P.x+1, P.y);
+      ok('death beat: state holds play while the camera falls',
+         G.state==='play' && !P.alive && G.deadT > 0);
+      for (let i=0;i<75;i++){ if (G.state !== 'play') break; step(.016); }
+      ok('death beat: the beat ends at the debrief', G.state === 'result');
+      ok('death beat: the camera sank', P.camZ < .2, 'camZ='+P.camZ.toFixed(2));
+      ok('loss debrief: SLA row is neutral on a loss',
+         document.getElementById('r-stats').innerHTML.indexOf('N/A — TICKET REOPENED') >= 0);
+      P.alive = true; P.hp = 100; P.camZ = .5; P.hurt = 0; P.dmgDir.length = 0; G.deadT = 0;
+
+      /* M03 checkpoint: the duel restart lands past the consoles */
+      retryDuel(false);
+      ok('checkpoint: retryDuel lands in M03 play', G.state==='play' && G.level===2);
+      ok('checkpoint: the shield is already down',
+         G.shieldDown === true && G.objs.find(o=>o.kind==='console').done === true);
+      ok('checkpoint: the z consoles read hacked',
+         G.ents.filter(e=>e.kind==='prop'&&e.sub==='console').every(e=>e.hacked));
+
+      /* campaign finale: winning M03 goes gold and persists the flag — run it
+         against a scratch save and put the real one straight back */
+      {
+        let raw1 = null; try { raw1 = localStorage.getItem(SAVE_KEY); } catch(_){}
+        const cd0 = campaignDone, b0 = JSON.stringify(BEST);
+        G.tainted = false;
+        for (const o of G.objs){ o.done = true; o.have = o.need; }
+        endMission(true, 'MISSION COMPLETE');
+        ok('finale: M03 win raises campaignDone', campaignDone === true);
+        ok('finale: the debrief goes gold',
+           document.getElementById('r-title').textContent === 'THE NETWORK IS MANAGED' &&
+           document.getElementById('r-eyebrow').textContent.indexOf('CONTRACT COMPLETE') === 0);
+        ok('finale: the career totals row appears',
+           document.getElementById('r-stats').innerHTML.indexOf('Career to date') >= 0);
+        campaignDone = cd0;
+        for (const k in BEST) delete BEST[k];
+        Object.assign(BEST, JSON.parse(b0));
+        try { raw1 === null ? localStorage.removeItem(SAVE_KEY)
+                            : localStorage.setItem(SAVE_KEY, raw1); } catch(_){}
+      }
+
+      /* the results asterisk clears once every cheat is off again */
+      const ch0 = Object.assign({}, G.cheats);
+      G.tainted = true; for (const k in G.cheats) G.cheats[k] = false;
+      loadLevel(0,1);
+      ok('tainted clears when no cheat is on', G.tainted === false);
+      G.tainted = true; G.cheats.god = true; loadLevel(0,1);
+      ok('tainted survives while a cheat is on', G.tainted === true);
+      Object.assign(G.cheats, ch0);
+      G.tainted = t0; G.cheats.god = g0; P.hp = hp0; P.armor = ar0;
+      G.state = 'play'; show(null); clearInput();
+    }
+
     /* clicking another window (blur without hide) pauses like tab-hide does */
     dispatchEvent(new Event('blur'));
     ok('blur pauses a live mission', G.state === 'pause');
@@ -3509,6 +4702,55 @@ function drawTestReport(){
   txt('F4 CLOSES', RW-8, RH-8, '#7d93ab', 6, 'right');
 }
 
+/* ------------------------------ persistence ----------------------------- */
+/* One key, one JSON blob, schema-versioned; a version mismatch drops the whole
+   blob rather than guessing at old fields. Every localStorage touch is wrapped:
+   private windows and some file:// contexts throw on ANY access, and losing a
+   save must never take the game down with it. Cheats and G.tainted are
+   deliberately absent from the blob — a reload has always been the cure. */
+const SAVE_KEY = 'a360.v1';
+const BEST = {};                  // 'level:diff' -> { time, acc, rank, win }
+let campaignDone = false;
+let SCANOP = 50;                  // scanline slider 0..100; JS-side so it can be saved before the DOM syncs
+function saveSettings(){
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      v:1, sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
+      keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn,
+      scan:SCANOP, map:G.mapOn, best:BEST, campaignDone
+    }));
+  } catch(_){}
+}
+function loadSettings(){
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(_){ d = null; }
+  if (!d || typeof d !== 'object' || d.v !== 1) return;
+  /* Every field is re-validated on the way in: the blob is user-editable, and a
+     hand-typed sens of 900 or look:'yes' must land on defaults, not in step(). */
+  const num = (v,lo,hi,fb) => typeof v === 'number' && isFinite(v) ? clamp(v,lo,hi) : fb;
+  M.sens  = num(d.sens, .15, 2.2, M.sens);
+  M.tsens = num(d.tsens, .3, 2.2, M.tsens);
+  /* Touch never restores LOOK: resolveLook pins it to direct drag, and reviving
+     a stored 'capture' would re-open the wait-forever lock WP2 closed. */
+  if (!isTouch && LOOK_ORDER.indexOf(d.look) >= 0) LOOK = d.look;
+  INVERT_Y = d.inv === true;
+  if (d.aim === 0 || d.aim === 1 || d.aim === 2) AIM_ASSIST = d.aim;
+  if (d.keys === 'wasd' || d.keys === 'arrows') KEYS_LAYOUT = d.keys;
+  A.sfxVol = num(d.sfx, 0, 1, A.sfxVol);      // pre-audioInit: the gain nodes read these at creation
+  A.musVol = num(d.mus, 0, 1, A.musVol);
+  A.musOn  = d.musOn !== false;
+  SCANOP   = Math.round(num(d.scan, 0, 100, SCANOP));
+  G.mapOn  = d.map !== false;
+  campaignDone = d.campaignDone === true;
+  if (d.best && typeof d.best === 'object')
+    for (const k in d.best){ const b = d.best[k];
+      if (/^\d+:\d+$/.test(k) && b && typeof b.time === 'number' && isFinite(b.time))
+        BEST[k] = { time:b.time, acc:num(b.acc,0,100,0), rank:String(b.rank||''), win:b.win === true };
+    }
+  resolveLook(); applyLayout();
+}
+loadSettings();                   // before boot() and before any UI sync, so labels reflect the blob
+
 /* ------------------------------ shell wiring --------------------------- */
 const LOOK_BLURB = {
   capture: 'click the view to capture the mouse, Esc to release',
@@ -3517,7 +4759,8 @@ const LOOK_BLURB = {
 };
 function syncLookLabel(){
   const b = document.getElementById('o-look');
-  if (b) b.textContent = LOOK.toUpperCase() + (LOOK==='capture' && lockGivenUp() ? ' (BLOCKED HERE)' : '');
+  if (b) b.textContent = isTouch ? 'TOUCH DRAG'
+    : LOOK.toUpperCase() + (LOOK==='capture' && lockGivenUp() ? ' (BLOCKED HERE)' : '');
 }
 function syncAimLabel(){
   const b = document.getElementById('o-aim');
@@ -3527,11 +4770,41 @@ function syncKeysLabel(){
   const b = document.getElementById('o-keys');
   if (b) b.textContent = KEYS_LAYOUT === 'arrows' ? 'ARROWS (LEFT-HANDED)' : 'WASD';
 }
+function syncInvLabel(){
+  const b = document.getElementById('o-inv');
+  if (b){ b.textContent = INVERT_Y ? 'ON' : 'OFF'; b.setAttribute('aria-pressed', String(INVERT_Y)); }
+}
+function syncRadarLabel(){
+  const b = document.getElementById('o-radar');
+  if (b){ b.textContent = G.mapOn ? 'ON' : 'OFF'; b.setAttribute('aria-pressed', String(G.mapOn)); }
+}
+function syncMusLabel(){
+  const b = document.getElementById('o-muson');
+  if (b){ b.textContent = A.musOn ? 'ON' : 'OFF'; b.setAttribute('aria-pressed', String(A.musOn)); }
+}
+/* State drives the widgets, never the reverse: after loadSettings() the sliders
+   and their value readouts must show the blob, not the HTML defaults. */
+function syncOptionsUI(){
+  const set = (id, v, lab, txt) => {
+    const el = document.getElementById(id); if (el) el.value = v;
+    const l = document.getElementById(lab); if (l) l.textContent = txt;
+  };
+  const sens = Math.round(M.sens*100), tsens = Math.round(M.tsens*100);
+  const sfx = Math.round(A.sfxVol*100), mus = Math.round(A.musVol*100);
+  set('o-sens', sens, 'v-sens', sens);
+  set('o-tsens', tsens, 'v-tsens', tsens);
+  set('o-sfx', sfx, 'v-sfx', sfx+'%');
+  set('o-mus', mus, 'v-mus', mus+'%');
+  set('o-scan', SCANOP, 'v-scan', SCANOP+'%');
+  const sc = document.getElementById('scan'); if (sc) sc.style.opacity = SCANOP/100;
+  syncLookLabel(); syncKeysLabel(); syncAimLabel(); syncInvLabel(); syncRadarLabel(); syncMusLabel();
+}
 function act(a){
+  sfx('click');                     // every menu activation blips, mouse or key
   switch(a){
     case 'missions': buildSelect(); G.state='select'; show('s-select'); break;
     case 'controls': G.state='controls'; show('s-controls'); break;
-    case 'options': syncLookLabel(); syncKeysLabel(); syncAimLabel(); G.state='options'; show('s-options'); break;
+    case 'options': syncOptionsUI(); G.state='options'; show('s-options'); break;
     case 'cheats': buildCheats(); G.state='cheats'; show('s-cheats'); break;
     case 'start': startMission(true); break;
     case 'resume': resume(true); break;
@@ -3539,25 +4812,36 @@ function act(a){
     case 'abort': G.state='title'; show('s-title'); clearToasts(); break;
     case 'facereset': drawDefaultFace(); bakeAllActors(); toast('DEFAULT FACE RESTORED','cyan'); break;
     case 'cyclelook': {
+      /* Touch has exactly one look mode. Offering CAPTURE here put phones into
+         a mode that waits forever for a pointer lock no touch screen grants. */
+      if (isTouch){ toast('TOUCH USES DIRECT DRAG — DRAG THE VIEW TO LOOK', 'cyan', 3600); break; }
       if (M.locked) unlock();
       LOOK = LOOK_ORDER[(LOOK_ORDER.indexOf(LOOK)+1) % LOOK_ORDER.length];
       M.lockFails = 0; M.lockNagged = false;   // a fresh choice gets a fresh chance
-      resolveLook(); clearInput(); syncLookLabel();
+      resolveLook(); clearInput(); syncLookLabel(); saveSettings();
       toast('LOOK: ' + LOOK.toUpperCase() + ' — ' + LOOK_BLURB[LOOK], 'cyan', 4200);
       break;
     }
     case 'cycleaim': {
-      AIM_ASSIST = (AIM_ASSIST + 1) % 3; syncAimLabel();
+      AIM_ASSIST = (AIM_ASSIST + 1) % 3; syncAimLabel(); saveSettings();
       toast('AIM ASSIST: ' + AIM_ASSIST_NAMES[AIM_ASSIST] + (AIM_ASSIST===2 ? ' — VIEW EASES ONTO TARGETS' : AIM_ASSIST===1 ? ' — SHOTS SNAP TO THE LOCKED HOSTILE' : ''), 'cyan', 3600);
       break;
     }
+    case 'toggleinv':
+      INVERT_Y = !INVERT_Y; syncInvLabel(); saveSettings();
+      toast(INVERT_Y ? 'INVERT Y: ON — PUSH FORWARD TO LOOK DOWN' : 'INVERT Y: OFF', 'cyan', 3000);
+      break;
     case 'togglemap':
-      G.mapOn = !G.mapOn;
+      G.mapOn = !G.mapOn; syncRadarLabel(); saveSettings();
       toast(G.mapOn ? 'RADAR ON' : 'RADAR OFF', 'cyan', 1500);
+      break;
+    case 'togglemus':                /* KeyM for touch players — same state, same blob */
+      A.musOn = !A.musOn; syncMusLabel(); saveSettings();
+      toast(A.musOn ? 'MUSIC ON' : 'MUSIC OFF', 'cyan', 1400);
       break;
     case 'togglekeys': {
       KEYS_LAYOUT = KEYS_LAYOUT === 'wasd' ? 'arrows' : 'wasd';
-      applyLayout(); clearInput(); syncKeysLabel();
+      applyLayout(); clearInput(); syncKeysLabel(); saveSettings();
       toast(KEYS_LAYOUT === 'arrows'
         ? 'ARROW KEYS MOVE AND STRAFE — TURN WITH , AND .'
         : 'WASD MOVES — ARROWS TURN', 'cyan', 4200);
@@ -3571,6 +4855,9 @@ function act(a){
 }
 document.addEventListener('click', e=>{
   audioInit();
+  /* The tap/click that skips the boot splash fires its click AFTER the title
+     menu appears, squarely on whatever row landed under the finger. */
+  if (performance.now() - bootExitAt < 350) return;
   const b = e.target.closest('[data-act]');
   if (b) act(b.dataset.act);
 });
@@ -3600,15 +4887,14 @@ function onKey(e){
   if (e.code==='F2'){ e.preventDefault(); M.diag2 = !M.diag2; return; }
   if (e.code==='F3'){ e.preventDefault(); M.diag = !M.diag; return; }
   if (e.code==='Backspace'){ e.preventDefault(); panic(); return; }
-  if (G.state==='boot'){ bootDone(); return; }
-  if (e.code==='KeyM'){ A.musOn = !A.musOn; toast(A.musOn?'MUSIC ON':'MUSIC OFF','cyan',1400); }
+  if (G.state==='boot'){ if (bootSkippable()) bootDone(); return; }
+  if (e.code==='KeyM'){ act('togglemus'); }   // shares the Options row's path so the label stays honest
   if (e.code==='KeyN'){ act('togglemap'); }
   if (e.code==='KeyP'){
     /* P and the Options slider drive the same scanlines: turning them back on
        with the slider parked at zero would otherwise LOOK like a dead key. */
     const off = document.body.classList.toggle('noscan');
-    if (!off){ const s = document.getElementById('o-scan');
-      if (s && +s.value === 0){ s.value = 50; document.getElementById('scan').style.opacity = .5; } }
+    if (!off && SCANOP === 0){ SCANOP = 50; syncOptionsUI(); saveSettings(); }
   }
   if (G.state==='play'){
     if (e.code==='Escape' || e.code==='Tab'){ pause(); return; }
@@ -3622,8 +4908,8 @@ function onKey(e){
   if (G.state==='pause' && (e.code==='Escape'||e.code==='Tab')){ resume(e.code==='Tab'); return; }   // Tab activates, Esc does not
   if (e.code==='Enter' && !(e.target && e.target.tagName==='BUTTON')){   // a focused button clicks itself
     if (G.state==='title'){ act('missions'); }
-    else if (G.state==='select'){ gotoBrief(); }
-    else if (G.state==='brief'){ startMission(true); }
+    else if (G.state==='select'){ sfx('click'); gotoBrief(); }
+    else if (G.state==='brief'){ sfx('click'); startMission(true); }
     else if (G.state==='result'){ act('abort'); }
   }
   if (e.code==='Escape' && (G.state==='select'||G.state==='controls'||G.state==='options'||G.state==='cheats')) act('back');
@@ -3631,13 +4917,17 @@ function onKey(e){
 }
 
 /* options */
-document.getElementById('o-sens').oninput = e => M.sens = e.target.value/100;
-document.getElementById('o-sfx').oninput  = e => { A.sfxVol = e.target.value/100; if (A.sfx) A.sfx.gain.value = A.sfxVol; };
-document.getElementById('o-mus').oninput  = e => { A.musVol = e.target.value/100; if (A.mus) A.mus.gain.value = A.musVol; };
+const sv = (id, txt) => { const l = document.getElementById(id); if (l) l.textContent = txt; };
+document.getElementById('o-sens').oninput = e => { M.sens = e.target.value/100; sv('v-sens', e.target.value); saveSettings(); };
+document.getElementById('o-tsens').oninput = e => { M.tsens = e.target.value/100; sv('v-tsens', e.target.value); saveSettings(); };
+document.getElementById('o-sfx').oninput  = e => { A.sfxVol = e.target.value/100; if (A.sfx) A.sfx.gain.value = A.sfxVol; sv('v-sfx', e.target.value+'%'); saveSettings(); };
+document.getElementById('o-mus').oninput  = e => { A.musVol = e.target.value/100; if (A.mus) A.mus.gain.value = A.musVol; sv('v-mus', e.target.value+'%'); saveSettings(); };
 document.getElementById('o-scan').oninput = e => {
-  document.getElementById('scan').style.opacity = e.target.value/100;
+  SCANOP = Math.round(+e.target.value);
+  document.getElementById('scan').style.opacity = SCANOP/100;
+  sv('v-scan', SCANOP+'%'); saveSettings();
   /* The slider always wins over a stale P toggle, or it drags a dead control. */
-  if (+e.target.value > 0) document.body.classList.remove('noscan');
+  if (SCANOP > 0) document.body.classList.remove('noscan');
 };
 document.getElementById('o-face').onchange = e => {
   const f = e.target.files && e.target.files[0]; if (!f) return;
@@ -3658,13 +4948,19 @@ const BOOTLINES = [
   'BAKING TEXTURES ............. DONE',
   'UPTIME SLA .................. 99.99%',
   'PATCH LEVEL ................. TUESDAY',
+  'BUILD ....................... v' + VERSION,
   'ARMING AGENT ................ READY'
 ];
-let bootI = 0, bootT = null;
+let bootI = 0, bootT = null, bootAt = 0, bootExitAt = 0;
+/* Skip is armed 400ms in, not immediately: the tap that launched the page (or
+   a key still settling) must not blow through the splash unseen. */
+const bootSkippable = () => G.state==='boot' && performance.now() - bootAt > 400;
 function bootDone(){
   if (bootT) { clearInterval(bootT); bootT = null; }
+  bootExitAt = performance.now();
   G.state = 'title'; show('s-title');
 }
+addEventListener('pointerdown', ()=>{ if (bootSkippable()) bootDone(); });
 function boot(){
   bakeProps();
   PROP.paint = [];
@@ -3677,9 +4973,16 @@ function boot(){
   bakeAllActors();
   loadLevel(0, G.diff);                 // level 1 doubles as the menu backdrop
   P.x = 3.5; P.y = 2.5;
-  resolveLook(); syncLookLabel(); syncKeysLabel(); syncAimLabel();
+  resolveLook(); syncOptionsUI();
   selfTest(false);                      // fail loudly if a level is unwinnable
   const bl = document.getElementById('bootline');
+  document.getElementById('ver').textContent = 'v' + VERSION;
+  bootAt = performance.now();
+  const bs = document.getElementById('bootskip');
+  bs.textContent = isTouch ? 'TAP TO SKIP' : 'CLICK TO SKIP';
+  setTimeout(()=>{ if (G.state==='boot') bs.hidden = false; }, 400);
+  if (isTouch) document.getElementById('titlehint').textContent =
+    'Left pad moves. Drag the view to look, FIRE to shoot. Headphones recommended.';
   bootT = setInterval(()=>{
     bl.textContent = BOOTLINES[bootI] || '';
     if (++bootI >= BOOTLINES.length + 1) bootDone();
@@ -3724,9 +5027,17 @@ function fit(){
   const de = document.documentElement;
   const w = Math.min(innerWidth || 1e9, de && de.clientWidth || 1e9, vv && vv.width || 1e9);
   const h = Math.min(innerHeight || 1e9, de && de.clientHeight || 1e9, vv && vv.height || 1e9);
-  const s = Math.min(w/RW, h/RH);
+  let s = Math.min(w/RW, h/RH);
+  /* Integer scale once there is room for it: a 2.37x stretch turns 1-game-pixel
+     detail (door digits, HUD glyphs) into unevenly fat and thin columns. Below
+     2x the letterbox cost of snapping down to 1x is worse than the shimmer. */
+  if (s >= 2) s = Math.floor(s);
   view.style.width = Math.floor(RW*s)+'px';
   view.style.height = Math.floor(RH*s)+'px';
+  /* One scanline per game-pixel row, and never a fractional period. Under 2x
+     a per-row stripe is half the display — keep the classic 3px look there. */
+  const scan = document.getElementById('scan');
+  if (scan) scan.style.backgroundSize = '100% ' + (s >= 2 ? Math.floor(s) : 3) + 'px';
 }
 addEventListener('resize', fit);
 fit();

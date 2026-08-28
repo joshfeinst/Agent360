@@ -15,18 +15,16 @@ colleague's photo. The photo never leaves the browser tab.
 
 | Channel | How |
 |---|---|
-| **Hosted (PWA)** | `https://joshfeinst.github.io/agent360/` — live once this repo is public (see *Hosting status* below). Installable from the browser's Install button; works offline after the first load. |
+| **Hosted (PWA)** | **Live now:** `https://joshfeinst.github.io/Agent360/`. Installable from the browser's Install button; works offline after the first load. |
 | **Single file** | Download `index.html`, double-click it. That's the whole game. Chrome or Edge recommended — the mouse locks the moment you hit ACCEPT. |
 | **Local server** | `python3 -m http.server` in the repo, then `http://localhost:8000`. |
 
 ### Hosting status
 
-This repo is currently **private**. GitHub Pages does not publish from private
-repos on a free personal plan, so the deploy workflow will fail at its
-`configure-pages` step until either the repo is flipped to **public**
-(Settings → General → Danger Zone → Change visibility) or the account has
-GitHub Pro. The moment that changes, the next push (or a manual run of the
-*Deploy to GitHub Pages* workflow) puts the game at the URL above.
+The repo is **public** and Pages deploys are green: every push to `main` puts
+the current build at the URL above within a minute or two. The service worker
+is network-first, so an already-installed copy picks the new version up on its
+next launch.
 
 ## Controls (short version)
 
@@ -36,6 +34,12 @@ Move **WASD** · look **mouse** (pointer lock; Esc releases and pauses) · fire
 self-test **F4** · input diagnostics **F3 / F2**. Every action has a
 right-hand mirror for left-handed mouse users; full list on the in-game
 CONTROLS screen.
+
+On a **touchscreen** the game switches to its own scheme: left pad moves
+(speed follows deflection, full deflection sprints), dragging the view looks,
+and an on-screen cluster carries **FIRE**, **AIM** (toggle), **RELOAD**,
+**GUN**, **USE**, **CROUCH** (toggle) and **PAUSE**. Every button clears 44px,
+and the pause screen's field watch stands in for Tab's floor plan.
 
 ## Packaging story
 
@@ -93,14 +97,36 @@ alone:
    no enemy-AI syncing, each client simulates itself and broadcasts
    position/fire events. Co-op adds host-authoritative enemy state on top.
 
+## What's new in v1.10
+
+A full TLC pass over v1.04: standards mode and scroll-safe menu screens, full
+touch parity, persisted settings and per-mission bests (`localStorage`,
+schema-versioned, cheats never recorded), per-mission art grades with per-cell
+floors/ceilings, dressed maps with one hidden cache per mission, damage-
+direction arcs and a proper death beat, an M03 duel checkpoint and campaign
+finale, and distance-attenuated audio with music states. The version in the
+title-screen corner tracks `VERSION` in `index.html`, which must match the
+`CACHE` name in `sw.js` — `tools/verify.js` fails the build if they drift.
+
 ## Development
 
-- **F4** runs the in-game self-test suite: level reachability audits, input
-  model invariants (pointer-lock linearity, free-look symmetry, aim-assist
-  never fighting the player's turn), movement and collision checks.
-- `tools/verify.js` runs the same suite headlessly plus a 5,400-frame
-  randomized-input soak across all nine mission/difficulty combinations:
-  `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
+- **F4** runs the in-game self-test suite — now **171 assertions**: level
+  reachability audits, input model invariants (pointer-lock linearity,
+  free-look symmetry, aim-assist never fighting the player's turn), movement
+  and collision checks, touch-cluster behaviour, palette/zone rendering,
+  secrets, checkpoint and music-state logic.
+- `tools/verify.js` runs that suite headlessly plus a 5,400-frame
+  randomized-input soak across all nine mission/difficulty combinations —
+  then does it all again in a phone context (844×390, touch events driving
+  the real cluster) and once more stepping the sim at 144 Hz and 30 Hz to
+  prove frame-rate invariance. It also checks the `index.html`/`sw.js`
+  version lockstep: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
+- `tools/touch.js` is a phone-finger walkthrough: boot skip, every menu, a
+  mission started, walked, fired, paused and resumed by taps alone, with
+  44px tap-target and screen-utilization measurements.
+- `tools/visual.js` measures the rendered glyph boxes of every text element
+  on every DOM overlay screen — zero-height, clipped or painted-over text
+  fails the run — at desktop and phone viewports.
 - `tools/playtest.js` pits a deliberately mediocre scripted bot (bounded turn
   rate, aim jitter, no cheats, no cover play) against the M03 boss and then the
   meltdown escape: `node tools/playtest.js "$(pwd)/index.html" 0 30`. Balance
