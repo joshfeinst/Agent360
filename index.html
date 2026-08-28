@@ -316,6 +316,7 @@ body.touch .no-touch{display:none}
         <div class="ctl"><span>Aim assist</span><span><button class="btn ghost" id="o-aim" data-act="cycleaim" style="padding:4px 9px;font-size:8px">SNAP + PULL</button></span></div>
         <div class="ctl"><span>Movement keys</span><span><button class="btn ghost" id="o-keys" data-act="togglekeys" style="padding:4px 9px;font-size:8px">WASD</button></span></div>
         <div class="ctl"><span>Corner radar</span><span><button class="btn ghost" id="o-radar" data-act="togglemap" aria-pressed="true" style="padding:4px 9px;font-size:8px">ON</button></span></div>
+        <div class="ctl"><span>Soundtrack</span><span><button class="btn ghost" id="o-muson" data-act="togglemus" aria-pressed="true" style="padding:4px 9px;font-size:8px">ON</button></span></div>
         <div class="ctl"><span>Sound effects</span><span><input type="range" id="o-sfx" min="0" max="100" value="70"> <b class="sv" id="v-sfx">70%</b></span></div>
         <div class="ctl"><span>Music</span><span><input type="range" id="o-mus" min="0" max="100" value="34"> <b class="sv" id="v-mus">34%</b></span></div>
         <div class="ctl"><span>Scanlines</span><span><input type="range" id="o-scan" min="0" max="100" value="50"> <b class="sv" id="v-scan">50%</b></span></div>
@@ -530,6 +531,10 @@ addEventListener('focus', () => { M.dx = 0; M.dy = 0; M.lx = null; M.ly = null; 
 document.addEventListener('visibilitychange', () => {
   clearInput();
   if (document.hidden && typeof G !== 'undefined' && G.state === 'play') pause();
+  /* coming back: iOS parks the context 'interrupted', not 'suspended' — nudge
+     it awake (audioInit resumes anything not 'running', and never creates
+     a context before the first real gesture has). */
+  if (!document.hidden && typeof audioInit === 'function' && A.ctx) audioInit();
 });
 
 /* The mouse belongs to the game across the WHOLE window while playing: in the
@@ -757,7 +762,9 @@ function unlock(){
   addEventListener('touchcancel', touchDone);   // else a cancelled stick walks (or sprints) forever
   view.addEventListener('touchstart', e=>{ const t=e.changedTouches[0]; T.look={id:t.identifier,x:t.clientX,y:t.clientY}; M.tlook = true; e.preventDefault(); }, {passive:false});
   const bind=(id,fn,fn2)=>{ const el=document.getElementById(id);
-    el.addEventListener('touchstart',e=>{e.preventDefault();fn();},{passive:false});
+    /* preventDefault means these touches never become the document click that
+       unlocks audio — so the cluster unlocks it itself (idempotent, cheap) */
+    el.addEventListener('touchstart',e=>{e.preventDefault();audioInit();fn();},{passive:false});
     el.addEventListener('touchend',e=>{e.preventDefault();fn2&&fn2();},{passive:false});
     /* The OS can steal a button touch (edge swipe, notification shade) and end
        it with touchcancel, never touchend — without this, USE stayed held and
@@ -779,9 +786,11 @@ function unlock(){
 })();
 
 /* ---------------------------------- audio -------------------------------- */
-const A = { ctx:null, master:null, sfx:null, mus:null, noise:null, sfxVol:.7, musVol:.34, musOn:true, step:0, next:0, timer:0 };
+const A = { ctx:null, master:null, sfx:null, mus:null, noise:null, sfxVol:.7, musVol:.34, musOn:true, step:0, next:0, timer:0, hatN:0, hbT:0, stepI:0 };
 function audioInit(){
-  if (A.ctx) { if (A.ctx.state === 'suspended') A.ctx.resume(); return; }
+  /* 'suspended' alone misses iOS's 'interrupted' (phone call, Siri): resume on
+     anything that is not running, and let a no-op resume be a no-op. */
+  if (A.ctx) { if (A.ctx.state !== 'running') A.ctx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   A.ctx = new AC();
   /* Limiter: 8 pellet impacts plus the shot itself used to sum to ~300%% of full
@@ -799,9 +808,26 @@ function audioInit(){
   A.noise = n;
   musicStart();
 }
+/* Distance attenuation rides THROUGH the existing pipeline: sfxAt() parks a
+   scale (and a pan) here for the duration of one SFX closure call, and env()
+   folds it into every peak. Player-originated sfx() calls never touch it. */
+let SFXSCALE = 1, SFXPAN = 0;
+const SFXRANGE = 20;                                  // world units to inaudible-ish
+const sfxDist = d => clamp(1 - Math.sqrt(Math.max(0,d)/SFXRANGE), .2, 1);
+function sfxAt(name, x, y){
+  const d = Math.hypot(x-P.x, y-P.y);
+  SFXSCALE = sfxDist(d);
+  SFXPAN = clamp(Math.sin(angDiff(P.ang, Math.atan2(y-P.y, x-P.x))) * Math.min(1, d/3), -.8, .8);
+  try { sfx(name); } finally { SFXSCALE = 1; SFXPAN = 0; }
+}
+/* one throwaway panner per burst — only when a pan is asked for and supported */
+function sfxBus(){
+  if (!SFXPAN || !A.ctx.createStereoPanner) return A.sfx;
+  const p = A.ctx.createStereoPanner(); p.pan.value = SFXPAN; p.connect(A.sfx); return p;
+}
 function env(g, t, a, dcy, peak){
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(peak, t+a);
+  g.gain.exponentialRampToValueAtTime(Math.max(.0002, peak*SFXSCALE), t+a);
   g.gain.exponentialRampToValueAtTime(0.0001, t+a+dcy);
 }
 function noiseBurst(t, dur, f0, f1, peak, q=1, type='lowpass'){
@@ -811,7 +837,7 @@ function noiseBurst(t, dur, f0, f1, peak, q=1, type='lowpass'){
   const bp = A.ctx.createBiquadFilter(); bp.type = type; bp.Q.value = q;
   bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(Math.max(60,f1), t+dur);
   const g = A.ctx.createGain(); env(g, t, .004, dur, peak);
-  s.connect(bp); bp.connect(g); g.connect(A.sfx);
+  s.connect(bp); bp.connect(g); g.connect(sfxBus());
   s.start(t); s.stop(t+dur+.05);
 }
 function tone(t, f0, f1, dur, peak, type='square'){
@@ -819,7 +845,7 @@ function tone(t, f0, f1, dur, peak, type='square'){
   const o = A.ctx.createOscillator(); o.type = type;
   o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20,f1), t+dur);
   const g = A.ctx.createGain(); env(g, t, .006, dur, peak);
-  o.connect(g); g.connect(A.sfx); o.start(t); o.stop(t+dur+.05);
+  o.connect(g); g.connect(sfxBus()); o.start(t); o.stop(t+dur+.05);
 }
 const now = () => A.ctx ? A.ctx.currentTime : 0;
 const SFX = {
@@ -842,7 +868,19 @@ const SFX = {
   fail(){ const t=now(); [392,330,262,196].forEach((f,i)=>tone(t+i*.16,f,f,.3,.3,'sawtooth')); },
   explode(){ const t=now(); noiseBurst(t,.7,900,60,.55,.6); tone(t,90,25,.6,.35,'triangle'); },
   boss(){ const t=now(); tone(t,110,55,.9,.4,'sawtooth'); noiseBurst(t,.9,300,80,.35,.7); },
-  shield(){ const t=now(); tone(t,1600,400,.25,.25,'triangle'); }
+  shield(){ const t=now(); tone(t,1600,400,.25,.25,'triangle'); },
+  /* UI + foley round */
+  click(){ tone(now(),1240,1240,.035,.14,'square'); },
+  swap(){ const t=now(); noiseBurst(t,.04,4200,2200,.16,2.5,'bandpass'); tone(t+.03,860,640,.03,.1,'square'); },
+  denied(){ const t=now(); tone(t,220,220,.11,.22,'square'); tone(t+.13,165,165,.16,.22,'square'); },
+  bolt(){ const t=now(); noiseBurst(t,.045,2400,1200,.2,2,'bandpass'); tone(t,520,320,.03,.08,'square'); },
+  tink(){ const t=now(); tone(t,2100,1500,.06,.22,'triangle'); noiseBurst(t,.04,5200,3400,.12,3,'bandpass'); },
+  heart(){ const t=now(); tone(t,60,52,.1,.3,'sine'); tone(t+.17,45,40,.09,.2,'sine'); },
+  tick(){ tone(now(),1180,1180,.04,.16,'square'); },
+  tick2(){ const t=now(); tone(t,1560,1560,.04,.18,'square'); tone(t+.12,1560,1560,.04,.14,'square'); },
+  stepP(){ noiseBurst(now(),.05,520,150,.055,.8); },
+  stepE(){ noiseBurst(now(),.05,430,130,.07,.8); },
+  stepBoss(){ const t=now(); noiseBurst(t,.09,300,70,.14,.7); tone(t,72,48,.08,.08,'sine'); }
 };
 const SFXLAST = Object.create(null);
 function sfx(name){
@@ -852,6 +890,8 @@ function sfx(name){
   SFXLAST[name] = t;
   SFX[name]();
 }
+/* low-HP heartbeat cadence: ~1.2s at 29hp closing to ~.5s near death */
+const hbPeriod = hp => .5 + clamp(hp,0,30)/30*.7;
 
 /* ------- soundtrack: original spy-adjacent loop in B minor, 104 bpm ------ */
 const NOTE = f => f;
@@ -862,6 +902,22 @@ const LEAD = [0,0,0,0, 0,0,0,0, Fs3,0,A3,0, B3,0,0,0,
               0,0,0,0, D4,0,Cs3*2,0, B3,0,A3,0, Fs3,0,0,0];
 const HAT  = [0,0,1,0, 0,0,1,0, 0,0,1,0, 0,1,1,0,
               0,0,1,0, 0,0,1,0, 0,0,1,0, 0,1,1,1];
+/* B section: same B-minor pool, answering contour — bars alternate via
+   (A.step>>5)&1 so the effective loop is ~9s instead of ~4.6s of wallpaper. */
+const BASS2 = [B1,0,D2,0, E2,0,Fs2,0, G2,0,Fs2,0, E2,0,B1,0,
+               B1,0,D2,0, E2,0,G2,0, A2,0,G2,0, Fs2,0,D2,0];
+const LEAD2 = [B3,0,0,0, D4,0,B3,0, 0,0,0,0, A3,0,Fs3,0,
+               0,0,G3,0, 0,0,B3,0, D4,0,Fs4,0, D4,0,B3,0];
+/* One decision point for what the loop should sound like this step. Pure on
+   G/A state so F4 can assert every branch without an AudioContext. */
+function musMood(){
+  const menu = typeof G === 'undefined' || G.state !== 'play';
+  const bossFight = !menu && G.bossAlive;
+  const escape = !menu && G.meltdown > 0;
+  return { menu, bossFight, escape,
+           combat: bossFight || escape || (!menu && G.heat > 0.4),
+           bar2: (A.step>>5)&1 };
+}
 function musNote(t, f, dur, type, peak, dest){
   const o = A.ctx.createOscillator(); o.type = type; o.frequency.value = f;
   const g = A.ctx.createGain();
@@ -881,17 +937,21 @@ function musicStart(){
     if (A.next < A.ctx.currentTime) A.next = A.ctx.currentTime + .05;
     while (A.next < A.ctx.currentTime + .25) {
       const s = A.step % 32, t = A.next;
-      const combat = G.state === 'play' && G.heat > 0.4;
+      const m = musMood(), combat = m.combat;
+      const BB = m.bar2 ? BASS2 : BASS, LL = m.bar2 ? LEAD2 : LEAD;
+      /* escape: the whole bass line up a semitone — same song, wrong-feeling */
+      const xp = m.escape ? 1.0595 : 1;
       if (A.musOn) {
-        if (BASS[s]) musNote(t, BASS[s], spb*1.7, 'sawtooth', .5, A.mus);
-        if (LEAD[s] && combat) musNote(t, LEAD[s], spb*1.4, 'square', .12, A.mus);
-        if (HAT[s]) {
+        if (BB[s]) musNote(t, BB[s]*xp, spb*1.7, 'sawtooth', m.menu ? .25 : .5, A.mus);
+        if (LL[s] && combat) musNote(t, LL[s]*xp, spb*1.4, 'square', .12, A.mus);
+        /* menus keep every other hat — sparse ambience, so mission start kicks */
+        if (HAT[s] && !(m.menu && (A.hatN++ & 1))) {
           const n = A.ctx.createBufferSource(); n.buffer = A.noise; n.loop=true;
           const hp = A.ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value = combat?7000:9000;
           const g = A.ctx.createGain(); g.gain.setValueAtTime(combat?.10:.05,t); g.gain.exponentialRampToValueAtTime(.0001,t+.05);
           n.connect(hp); hp.connect(g); g.connect(A.mus); n.start(t); n.stop(t+.08);
         }
-        if (combat && s===0) musNote(t, B2, spb*3, 'triangle', .16, A.mus);
+        if (combat && s===0) musNote(t, B2*xp, spb*3, 'triangle', m.bossFight ? .24 : .16, A.mus);
       }
       A.next += spb; A.step++;
     }
@@ -1729,7 +1789,7 @@ const G = {
   floorTex:9, ceilTex:10,
   time:0, kills:0, shots:0, hits:0, dmgTaken:0, heat:0,
   meltdown:-1, meltMax:0, shieldDown:true, bossAlive:false, tscale:1, shake:0, mapOn:true,
-  deadT:0, ckpt:null,
+  deadT:0, ckpt:null, bossSeen:false,
   cheats:{ god:false, ammo:false, allguns:false, bighead:false, paint:false, slow:false },
   tainted:false, doorNag:0
 };
@@ -1835,7 +1895,7 @@ function loadLevel(li, di){
                        Math.min(255,sk[2]*(1.25-.5*t))|0); } }
   G.time=0; G.kills=0; G.shots=0; G.hits=0; G.dmgTaken=0; G.heat=0;
   G.meltdown=-1; G.meltMax=0; G.bossAlive=false; G.shieldDown = true; G.doorNag=0; G.shake=0;
-  G.deadT=0; G.ckpt=null;
+  G.deadT=0; G.ckpt=null; G.bossSeen=false; A.hbT=0;
   /* The results asterisk marks the RUN, not the install: once every cheat is
      back off, the next mission starts clean. */
   { let on=false; for (const k in G.cheats) if (G.cheats[k]) on=true;
@@ -1982,7 +2042,7 @@ function spawnEnemy(sub, x, y){
 function fx(sub,x,y,z){ ent({kind:'fx', sub, x, y, zoff:z===undefined?.5:z, size:sub==='boom'?.9:.26, life:0, dead2:false}); }
 function boom(x,y,z,radius,dmg,fromPlayer){
   ent({kind:'fx', sub:'boom', x, y, zoff:z, size:1.0, life:0});
-  sfx('explode'); G.shake = Math.max(G.shake||0, 7);
+  sfxAt('explode', x, y); G.shake = Math.max(G.shake||0, 7);
   /* Splash respects walls like every other damage path (hitscan, enemy fire,
      aim assist all do): a rocket on a closed door must not clear the room
      behind it, and a corner is real cover from your own blast. */
@@ -2054,7 +2114,7 @@ function bump(kind, n=1){
       sfx('hack'); toast('OBJECTIVE '+o.tag+' — '+o.have+' OF '+o.need, 'cyan', 2000);
     }
     if (kind==='console' && G.objs.find(q=>q.kind==='console').done){
-      G.shieldDown = true; sfx('shield');
+      G.shieldDown = true; sfx('shield'); sfx('boss');   // the growl marks the duel opening, not only its end
       /* Duel checkpoint: what the agent carried the moment the shield fell.
          retryDuel restores exactly this, so the retry is the fight they earned. */
       G.ckpt = { has:P.has.slice(), mag:P.mag.slice(),
@@ -2071,7 +2131,8 @@ function hurtPlayer(dmg, sx, sy){
   if (G.cheats.god || !P.alive) return;
   dmg *= DIFFS[G.diff].dmg;
   G.dmgTaken += dmg;
-  if (P.armor > 0){ const a = Math.min(P.armor, dmg*.72); P.armor -= a; dmg -= a; }
+  let armored = false;
+  if (P.armor > 0){ const a = Math.min(P.armor, dmg*.72); P.armor -= a; dmg -= a; armored = a > dmg; }
   P.hp -= dmg; P.hurt = Math.min(1, P.hurt + dmg/55);
   /* Directional pain: remember WHERE it came from, as a world bearing — the
      HUD re-derives the screen side every frame so the arc rides a turning
@@ -2081,7 +2142,9 @@ function hurtPlayer(dmg, sx, sy){
     P.dmgDir.push({ ang: Math.atan2(sy-P.y, sx-P.x), t:.8 });
   }
   G.shake = Math.max(G.shake||0, Math.min(6, dmg/4));
-  sfx('hurt');
+  /* armour ate most of it: a metallic tink, not a flesh grunt — pairs with the
+     game-feel round's shorter hurt wash for absorbed hits */
+  sfx(armored ? 'tink' : 'hurt');
   if (P.hp <= 0){
     P.hp=0; P.alive=false;
     /* Death beat: hold 'play' for a second while the camera drops and the hurt
@@ -2092,14 +2155,14 @@ function hurtPlayer(dmg, sx, sy){
 }
 function hurtEnemy(e, dmg, splash, fromPlayer){
   if (e.state==='dead') return;
-  if (e.sub==='boss' && !G.shieldDown){ sfx('shield'); fx('spark', e.x, e.y, .6); return; }
+  if (e.sub==='boss' && !G.shieldDown){ sfxAt('shield', e.x, e.y); fx('spark', e.x, e.y, .6); return; }
   e.hp -= dmg; e.pain = .22; e.alert = 1; e.state='chase';
   if (fromPlayer) P.hitT = .15;
-  if (!splash) sfx('flesh');
+  if (!splash) sfxAt('flesh', e.x, e.y);
   if (e.hp <= 0){
     e.state='dead'; e.dying=0; e.deadFrame=0; e.zoff=0; G.kills++;
     if (fromPlayer) P.killT = .3;
-    sfx('die'); G.heat = Math.min(1, G.heat+.2);
+    sfxAt('die', e.x, e.y); G.heat = Math.min(1, G.heat+.2);
     if (e.sub==='boss'){
       boom(e.x,e.y,.2,3.2,60,false); bump('boss');
       G.bossAlive=false; G.meltdown = G.meltMax = BOSSTUNE.melt[G.diff];
@@ -2120,7 +2183,7 @@ function hurtProp(p, dmg){
   if (p.hp <= 0) return;
   p.hp -= dmg; fx('spark', p.x, p.y, .6);
   if (p.hp <= 0){
-    sfx('explode'); fx('boom', p.x, p.y, .1);
+    sfxAt('explode', p.x, p.y); fx('boom', p.x, p.y, .1);
     if (p.sub==='ap'){ bump('ap'); toast('ROGUE ACCESS POINT DESTROYED','gold'); }
     if (p.sub==='infected'){ bump('infected'); }
   }
@@ -2153,7 +2216,7 @@ function hitscan(ox,oy,ang,range,dmg,fromPlayer,pock=1){
       fx(G.cheats.paint?'paint':'puff', x-dx*.12, y-dy*.12, .32+rnd(.1));
       for (let i=0;i<pock;i++)
         spawnDecal(x-dx*.12+rr(-.03,.03), y-dy*.12+rr(-.03,.03), .30+rnd(.16));
-      sfx('impact'); return false;
+      sfxAt('impact', x, y); return false;
     }
     if (fromPlayer){
       for (const e of G.ents){
@@ -2307,6 +2370,7 @@ function startReload(){
 }
 function finishReload(){
   const w=WEAPS[P.w];
+  sfx('bolt');                       // the 2.3-2.85s reloads used to end silently
   if (G.cheats.ammo){ P.mag[P.w]=w.mag; return; }
   const want = w.mag - P.mag[P.w], got = Math.min(want, P.ammo[w.ammo]);
   P.mag[P.w] += got; P.ammo[w.ammo] -= got;
@@ -2314,10 +2378,10 @@ function finishReload(){
 function switchWeapon(d){
   for (let i=1;i<=4;i++){
     const n = (P.w + d*i + 8) % 4;
-    if (P.has[n]){ if (n!==P.w){ P.w=n; P.reload=0; P.fireCd=Math.max(P.fireCd,.18); sfx('reload'); } return; }
+    if (P.has[n]){ if (n!==P.w){ P.w=n; P.reload=0; P.fireCd=Math.max(P.fireCd,.18); sfx('swap'); } return; }
   }
 }
-function pickWeapon(n){ if (P.has[n] && n!==P.w){ P.w=n; P.reload=0; P.fireCd=Math.max(P.fireCd,.18); sfx('reload'); } }
+function pickWeapon(n){ if (P.has[n] && n!==P.w){ P.w=n; P.reload=0; P.fireCd=Math.max(P.fireCd,.18); sfx('swap'); } }
 
 /* ----------------------------------- AI --------------------------------- */
 /* Guards need a beat to react, or a doorway becomes an instant death sentence. */
@@ -2325,7 +2389,7 @@ function wake(e){
   if (e.alert || e.state==='dead') return;
   e.alert = 1; e.state = 'chase';
   e.cd = Math.max(e.cd, rr(.55, 1.05) * (G.diff===2 ? .7 : 1));
-  sfx('alert');
+  sfxAt('alert', e.x, e.y);
 }
 
 function updateEnemy(e, dt){
@@ -2386,7 +2450,7 @@ function updateEnemy(e, dt){
         const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)) * aimPenalty(), .06, .95);
         const spread = (1-acc) * .44;
         const fall = clamp(1 - dd/(s.sight*1.5), .34, 1);
-        sfx('shotgun');
+        sfxAt('shotgun', e.x, e.y);
         for (let i=0;i<(s.pellets||1);i++)
           hitscan(e.x, e.y, Math.atan2(P.y-e.y, P.x-e.x) + rr(-spread,spread), s.sight+2, s.dmg*fall, false);
         for (const o of G.ents) if (o.kind==='enemy' && o!==e && dist2(o.x,o.y,e.x,e.y)<100) wake(o);
@@ -2399,14 +2463,14 @@ function updateEnemy(e, dt){
       if (e.sub==='legacy'){
         /* .4s tell before the burst: whining caps, sparks off the barrel arm,
            the fire pose held early — reuses existing fx/sfx, no new audio */
-        e.pending = .4; e.fireFlash = .45; sfx('hack');
+        e.pending = .4; e.fireFlash = .45; sfxAt('hack', e.x, e.y);
         fx('spark', e.x+Math.cos(e.ang)*.55, e.y+Math.sin(e.ang)*.55, .5);
       } else {
         const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)) * aimPenalty(), .06, .95);
         const spread = (1-acc) * .44;
         const pel = s.pellets || 1;
         const fall = clamp(1 - dd/(s.sight*1.5), .34, 1);      // range falloff
-        sfx(e.sub==='drone' ? 'smg' : 'pistol');
+        sfxAt(e.sub==='drone' ? 'smg' : 'pistol', e.x, e.y);
         for (let i=0;i<pel;i++)
           hitscan(e.x, e.y, Math.atan2(P.y-e.y, P.x-e.x) + rr(-spread,spread), s.sight+2, s.dmg*fall, false);
         for (const o of G.ents) if (o.kind==='enemy' && o!==e && dist2(o.x,o.y,e.x,e.y)<100) wake(o);
@@ -2419,6 +2483,12 @@ function updateEnemy(e, dt){
       moveActor(e, e.x+Math.cos(e.ang)*s.spd*.35*dt, e.y+Math.sin(e.ang)*s.spd*.35*dt, s.r);
       e.moving=true; e.walk += dt*1.6;
     } else e.ang += 2.4*dt;
+  }
+  /* footsteps for the near ones only — a full room of striding guards under
+     gunfire is mud, but the one flanking you at 3 tiles is information */
+  if (e.moving && dd < 3.2){
+    const wi = (e.walk/2.6)|0;
+    if (wi !== e.stepI){ e.stepI = wi; sfxAt('stepE', e.x, e.y); }
   }
 }
 
@@ -2434,12 +2504,16 @@ function updateBoss(e, dt, dd, see){
   const n = Math.hypot(ax,ay)||1;
   moveActor(e, e.x+ax/n*s.spd*dt, e.y+ay/n*s.spd*dt, s.r);
   e.retarget -= dt; if (e.retarget<=0){ e.retarget=rr(1.4,3); e.strafe*=-1; }
+  /* boss intro stinger: the growl on FIRST line of sight, not just at death */
+  if (see && !G.bossSeen){ G.bossSeen = true; sfx('boss'); }
+  { const wi = (e.walk/2.2)|0;
+    if (wi !== e.stepI){ e.stepI = wi; sfxAt('stepBoss', e.x, e.y); } }
 
   e.cd -= dt;
   if (see && e.cd <= 0){
     e.cd = s.rof * (G.shieldDown ? .8 : 1.15) * BOSSTUNE.rof[G.diff];
     e.fireFlash = .18;
-    sfx('cannon');
+    sfxAt('cannon', e.x, e.y);
     for (const i of BOSSTUNE.fan[G.diff])
       ent({kind:'proj', sub:'boss', x:e.x, y:e.y, ang:toP + i*.16 + rr(-.05,.05),
            spd:BOSSTUNE.pspd[G.diff], life:0, size:.30, zoff:.56, mine:false, dmg:s.dmg});
@@ -2472,6 +2546,12 @@ function step(dt){
   G.heat = Math.max(0, G.heat - dt*.14);
   if (G.shake) G.shake = Math.max(0, G.shake - dt*22);
   P.hurt = Math.max(0, P.hurt - dt*1.5);
+  /* low-HP heartbeat: quickens as hp drops, stops on death (early return above)
+     and the moment a medkit lifts hp back over the line */
+  if (P.hp < 30){
+    A.hbT -= dt;
+    if (A.hbT <= 0){ A.hbT = hbPeriod(P.hp); sfx('heart'); }
+  } else A.hbT = 0;
   if (P.hitT > 0) P.hitT -= dt;
   if (P.killT > 0) P.killT -= dt;
   for (let i=P.dmgDir.length-1; i>=0; i--){
@@ -2592,6 +2672,10 @@ function step(dt){
     moveActor(P, P.x+dx*dt, P.y+dy*dt, .26);
     P.speed = base*g/2.35;
     P.bob += dt*base*g*3.4;
+    /* footsteps ride the same bob cycle the camera does — one stride per half
+       period, quiet enough to sit under any gunfire, silent when creeping */
+    const bi = (P.bob/Math.PI)|0;
+    if (bi !== A.stepI){ A.stepI = bi; if (!held.crouch && P.speed > .3) sfx('stepP'); }
   } else P.bob += dt*1.1;
   unstick(P);
 
@@ -2615,7 +2699,7 @@ function step(dt){
     let want = dist2(P.x,P.y,d.x,d.y) < (d.secret ? 1.2 : 2.6);
     if (want && d.locked && P.keys<=0){
       want = false;
-      if (G.doorNag <= 0){ G.doorNag = 3; sfx('dryfire'); toast('KEYCARD REQUIRED','red',2200); }
+      if (G.doorNag <= 0){ G.doorNag = 3; sfx('denied'); toast('KEYCARD REQUIRED','red',2200); }
     }
     if (!want) for (const e of G.ents){
       if (e.kind!=='enemy' || e.state==='dead') continue;
@@ -2626,7 +2710,7 @@ function step(dt){
     }
     d.open = clamp(d.open + (want ? dt*2.1 : -dt*1.3), 0, 1);
     G.solid[d.c] = d.open >= .9 ? 0 : 1;
-    if (want && !d.was){ d.was=1; d.found=1; sfx('door'); } else if (!want && d.was && d.open<=0) d.was=0;
+    if (want && !d.was){ d.was=1; d.found=1; sfxAt('door', d.x, d.y); } else if (!want && d.was && d.open<=0) d.was=0;
   }
   G.doorNag -= dt;
 
@@ -2659,7 +2743,7 @@ function step(dt){
       }
       if (isSolid(nx,ny) || cut || e.life>4){
         e.dead2=true;
-        if (e.mine) boom(e.x,e.y,.15,2.4,e.dmg*2.6,true); else { fx('spark',e.x,e.y,e.zoff); sfx('impact'); }
+        if (e.mine) boom(e.x,e.y,.15,2.4,e.dmg*2.6,true); else { fx('spark',e.x,e.y,e.zoff); sfxAt('impact',e.x,e.y); }
         continue;
       }
       e.x=nx; e.y=ny;
@@ -2706,8 +2790,13 @@ function step(dt){
   if (G.meltdown > 0){
     const prev = G.meltdown;
     G.meltdown -= dt;
-    /* last five seconds: a room-shudder heartbeat on each remaining second */
-    if (G.meltdown < 5 && (prev|0) !== (G.meltdown|0)) G.shake = Math.max(G.shake, 2.5);
+    /* the fuse is audible: a blip on every whole-second boundary, doubled and
+       higher once ten seconds remain — the visual pulse already landed */
+    if ((prev|0) !== (G.meltdown|0)){
+      sfx(G.meltdown < 10 ? 'tick2' : 'tick');
+      /* last five seconds: a room-shudder heartbeat on each remaining second */
+      if (G.meltdown < 5) G.shake = Math.max(G.shake, 2.5);
+    }
     if (G.meltdown <= 0) endMission(false, 'THERMAL SHUTDOWN');
   }
 }
@@ -3905,6 +3994,52 @@ function selfTest(runSim){
     }
   }
 
+  /* ---- audio: scheduling decisions and plumbing, no AudioContext needed ---- */
+  {
+    ok('sfxAt: near is louder than far', sfxDist(2) > sfxDist(12),
+       sfxDist(2).toFixed(2)+' vs '+sfxDist(12).toFixed(2));
+    ok('sfxAt: point blank is full volume', sfxDist(0) === 1);
+    ok('sfxAt: far sounds floor at .2, never vanish', sfxDist(40) === .2 && sfxDist(999) === .2);
+    {
+      /* the scale must reset even when sfx() bails (no ctx, muted, unknown) */
+      const v0 = A.sfxVol; A.sfxVol = 0;
+      sfxAt('impact', P.x+30, P.y+5);
+      A.sfxVol = v0;
+      ok('sfxAt restores the scale after the call', SFXSCALE === 1 && SFXPAN === 0,
+         'scale='+SFXSCALE+' pan='+SFXPAN);
+    }
+    const need = ['click','swap','denied','bolt','tink','heart','tick','tick2','stepP','stepE','stepBoss'];
+    ok('foley round SFX entries all exist', need.every(n => typeof SFX[n] === 'function'),
+       need.filter(n => typeof SFX[n] !== 'function').join(' '));
+    ok('music B section is a real second pattern',
+       BASS2.length === 32 && LEAD2.length === 32 &&
+       BASS2.join() !== BASS.join() && LEAD2.join() !== LEAD.join());
+    {
+      const s0 = { st:G.state, boss:G.bossAlive, melt:G.meltdown, heat:G.heat, step:A.step };
+      G.state = 'play'; G.bossAlive = true; G.meltdown = -1; G.heat = 0;
+      const mBoss = musMood();
+      G.bossAlive = false; G.meltdown = 12;
+      const mEsc = musMood();
+      G.state = 'title'; G.heat = 1; G.meltdown = -1;
+      const mMenu = musMood();
+      A.step = 32; const bar = musMood().bar2; A.step = 0; const bar0 = musMood().bar2;
+      G.state = s0.st; G.bossAlive = s0.boss; G.meltdown = s0.melt; G.heat = s0.heat; A.step = s0.step;
+      ok('boss fight forces the combat layer', mBoss.bossFight && mBoss.combat && !mBoss.menu);
+      ok('meltdown forces escape scoring', mEsc.escape && mEsc.combat && !mEsc.bossFight);
+      ok('menus are menus even at full heat', mMenu.menu && !mMenu.combat && !mMenu.escape);
+      ok('bars alternate every 32 steps', bar === 1 && bar0 === 0);
+    }
+    ok('heartbeat quickens as hp drops',
+       hbPeriod(5) < hbPeriod(25) && hbPeriod(0) >= .45 && hbPeriod(29) <= 1.3);
+    {
+      const b = document.getElementById('o-muson'), m0 = A.musOn;
+      act('togglemus');
+      const flipped = A.musOn === !m0 && (!b || b.getAttribute('aria-pressed') === String(A.musOn));
+      act('togglemus');
+      ok('options music row exists and drives A.musOn', !!b && flipped && A.musOn === m0);
+    }
+  }
+
   if (runSim){
     /* Snapshot EVERYTHING the sim touches, so running it never resets the
        player's mission, difficulty, cheats or look settings. */
@@ -4613,6 +4748,10 @@ function syncRadarLabel(){
   const b = document.getElementById('o-radar');
   if (b){ b.textContent = G.mapOn ? 'ON' : 'OFF'; b.setAttribute('aria-pressed', String(G.mapOn)); }
 }
+function syncMusLabel(){
+  const b = document.getElementById('o-muson');
+  if (b){ b.textContent = A.musOn ? 'ON' : 'OFF'; b.setAttribute('aria-pressed', String(A.musOn)); }
+}
 /* State drives the widgets, never the reverse: after loadSettings() the sliders
    and their value readouts must show the blob, not the HTML defaults. */
 function syncOptionsUI(){
@@ -4628,9 +4767,10 @@ function syncOptionsUI(){
   set('o-mus', mus, 'v-mus', mus+'%');
   set('o-scan', SCANOP, 'v-scan', SCANOP+'%');
   const sc = document.getElementById('scan'); if (sc) sc.style.opacity = SCANOP/100;
-  syncLookLabel(); syncKeysLabel(); syncAimLabel(); syncInvLabel(); syncRadarLabel();
+  syncLookLabel(); syncKeysLabel(); syncAimLabel(); syncInvLabel(); syncRadarLabel(); syncMusLabel();
 }
 function act(a){
+  sfx('click');                     // every menu activation blips, mouse or key
   switch(a){
     case 'missions': buildSelect(); G.state='select'; show('s-select'); break;
     case 'controls': G.state='controls'; show('s-controls'); break;
@@ -4664,6 +4804,10 @@ function act(a){
     case 'togglemap':
       G.mapOn = !G.mapOn; syncRadarLabel(); saveSettings();
       toast(G.mapOn ? 'RADAR ON' : 'RADAR OFF', 'cyan', 1500);
+      break;
+    case 'togglemus':                /* KeyM for touch players — same state, same blob */
+      A.musOn = !A.musOn; syncMusLabel(); saveSettings();
+      toast(A.musOn ? 'MUSIC ON' : 'MUSIC OFF', 'cyan', 1400);
       break;
     case 'togglekeys': {
       KEYS_LAYOUT = KEYS_LAYOUT === 'wasd' ? 'arrows' : 'wasd';
@@ -4714,7 +4858,7 @@ function onKey(e){
   if (e.code==='F3'){ e.preventDefault(); M.diag = !M.diag; return; }
   if (e.code==='Backspace'){ e.preventDefault(); panic(); return; }
   if (G.state==='boot'){ if (bootSkippable()) bootDone(); return; }
-  if (e.code==='KeyM'){ A.musOn = !A.musOn; saveSettings(); toast(A.musOn?'MUSIC ON':'MUSIC OFF','cyan',1400); }
+  if (e.code==='KeyM'){ act('togglemus'); }   // shares the Options row's path so the label stays honest
   if (e.code==='KeyN'){ act('togglemap'); }
   if (e.code==='KeyP'){
     /* P and the Options slider drive the same scanlines: turning them back on
@@ -4734,8 +4878,8 @@ function onKey(e){
   if (G.state==='pause' && (e.code==='Escape'||e.code==='Tab')){ resume(e.code==='Tab'); return; }   // Tab activates, Esc does not
   if (e.code==='Enter' && !(e.target && e.target.tagName==='BUTTON')){   // a focused button clicks itself
     if (G.state==='title'){ act('missions'); }
-    else if (G.state==='select'){ gotoBrief(); }
-    else if (G.state==='brief'){ startMission(true); }
+    else if (G.state==='select'){ sfx('click'); gotoBrief(); }
+    else if (G.state==='brief'){ sfx('click'); startMission(true); }
     else if (G.state==='result'){ act('abort'); }
   }
   if (e.code==='Escape' && (G.state==='select'||G.state==='controls'||G.state==='options'||G.state==='cheats')) act('back');
