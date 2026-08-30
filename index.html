@@ -380,7 +380,7 @@ body.touch .no-touch{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.12';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.20';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -1752,7 +1752,10 @@ const LEVELS = [
   pal:[1.06,1.10,1.18], fog:[0xaa,0xbb,0xc8], sky:[188,202,216],
   /* raised grate runs down the three cold aisles; the loading bay pours its
      own hazard-striped slab; the NOC keeps office carpet and a tile ceiling
-     under the colo's ducts — tile everywhere else */
+     under the colo's ducts — tile everywhere else. The bay wall is cinderblock
+     with one chevron band at the roll-up: the slab already shouts hazard, so
+     the wall only points at the door (a full-V wall judged too loud on
+     screenshot) */
   zones:[ {x0:1,y0:5,x1:30,y1:5,f:11},
           {x0:1,y0:10,x1:30,y1:11,f:11},
           {x0:1,y0:16,x1:30,y1:16,f:11},
@@ -1784,7 +1787,7 @@ const LEVELS = [
     '#..k....2..+......#...h....a...#',
     '#.d.....m..B......L..U......y..#',
     '#..........w......#.....g..y.<.#',
-    '####################VVVVVVVVV###'
+    '####################CCCCCCCCVVV#'
   ],
   objectives:[
     { tag:'A', text:'Recover both clean backup tapes from the cages', kind:'tape', need:2, diff:0 },
@@ -3939,6 +3942,15 @@ function rankName(){
                'SENIOR ENGINEER','SOLUTIONS ARCHITECT','PRINCIPAL ARCHITECT','PRINCIPAL ARCHITECT'];
   return names[clamp(s+1,0,7)];
 }
+/* The debrief ticket number, derived from the mission CODE so it survives
+   insertion — keying it off G.level once renamed the finale's ticket the day
+   M03 landed. Deterministic per mission x difficulty; codes a step apart land
+   137 apart, clear of the 11-per-rung difficulty spread. */
+function ticketOf(code, diff){
+  let h = 0;
+  for (let i = 0; i < code.length; i++) h = (h*31 + code.charCodeAt(i)) % 997;
+  return 'INC-' + (104200 + h*137 + diff*11);
+}
 function endMission(win, why){
   if (G.state!=='play') return;
   G.state='result'; unlock(); clearInput();
@@ -3954,7 +3966,7 @@ function endMission(win, why){
   document.getElementById('r-title').style.color = finale ? '#ffb02e' : win ? '#4ade80' : '#ff3b30';
   const acc = G.shots ? Math.round(G.hits/G.shots*100) : 0;
   const done = G.objs.filter(o=>o.done).length;
-  const ticket = 'INC-' + (104200 + G.level*137 + G.diff*11);
+  const ticket = ticketOf(G.L.code, G.diff);
   const sla = G.time <= G.L.par;
   /* Personal bests, filed BEFORE the stats render so the finale's career line
      counts this very win. A tainted run never reaches the blob — one cheat
@@ -4840,6 +4852,11 @@ function selfTest(runSim){
          LEVELS.filter(L=>L.finale).length === 1);
       ok('finale: the flagged mission is the boss duel',
          LEVELS[finaleIndex()].objectives.some(o=>o.kind==='boss'));
+
+      /* debrief ticket: keyed by CODE, so insertion can never rename it */
+      ok('ticket: deterministic per code, distinct across codes',
+         ticketOf('M05',1) === ticketOf('M05',1) &&
+         new Set(LEVELS.map(L=>ticketOf(L.code,1))).size === LEVELS.length);
 
       /* duel checkpoint: the restart lands past the consoles, in the finale */
       retryDuel(false);

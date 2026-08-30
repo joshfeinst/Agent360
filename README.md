@@ -119,9 +119,18 @@ mission hides one cache behind a wall that doesn't advertise itself. The long
 version, with the measurements that forced each change, is
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.20
+
+The campaign doubled. Two missions landed between the phishing floor and the
+finale — a colo at 03:15 and a parking-deck roof at dusk, the game's first
+open sky — and a scripted objective-chain bot now proves every mission humanly
+winnable end to end from a cold pistol start, on every clearance, with each
+new mission's par calibrated from its own measured run. Same ledger:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## Development
 
-- **F4** runs the in-game self-test suite — **220 assertions**: level
+- **F4** runs the in-game self-test suite — **221 assertions**: level
   reachability audits, input model invariants (pointer-lock linearity,
   free-look symmetry, aim-assist never fighting the player's turn), movement
   and collision checks, touch-cluster behaviour, palette and zone rendering,
