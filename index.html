@@ -4827,6 +4827,10 @@ function selfTest(runSim){
       /* the right pad turns by RATE, so a parked thumb holds a turn while the
          other hand shoots — the twin-pad answer to look-or-fire-never-both */
       { const savedLM2 = LOOKMODE; LOOKMODE = 'touch';
+        /* assist OFF for the pad cases: a 1.5-rad sweep can end with a hostile
+           in the cone, and SNAP+PULL then keeps easing the view after the
+           finger is gone — a real behaviour that made "released" not still */
+        const savedAA = AIM_ASSIST; AIM_ASSIST = 0; P.lockT = null;
         clearInput(); P.pitch = 0;
         const lr = document.getElementById('tlook').getBoundingClientRect();
         if (lr.width < 10) ok('touch: (no look pad geometry to test on)', true);
@@ -4868,7 +4872,7 @@ function selfTest(runSim){
         tev('touchend', null, vat(vx + 80, vy));
         step(0.016);
         ok('touch: a drag on the view looks and never fires', P.mag[0] === 7, 'mag='+P.mag[0]);
-        clearInput(); LOOKMODE = savedLM2; }
+        clearInput(); LOOKMODE = savedLM2; AIM_ASSIST = savedAA; }
 
       P.w = 0; P.mag[0] = 3; P.ammo.p9 = Math.max(P.ammo.p9, 20); P.reload = 0;
       tap(document.getElementById('trel'));
