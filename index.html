@@ -1730,6 +1730,10 @@ const LEVELS = [
 },
 {
   code:'M03', name:'LEGACY-DC01',
+  /* finale: the campaign ends HERE, wherever "here" sits once more missions
+     are inserted before it — everything that used to key off LEVELS.length-1
+     (gold debrief, campaignDone, the duel checkpoint) reads this flag now */
+  finale:true,
   site:'Somewhere under the building nobody has the keys to',
   brief:'Twenty-two years of uptime, no patches, and full domain admin. It has decided that '+
         'migration is an attack. Drop its shield at the patch consoles, decommission it, and '+
@@ -1769,6 +1773,11 @@ const LEVELS = [
   ]
 }
 ];
+
+/* The boss mission is the one flagged finale, NOT the last array slot: the
+   campaign grows by insertion (new missions land between M02 and the finale),
+   and anything counting from the end would quietly re-aim itself. */
+const finaleIndex = () => LEVELS.findIndex(L => L.finale);
 
 /* Roster thinning is per-level agentSkip lists, not a count knob here — a
    fraction can only cut in raster order, which is how M01 once lost its only
@@ -3660,7 +3669,7 @@ function buildSelect(){
     const b=document.createElement('button'); b.className='mi';
     /* Only a WIN earns the gold line — a stored loss holds the slot until one
        arrives, and 'BEST 0:12 · AGENT DOWN' is nobody's trophy. */
-    const bb = BEST[i + ':' + G.diff];
+    const bb = BEST[L.code + ':' + G.diff];
     b.innerHTML = '<span>'+L.code+' · '+L.name+
       (bb && bb.win ? '<small class="best">BEST '+fmt(bb.time)+' · '+bb.rank+'</small>' : '')+
       '</span><span class="k">'+(i===selLevel?'◀ SELECTED':'▶')+'</span>';
@@ -3747,7 +3756,7 @@ function startMission(gesture){
    when the shield fell (G.ckpt); a first-visit fallback matches the playtest. */
 function retryDuel(gesture){
   const ck = G.ckpt;                       // startMission's loadLevel wipes it
-  selLevel = LEVELS.length-1;
+  selLevel = finaleIndex();
   startMission(gesture);
   for (const o of G.objs) if (o.kind==='console'){ o.done = true; o.have = o.need; }
   for (const e of G.ents) if (e.kind==='prop' && e.sub==='console') e.hacked = true;
@@ -3799,9 +3808,9 @@ function endMission(win, why){
   if (G.state!=='play') return;
   G.state='result'; unlock(); clearInput();
   sfx(win?'objective':'fail');
-  /* Winning the last mission is the campaign, and it reads like it: gold
+  /* Winning the flagged finale is the campaign, and it reads like it: gold
      eyebrow-and-title treatment plus a career line over the stored bests. */
-  const finale = win && G.level === LEVELS.length-1;
+  const finale = win && G.L.finale === true;
   document.getElementById('r-eyebrow').textContent = finale
     ? 'CONTRACT COMPLETE — '+G.L.code+' · '+DIFFS[G.diff].name
     : G.L.code+' · '+G.L.name+' · '+DIFFS[G.diff].name;
@@ -3819,7 +3828,7 @@ function endMission(win, why){
      loss never displaces anything but an empty slot, and between wins the
      clock decides. */
   if (!G.tainted){
-    const bk = G.level + ':' + G.diff, prev = BEST[bk];
+    const bk = G.L.code + ':' + G.diff, prev = BEST[bk];
     if (!prev || (win && !prev.win) || (win && prev.win && G.time < prev.time))
       BEST[bk] = { time: Math.round(G.time*100)/100, acc, rank: win ? rankName() : '', win: !!win };
     if (finale) campaignDone = true;
@@ -3853,7 +3862,7 @@ function endMission(win, why){
   if (win && selLevel < LEVELS.length-1) mk('NEXT MISSION ▶', ()=>{ selLevel++; gotoBrief(); });
   /* dying PAST the consoles offers the duel checkpoint, front and centre */
   { const con = G.objs.find(o=>o.kind==='console');
-    if (!win && G.level === LEVELS.length-1 && con && con.done)
+    if (!win && G.L.finale && con && con.done)
       mk('RETRY AT THE DUEL ▶', ()=>retryDuel(true)); }
   mk(win?'REPLAY':'RETRY', ()=>startMission(true), true);
   mk('MISSION SELECT', ()=>{ buildSelect(); G.state='select'; show('s-select'); }, true);
@@ -3900,8 +3909,11 @@ function selfTest(runSim){
   const ok = (name, pass, detail) => R.push({ name, pass, detail: detail || '' });
 
   /* the one hidden cache per mission, by cell — the flood-fill tests below
-     prove each is sealed by its 'H' door and open through it */
-  const SECRETS = [ [[24,4]], [[13,16],[14,16]], [[24,12],[25,12]] ];
+     prove each is sealed by its 'H' door and open through it. Keyed by mission
+     CODE, not index: inserting a mission must not shuffle every cache under
+     the wrong map, and a new mission without an entry here fails by name. */
+  const SECRETS = { M01:[[24,4]], M02:[[13,16],[14,16]], M03:[[24,12],[25,12]] };
+  const byCode = c => LEVELS.find(L => L.code === c);
 
   for (let i=0;i<LEVELS.length;i++){
     const L = LEVELS[i], W = L.map[0].length;
@@ -3920,9 +3932,10 @@ function selfTest(runSim){
     {
       const h = L.map.join('').split('H').length-1;
       ok(L.code+' has exactly one hidden door', h===1, 'found '+h);
-      const shut = auditLevel(i, false, true);
+      const shut = auditLevel(i, false, true), sec = SECRETS[L.code];
       ok(L.code+' secret cache is sealed until found',
-         SECRETS[i].every(([sx,sy]) => !shut.seen[sy][sx]));
+         !!sec && sec.every(([sx,sy]) => !shut.seen[sy][sx]),
+         sec ? '' : 'no SECRETS entry for '+L.code);
     }
 
     const a = auditLevel(i, false);
@@ -3950,9 +3963,10 @@ function selfTest(runSim){
   /* ---- art: the mission grade rebakes the wall tables; sprites stay neutral ---- */
   {
     const psum = () => { let n=0; const p=PROP.puff.lv[0]; for (let i=0;i<p.length;i++) n=(n+p[i])>>>0; return n; };
-    applyPalette(LEVELS[0].pal, LEVELS[0].fog);
+    const g01 = byCode('M01'), g03 = byCode('M03');
+    applyPalette(g01.pal, g01.fog);
     const t01 = TEXL[0][0][2080], f01 = FOGPX, s01 = psum();
-    applyPalette(LEVELS[2].pal, LEVELS[2].fog);
+    applyPalette(g03.pal, g03.fog);
     ok('palette: M01 vs M03 grades bake different walls', t01 !== TEXL[0][0][2080]);
     ok('palette: fog colour follows the grade', FOGPX !== f01);
     ok('palette: sprite bakes stay neutral', psum() === s01);
@@ -3971,8 +3985,9 @@ function selfTest(runSim){
 
   /* ---- persistence: the roundtrip must ride the REAL save/load path ---- */
   {
-    let raw0 = null, lsOK = true;
-    try { raw0 = localStorage.getItem(SAVE_KEY); } catch(_){ lsOK = false; }
+    let raw0 = null, raw0v1 = null, lsOK = true;
+    try { raw0 = localStorage.getItem(SAVE_KEY); raw0v1 = localStorage.getItem(SAVE_KEY_V1); }
+    catch(_){ lsOK = false; }
     if (lsOK){
       const s0 = { sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
                    keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn, scan:SCANOP,
@@ -3981,31 +3996,63 @@ function selfTest(runSim){
       M.sens = 1.23; M.tsens = .77; INVERT_Y = true; AIM_ASSIST = 0; KEYS_LAYOUT = 'arrows';
       A.sfxVol = .12; A.musVol = .21; A.musOn = false; SCANOP = 15; G.mapOn = false;
       if (!isTouch) LOOK = 'drag';
-      BEST['0:2'] = { time:99.5, acc:61, rank:'TIER 2 TECH', win:true };
+      BEST['M01:2'] = { time:99.5, acc:61, rank:'TIER 2 TECH', win:true };
       G.cheats.god = true; G.tainted = true;          // must NOT reach the blob
       saveSettings();
       let blob = ''; try { blob = localStorage.getItem(SAVE_KEY) || ''; } catch(_){}
       ok('save writes the blob', blob.length > 0);
+      ok('save carries schema v2 and code-keyed bests',
+         blob.indexOf('"v":2') >= 0 && blob.indexOf('"M01:2"') >= 0);
       ok('cheats never persisted', !/cheat|taint|god/i.test(blob));
       M.sens = .5; M.tsens = 1; INVERT_Y = false; AIM_ASSIST = 2; KEYS_LAYOUT = 'wasd';
       A.sfxVol = .7; A.musVol = .34; A.musOn = true; SCANOP = 50; G.mapOn = true;
-      delete BEST['0:2'];
+      delete BEST['M01:2'];
       loadSettings();
       ok('settings roundtrip', Math.abs(M.sens-1.23)<1e-9 && Math.abs(M.tsens-.77)<1e-9
          && INVERT_Y && AIM_ASSIST===0 && KEYS_LAYOUT==='arrows'
          && Math.abs(A.sfxVol-.12)<1e-9 && !A.musOn && SCANOP===15 && !G.mapOn
          && (isTouch || LOOK==='drag'));
-      const bb = BEST['0:2'];
+      const bb = BEST['M01:2'];
       ok('best result roundtrip', !!bb && bb.win && Math.abs(bb.time-99.5)<1e-6
          && bb.rank==='TIER 2 TECH');
       let threw = false;
       try { localStorage.setItem(SAVE_KEY, '{"v":1,oops'); } catch(_){}
+      try { localStorage.removeItem(SAVE_KEY_V1); } catch(_){}
       M.sens = .41;
       try { loadSettings(); } catch(_){ threw = true; }
       ok('malformed blob never throws', !threw && Math.abs(M.sens-.41)<1e-9);
       try { localStorage.setItem(SAVE_KEY, '{"v":99,"sens":9}'); } catch(_){}
       try { loadSettings(); } catch(_){ threw = true; }
       ok('unknown schema version is dropped', !threw && Math.abs(M.sens-.41)<1e-9);
+      /* ---- v1 -> v2 migration: index-keyed bests re-key through V1_CODES ---- */
+      {
+        try { localStorage.removeItem(SAVE_KEY); } catch(_){}
+        try { localStorage.setItem(SAVE_KEY_V1, JSON.stringify({ v:1, best:{
+          '2:1':  { time:88.25, acc:52, rank:'TIER 1 TECH', win:true },
+          '0:0':  { time:70.5,  acc:40, rank:'TIER 1 TECH', win:true },
+          '9:1':  { time:1, acc:1, rank:'x', win:true },      // no such v1 slot
+          'junk': { time:2, acc:1, rank:'x', win:true } } })); } catch(_){}
+        for (const k in BEST) delete BEST[k];
+        let mThrew = false;
+        try { loadSettings(); } catch(_){ mThrew = true; }
+        const fin = LEVELS[finaleIndex()].code;
+        const mg = BEST[fin + ':1'];
+        ok('migration: v1 best 2:1 lands on the finale code', !mThrew &&
+           !!mg && mg.win && Math.abs(mg.time-88.25)<1e-6, JSON.stringify(mg));
+        ok('migration: v1 best 0:0 lands on M01', !!BEST['M01:0'] &&
+           Math.abs(BEST['M01:0'].time-70.5)<1e-6);
+        ok('migration: index and junk keys never survive',
+           !BEST['2:1'] && !BEST['0:0'] && !BEST['9:1'] && !BEST.junk &&
+           Object.keys(BEST).length === 2, Object.keys(BEST).join(' '));
+        /* both keys present: the v2 blob wins outright, no v1 bleed-through */
+        try { localStorage.setItem(SAVE_KEY,
+          JSON.stringify({ v:2, best:{ 'M02:2':{ time:55, acc:30, rank:'TIER 1 TECH', win:true } } })); } catch(_){}
+        for (const k in BEST) delete BEST[k];
+        loadSettings();
+        ok('migration: a v2 blob outranks the leftover v1 key',
+           !!BEST['M02:2'] && !BEST[fin + ':1'], Object.keys(BEST).join(' '));
+        try { localStorage.removeItem(SAVE_KEY_V1); } catch(_){}
+      }
       M.sens = s0.sens; M.tsens = s0.tsens; INVERT_Y = s0.inv; AIM_ASSIST = s0.aim;
       KEYS_LAYOUT = s0.keys; A.sfxVol = s0.sfx; A.musVol = s0.mus; A.musOn = s0.musOn;
       SCANOP = s0.scan; G.mapOn = s0.map; campaignDone = s0.cd;
@@ -4016,6 +4063,8 @@ function selfTest(runSim){
       applyLayout(); resolveLook();
       try { raw0 === null ? localStorage.removeItem(SAVE_KEY)
                           : localStorage.setItem(SAVE_KEY, raw0); } catch(_){}
+      try { raw0v1 === null ? localStorage.removeItem(SAVE_KEY_V1)
+                            : localStorage.setItem(SAVE_KEY_V1, raw0v1); } catch(_){}
     }
   }
 
@@ -4454,22 +4503,23 @@ function selfTest(runSim){
        server-hall grate), so they are saved and put back — `delete` here once
        stripped that floor for the rest of the session after any F4 run. */
     {
-      const L0 = LEVELS[0];
+      /* M01 by code, not slot 0 — the zone assertions are about ITS grate */
+      const L0 = byCode('M01'), i0 = LEVELS.indexOf(L0);
       const realZones = L0.zones;
       L0.zones = [{x0:1,y0:1,x1:2,y1:2,f:18,c:19}];
-      loadLevel(0,1);
+      loadLevel(i0,1);
       ok('zones: cell inside the zone gets the zone textures',
          G.ftex[idx(2,2)]===18 && G.ctex[idx(2,2)]===19);
       ok('zones: cells outside keep the level default',
          G.ftex[idx(5,5)]===L0.floor && G.ctex[idx(5,5)]===L0.ceil);
       L0.zones = [{x0:0,y0:0,x1:99,y1:99,c:255}];
-      loadLevel(0,1);
+      loadLevel(i0,1);
       P.pitch=0; P.bob=0; P.recoil=0; G.shake=0; P.aim=0;
       render();
       ok('sky: ceiling 255 renders the sky gradient', buf[RW>>1] === SKYROW[0],
          buf[RW>>1].toString(16)+' vs '+SKYROW[0].toString(16));
       L0.zones = realZones;
-      loadLevel(0,1); render();
+      loadLevel(i0,1); render();
       ok('zones: M01 keeps its shipped grate floor after the zone tests',
          G.zoned && G.ftex[idx(5,11)]===11);
       const seen = new Set(); for (let i=0;i<buf.length;i+=997) seen.add(buf[i]);
@@ -4482,23 +4532,29 @@ function selfTest(runSim){
        AGENT cut, by type. A grid edit that silently rebalances either fails
        here by name. The sim's final loadLevel restores the caller's mission. */
     {
-      const WANT = [
-        { full:{phish:4,goon:3,legacy:1,drone:1}, agent:{phish:2,goon:2,legacy:1,drone:1} },
-        { full:{phish:3,goon:3,legacy:2,drone:1}, agent:{phish:2,goon:2,legacy:1,drone:1} },
-        { full:{phish:2,goon:2,drone:2,boss:1},   agent:{phish:1,goon:1,drone:1,boss:1} }
-      ];
+      /* expected rosters keyed by mission CODE — inserting a mission must not
+         slide every muster under the wrong map, and a new mission with no
+         entry here fails by name rather than passing by accident */
+      const WANT = {
+        M01:{ full:{phish:4,goon:3,legacy:1,drone:1}, agent:{phish:2,goon:2,legacy:1,drone:1} },
+        M02:{ full:{phish:3,goon:3,legacy:2,drone:1}, agent:{phish:2,goon:2,legacy:1,drone:1} },
+        M03:{ full:{phish:2,goon:2,drone:2,boss:1},   agent:{phish:1,goon:1,drone:1,boss:1} }
+      };
       const tally = () => { const t={};
         for (const e of G.ents) if (e.kind==='enemy') t[e.sub]=(t[e.sub]||0)+1; return t; };
       const fmt = t => Object.keys(t).sort().map(k=>k+':'+t[k]).join(' ');
       const hasAudit = () => G.ents.some(e => e.kind==='prop' && e.sub==='audit');
       for (let i=0;i<LEVELS.length;i++){
+        const code = LEVELS[i].code, w = WANT[code];
         const mapHasU = LEVELS[i].map.join('').indexOf('U') >= 0;
         loadLevel(i,2);
-        ok(LEVELS[i].code+' 00 roster composition', fmt(tally())===fmt(WANT[i].full), fmt(tally()));
-        if (mapHasU) ok(LEVELS[i].code+' audit terminal spawns on 00', hasAudit());
+        ok(code+' 00 roster composition', !!w && fmt(tally())===fmt(w.full),
+           w ? fmt(tally()) : 'no WANT entry for '+code);
+        if (mapHasU) ok(code+' audit terminal spawns on 00', hasAudit());
         loadLevel(i,0);
-        ok(LEVELS[i].code+' AGENT roster composition', fmt(tally())===fmt(WANT[i].agent), fmt(tally()));
-        ok(LEVELS[i].code+' audit terminal absent below 00', !hasAudit());
+        ok(code+' AGENT roster composition', !!w && fmt(tally())===fmt(w.agent),
+           w ? fmt(tally()) : 'no WANT entry for '+code);
+        ok(code+' audit terminal absent below 00', !hasAudit());
       }
     }
 
@@ -4598,8 +4654,9 @@ function selfTest(runSim){
       dispatchEvent(new KeyboardEvent('keyup', { code:'Space', bubbles:true }));
       M.fireEdge = 0; M.pressNew = false; held.fire = false;
 
-      ok('par: M02 outlasts M01\'s window', LEVELS[1].par === 170 && LEVELS[0].par === 150,
-         LEVELS[0].par+'/'+LEVELS[1].par+'/'+LEVELS[2].par);
+      ok('par: M02 outlasts M01\'s window',
+         byCode('M02').par === 170 && byCode('M01').par === 150,
+         LEVELS.map(L=>L.par).join('/'));
 
       /* boss death records the full fuse, so the HUD pulse can scale to it */
       G.shieldDown = true;
@@ -4624,33 +4681,61 @@ function selfTest(runSim){
          document.getElementById('r-stats').innerHTML.indexOf('N/A — TICKET REOPENED') >= 0);
       P.alive = true; P.hp = 100; P.camZ = .5; P.hurt = 0; P.dmgDir.length = 0; G.deadT = 0;
 
-      /* M03 checkpoint: the duel restart lands past the consoles */
+      /* finale placement: the flag, not an array slot, names the boss mission */
+      ok('finale: exactly one mission carries the flag',
+         LEVELS.filter(L=>L.finale).length === 1);
+      ok('finale: the flagged mission is the boss duel',
+         LEVELS[finaleIndex()].objectives.some(o=>o.kind==='boss'));
+
+      /* duel checkpoint: the restart lands past the consoles, in the finale */
       retryDuel(false);
-      ok('checkpoint: retryDuel lands in M03 play', G.state==='play' && G.level===2);
+      ok('checkpoint: retryDuel lands in finale play',
+         G.state==='play' && G.level===finaleIndex() && G.L.finale === true);
       ok('checkpoint: the shield is already down',
          G.shieldDown === true && G.objs.find(o=>o.kind==='console').done === true);
       ok('checkpoint: the z consoles read hacked',
          G.ents.filter(e=>e.kind==='prop'&&e.sub==='console').every(e=>e.hacked));
 
-      /* campaign finale: winning M03 goes gold and persists the flag — run it
-         against a scratch save and put the real one straight back */
+      /* campaign finale: winning the flagged mission goes gold and persists the
+         flag — run it against a scratch save and put the real one straight back */
       {
         let raw1 = null; try { raw1 = localStorage.getItem(SAVE_KEY); } catch(_){}
         const cd0 = campaignDone, b0 = JSON.stringify(BEST);
         G.tainted = false;
         for (const o of G.objs){ o.done = true; o.have = o.need; }
         endMission(true, 'MISSION COMPLETE');
-        ok('finale: M03 win raises campaignDone', campaignDone === true);
+        ok('finale: winning the flagged mission raises campaignDone', campaignDone === true);
         ok('finale: the debrief goes gold',
            document.getElementById('r-title').textContent === 'THE NETWORK IS MANAGED' &&
            document.getElementById('r-eyebrow').textContent.indexOf('CONTRACT COMPLETE') === 0);
         ok('finale: the career totals row appears',
            document.getElementById('r-stats').innerHTML.indexOf('Career to date') >= 0);
+        ok('finale: no NEXT MISSION past the end of the campaign',
+           document.getElementById('r-actions').textContent.indexOf('NEXT MISSION') < 0);
         campaignDone = cd0;
         for (const k in BEST) delete BEST[k];
         Object.assign(BEST, JSON.parse(b0));
         try { raw1 === null ? localStorage.removeItem(SAVE_KEY)
                             : localStorage.setItem(SAVE_KEY, raw1); } catch(_){}
+      }
+
+      /* NEXT MISSION walks the LEVELS order from wherever the win happened —
+         tainted for the duration so the scripted win never files a best */
+      {
+        const t1 = G.tainted;
+        selLevel = LEVELS.indexOf(byCode('M02'));
+        startMission(false);
+        G.tainted = true;             // AFTER loadLevel, which clears it clean
+        for (const o of G.objs){ o.done = true; o.have = o.need; }
+        endMission(true, 'MISSION COMPLETE');
+        const btns = document.getElementById('r-actions').querySelectorAll('button');
+        let nxt = null;
+        for (const b of btns) if (b.textContent.indexOf('NEXT MISSION') >= 0) nxt = b;
+        ok('results: a non-finale win offers NEXT MISSION', !!nxt);
+        if (nxt) nxt.onclick();
+        ok('results: NEXT MISSION advances one slot in LEVELS order',
+           selLevel === LEVELS.indexOf(byCode('M02')) + 1, 'selLevel='+selLevel);
+        G.tainted = t1;
       }
 
       /* the results asterisk clears once every cheat is off again */
@@ -4703,19 +4788,25 @@ function drawTestReport(){
 }
 
 /* ------------------------------ persistence ----------------------------- */
-/* One key, one JSON blob, schema-versioned; a version mismatch drops the whole
+/* One key, one JSON blob, schema-versioned; an unknown version drops the whole
    blob rather than guessing at old fields. Every localStorage touch is wrapped:
    private windows and some file:// contexts throw on ANY access, and losing a
    save must never take the game down with it. Cheats and G.tainted are
-   deliberately absent from the blob — a reload has always been the cure. */
-const SAVE_KEY = 'a360.v1';
-const BEST = {};                  // 'level:diff' -> { time, acc, rank, win }
+   deliberately absent from the blob — a reload has always been the cure.
+   v2 re-keys the bests from level INDEX to mission CODE: the campaign grows by
+   insertion, and a '2:1' best would silently jump missions the day a new one
+   lands in slot 2. v1 blobs migrate on load through V1_CODES — the campaign
+   order the day v1 shipped, frozen here forever. */
+const SAVE_KEY = 'a360.v2';
+const SAVE_KEY_V1 = 'a360.v1';    // still read (once) so nobody's bests vanish
+const V1_CODES = ['M01','M02','M03'];
+const BEST = {};                  // 'M01:diff' -> { time, acc, rank, win }
 let campaignDone = false;
 let SCANOP = 50;                  // scanline slider 0..100; JS-side so it can be saved before the DOM syncs
 function saveSettings(){
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      v:1, sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
+      v:2, sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
       keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn,
       scan:SCANOP, map:G.mapOn, best:BEST, campaignDone
     }));
@@ -4724,7 +4815,9 @@ function saveSettings(){
 function loadSettings(){
   let d = null;
   try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(_){ d = null; }
-  if (!d || typeof d !== 'object' || d.v !== 1) return;
+  /* no v2 blob yet: fall back to the v1 key so an upgrade keeps the save */
+  if (!d){ try { d = JSON.parse(localStorage.getItem(SAVE_KEY_V1)); } catch(_){ d = null; } }
+  if (!d || typeof d !== 'object' || (d.v !== 2 && d.v !== 1)) return;
   /* Every field is re-validated on the way in: the blob is user-editable, and a
      hand-typed sens of 900 or look:'yes' must land on defaults, not in step(). */
   const num = (v,lo,hi,fb) => typeof v === 'number' && isFinite(v) ? clamp(v,lo,hi) : fb;
@@ -4744,8 +4837,16 @@ function loadSettings(){
   campaignDone = d.campaignDone === true;
   if (d.best && typeof d.best === 'object')
     for (const k in d.best){ const b = d.best[k];
-      if (/^\d+:\d+$/.test(k) && b && typeof b.time === 'number' && isFinite(b.time))
-        BEST[k] = { time:b.time, acc:num(b.acc,0,100,0), rank:String(b.rank||''), win:b.win === true };
+      /* v1 keyed bests by level index; re-key each through V1_CODES on the way
+         in ('2:1' -> 'M03:1'), so the entry follows its mission, not its slot */
+      let bk = k;
+      if (d.v === 1){
+        const m = /^(\d+):(\d+)$/.exec(k);
+        if (!m || !V1_CODES[+m[1]]) continue;
+        bk = V1_CODES[+m[1]] + ':' + m[2];
+      } else if (!/^M\d\d:\d+$/.test(k)) continue;
+      if (b && typeof b.time === 'number' && isFinite(b.time))
+        BEST[bk] = { time:b.time, acc:num(b.acc,0,100,0), rank:String(b.rank||''), win:b.win === true };
     }
   resolveLook(); applyLayout();
 }

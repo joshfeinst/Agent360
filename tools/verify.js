@@ -1,5 +1,5 @@
 /* Headless verification for Agent 360: boot cleanly, run the in-file F4 self
-   test suite, then soak all 9 mission/difficulty combos with randomized input —
+   test suite, then soak every mission/difficulty combo with randomized input —
    first on a desktop page, then again in a phone context (844x390, isMobile,
    hasTouch) that drives the touch cluster with real TouchEvents, and finally a
    frame-rate invariance soak stepping the sim at 144Hz and 30Hz.
@@ -62,14 +62,16 @@ async function runSelfTest(page, label) {
   return fails.length;
 }
 
-/* Soak all 9 combos. dts is a list of fixed timesteps; each frame draws one at
-   random when there are several, or a stretch-per-half split for exactly two —
-   the loop's own cap is .05 so nothing here can exceed what a real frame can. */
+/* Soak every mission x difficulty combo (the campaign's own length, so a new
+   mission is soaked the day it lands). dts is a list of fixed timesteps; each
+   frame draws one at random when there are several, or a stretch-per-half split
+   for exactly two — the loop's own cap is .05 so nothing here can exceed what a
+   real frame can. */
 async function runSoak(page, frames, label, dts) {
   const soak = await page.evaluate(({ FRAMES, DTS }) => {
     const out = [];
     const savedGod = G.cheats.god;
-    for (let li = 0; li < 3; li++) for (let di = 0; di < 3; di++) {
+    for (let li = 0; li < LEVELS.length; li++) for (let di = 0; di < DIFFS.length; di++) {
       let exc = null, frames = 0;
       const f0 = G.faults || 0;
       try {
@@ -97,7 +99,7 @@ async function runSoak(page, frames, label, dts) {
           if (f % 60 === 0) render();          // exercise the renderer too
         }
       } catch (e) { exc = String((e && e.stack) || e).slice(0, 400); }
-      out.push({ li, di, frames, endState: G.state, faults: (G.faults || 0) - f0, exc });
+      out.push({ code: LEVELS[li].code, di, frames, endState: G.state, faults: (G.faults || 0) - f0, exc });
     }
     G.cheats.god = savedGod;
     clearInput(); G.state = 'title';
@@ -108,7 +110,7 @@ async function runSoak(page, frames, label, dts) {
   let totalFrames = 0, totalFaults = 0, excs = 0;
   for (const s of soak) {
     totalFrames += s.frames; totalFaults += s.faults; if (s.exc) excs++;
-    if (s.exc || s.faults) console.log('  SOAK M0' + (s.li + 1) + ' diff ' + s.di + ': faults=' + s.faults + ' exc=' + (s.exc || 'none'));
+    if (s.exc || s.faults) console.log('  SOAK ' + s.code + ' diff ' + s.di + ': faults=' + s.faults + ' exc=' + (s.exc || 'none'));
   }
   console.log('SOAK[' + label + '] ' + totalFrames + ' frames across ' + soak.length + ' combos, faults=' + totalFaults + ', exceptions=' + excs);
   return totalFaults + excs;

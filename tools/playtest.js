@@ -1,4 +1,5 @@
-/* Scripted playtest for the M03 boss duel: a deliberately imperfect bot
+/* Scripted playtest for the finale boss duel (found by the level's finale
+   flag, so mission insertion cannot re-aim it): a deliberately imperfect bot
    (bounded turn rate, aim jitter, periodic strafing, no cheats) fights
    LEGACY-DC01 as a mid-mission player would — vest on, shotgun + patch cannon
    found, consoles done — then runs the meltdown escape to the exit.
@@ -43,8 +44,14 @@ async function launch() {
     const saveRandom = Math.random;
     Math.random = mulberry32(seed);
     try {
-      selLevel = 2; G.diff = D; LOOK = 'free'; resolveLook();
+      /* the boss mission is the one FLAGGED finale — mission insertion moves
+         its index, and a hardcoded slot would silently duel the wrong level */
+      selLevel = LEVELS.findIndex(L => L.finale); G.diff = D; LOOK = 'free'; resolveLook();
       startMission(false); clearInput();
+      const bossCell = (() => {
+        const b = G.ents.find(o => o.kind === 'enemy' && o.sub === 'boss');
+        return b ? (b.y | 0) * G.W + (b.x | 0) : -1;
+      })();
       P.x = 15.5; P.y = 3.5; P.ang = 0;
       P.armor = 60; P.hp = 100;
       P.has = [true, false, true, true]; P.mag = [7, 0, 5, 3];
@@ -144,7 +151,7 @@ async function launch() {
         bossDead: !G.ents.some(o => o.kind === 'enemy' && o.sub === 'boss' && o.state !== 'dead'),
         end: G.state, t: +t.toFixed(1), hp: Math.round(P.hp), armor: Math.round(P.armor),
         dmg: Math.round(G.dmgTaken), faults: G.faults || 0, exc,
-        escapeCells: dist[7 * G.W + 19]   // BFS steps from the boss spawn (Z at 19,7) to the exit
+        escapeCells: bossCell >= 0 ? dist[bossCell] : -1   // BFS steps from the boss's own spawn cell to the exit
       };
       AIM_ASSIST = AA; clearInput(); G.state = 'title';
       if (typeof show === 'function') show('s-title');
