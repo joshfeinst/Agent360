@@ -380,7 +380,7 @@ body.touch .no-touch{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.10';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.11';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -1079,14 +1079,14 @@ const TEXFN = [
     R(g,s/2-1,4,2,s-8,'#3a3a34');                                     // lift cord
     R(g,0,0,s,4,'#5a5548'); R(g,0,s-4,s,4,'#494439');                 // frame
     R(g,0,0,4,s,'#5a5548'); R(g,s-4,0,4,s,'#494439'); R(g,0,0,s,1,'#6d6759'); },
-  /* 15 rusted panel (M03) */ (g,s)=>{ R(g,0,0,s,s,'#5d5248'); grain(g,s,.28);
+  /* 15 rusted panel (M05) */ (g,s)=>{ R(g,0,0,s,s,'#5d5248'); grain(g,s,.28);
     for(let y=0;y<s;y+=32) R(g,0,y,s,1,'#3d352e');
     R(g,31,0,1,s,'#3d352e');
     for(let i=0;i<26;i++){ const x=rr(2,s-4),y=rr(2,s-4),r=rr(1,4);
       g.fillStyle=Math.random()<.5?'#7a4a28':'#8a5a30'; g.beginPath(); g.arc(x,y,r,0,7); g.fill(); }
     for(let i=0;i<7;i++){ const x=rr(2,s-2); R(g,x,rr(30,s-16),2,rr(6,16),'#2e2620'); } // scorch runs
     for(let x=4;x<s;x+=8){ R(g,x,3,2,2,'#766a5e'); R(g,x,s-5,2,2,'#766a5e'); } },
-  /* 16 warning chevrons (M03) */ (g,s)=>{ R(g,0,0,s,s,'#2a2622');
+  /* 16 warning chevrons (M03 bay door, M05) */ (g,s)=>{ R(g,0,0,s,s,'#2a2622');
     for(let i=-s;i<s+16;i+=16){ g.fillStyle='#c8992e'; g.beginPath();
       g.moveTo(i,s); g.lineTo(i+8,s); g.lineTo(i+8+s,0); g.lineTo(i+s,0); g.fill(); }
     grain(g,s,.20);
@@ -1109,7 +1109,7 @@ const TEXFN = [
       R(g,x,y,32,1,'#5d584d'); R(g,x,y,1,32,'#5d584d'); R(g,x+1,y+1,31,1,'#8c8678');
       if ((x/32+y/32)%2===0){ R(g,x+7,y+11,18,10,'#efe9d2'); R(g,x+7,y+11,18,2,'#fffbe8');
         for(let i=0;i<3;i++) R(g,x+7,y+14+i*3,18,1,'#c9c3ab'); } } },
-  /* 20 exposed duct ceiling (M01/M03) */ (g,s)=>{ R(g,0,0,s,s,'#20252d'); grain(g,s,.14);
+  /* 20 exposed duct ceiling (M01/M03/M05) */ (g,s)=>{ R(g,0,0,s,s,'#20252d'); grain(g,s,.14);
     R(g,0,8,s,20,'#49525e'); R(g,0,8,s,3,'#5f6a78'); R(g,0,25,s,3,'#333b45');    // main duct
     for(let x=0;x<s;x+=16){ R(g,x,8,1,20,'#3a424e'); }                // duct seams
     R(g,0,38,s,4,'#3a424e'); R(g,0,38,s,1,'#4a525e');                 // pipe pair
@@ -1729,7 +1729,65 @@ const LEVELS = [
   ]
 },
 {
-  code:'M03', name:'LEGACY-DC01',
+  code:'M03', name:'THE COLD AISLE',
+  site:'Northpoint Data colo — aisle 40, 03:15',
+  brief:'The client\'s offsite backups live in a cage nobody has paid for since March, and '+
+        'the ransomware crew from the 14th floor is exfiltrating through it tonight. Recover '+
+        'the clean tapes, kill the uplink, and be gone before the transfer finishes.',
+  /* pale blue-white cold grade; the near-white fog reads as CRAC mist rolling
+     off the aisles, nothing like M01's dark cyan night */
+  /* par 130: the runthrough bot wins SECRET in ~47s cold — 2.8x, in the
+     2-4x family the other missions keep; the colo is the compact job */
+  floor:9, ceil:20, par:130,
+  pal:[1.06,1.10,1.18], fog:[0xaa,0xbb,0xc8], sky:[188,202,216],
+  /* raised grate runs down the three cold aisles; the loading bay pours its
+     own hazard-striped slab; the NOC keeps office carpet and a tile ceiling
+     under the colo's ducts — tile everywhere else */
+  zones:[ {x0:1,y0:5,x1:30,y1:5,f:11},
+          {x0:1,y0:10,x1:30,y1:11,f:11},
+          {x0:1,y0:16,x1:30,y1:16,f:11},
+          {x0:19,y0:18,x1:30,y1:22,f:12},
+          {x0:1,y0:18,x1:10,y1:22,f:18,c:19} ],
+  secretTex:2,                      // the cache door wears the rack face beside it
+  agentSkip:[ [17,16],[14,14],[9,16] ],   // one phish and two goons sit out
+  map:[
+    '##*######################*######',
+    '#..P.....y..........G..m...G...#',
+    '#...........g...1...G....a.G...#',
+    '#.a.................GGG+GGGG...#',
+    '#%%%%+%%###############+########',
+    '#.........h................a...#',
+    '#||||||+||||||||||||||+||||||||#',
+    '#..===..===..===..===..===.....#',
+    '#.b......S....2...u....1....X..#',
+    '#|||||||||||+|||||||||||||+||||#',
+    '*....h..3......................#',
+    '#.............m.....h..........#',
+    '#|||||+||||||||||||||||||+|||||#',
+    '#..===..===..===...HWv=...===..#',
+    '#.a.....u.....2....====...b....#',
+    '#|||||||||+|||||||||||||||||+||#',
+    '#...v....2.......1.........o...#',
+    '#wwwwwwwwwww##+##########*######',
+    '#.d.d....q.w......#..y..y......#',
+    '#.d.d......B..g...#......4.....#',
+    '#..k....2..+......#...h....a...#',
+    '#.d.....m..B......L..U......y..#',
+    '#..........w......#.....g..y.<.#',
+    '####################VVVVVVVVV###'
+  ],
+  objectives:[
+    { tag:'A', text:'Recover both clean backup tapes from the cages', kind:'tape', need:2, diff:0 },
+    { tag:'B', text:'Destroy the exfil uplink in the delinquent cage', kind:'ap', need:1, diff:0 },
+    { tag:'C', text:'Lift the loading-bay keycard from the NOC desk', kind:'key', need:1, diff:0 },
+    { tag:'D', text:'Pull the audit log from the loading-bay terminal', kind:'audit', need:1, diff:2 },
+    { tag:'E', text:'Exit through the loading bay, south-east', kind:'exit', need:1, diff:0 }
+  ]
+},
+{
+  /* M04 lands next round — the finale wears M05 now so the code gap stays
+     open for it (renumbering by insertion would re-key everyone's bests) */
+  code:'M05', name:'LEGACY-DC01',
   /* finale: the campaign ends HERE, wherever "here" sits once more missions
      are inserted before it — everything that used to key off LEVELS.length-1
      (gold debrief, campaignDone, the duel checkpoint) reads this flag now */
@@ -1847,7 +1905,7 @@ const ESPEC = {
   boss  : { hp:1250,spd:1.10, dmg:17, rof:.95, acc:.85, sight:34, size:1.18, r:.8, drop:-1 }
 };
 
-/* The M03 duel, tuned by clearance — ordered AGENT, SECRET AGENT, 00 AGENT.
+/* The M05 duel, tuned by clearance — ordered AGENT, SECRET AGENT, 00 AGENT.
    AGENT faces ONE slug slow enough to sidestep at a run, lighter drone
    pressure, half the rack's plating and a longer fuse out; 00 AGENT keeps the
    original triple fan. The upper two rows of `hp` reproduce the old
@@ -3750,7 +3808,7 @@ function startMission(gesture){
   }
   toast('MISSION '+G.L.code+' — '+G.L.name, 'gold', 3200);
 }
-/* M03 checkpoint: dying past shield-down restarts AT the duel, not at the
+/* M05 checkpoint: dying past shield-down restarts AT the duel, not at the
    door. Same setup the scripted playtest applies — consoles done, shield off,
    staged outside the arena — plus whatever loadout the agent actually carried
    when the shield fell (G.ckpt); a first-visit fallback matches the playtest. */
@@ -3912,7 +3970,8 @@ function selfTest(runSim){
      prove each is sealed by its 'H' door and open through it. Keyed by mission
      CODE, not index: inserting a mission must not shuffle every cache under
      the wrong map, and a new mission without an entry here fails by name. */
-  const SECRETS = { M01:[[24,4]], M02:[[13,16],[14,16]], M03:[[24,12],[25,12]] };
+  const SECRETS = { M01:[[24,4]], M02:[[13,16],[14,16]], M03:[[20,13],[21,13]],
+                    M05:[[24,12],[25,12]] };
   const byCode = c => LEVELS.find(L => L.code === c);
 
   for (let i=0;i<LEVELS.length;i++){
@@ -3963,11 +4022,11 @@ function selfTest(runSim){
   /* ---- art: the mission grade rebakes the wall tables; sprites stay neutral ---- */
   {
     const psum = () => { let n=0; const p=PROP.puff.lv[0]; for (let i=0;i<p.length;i++) n=(n+p[i])>>>0; return n; };
-    const g01 = byCode('M01'), g03 = byCode('M03');
+    const g01 = byCode('M01'), g05 = byCode('M05');
     applyPalette(g01.pal, g01.fog);
     const t01 = TEXL[0][0][2080], f01 = FOGPX, s01 = psum();
-    applyPalette(g03.pal, g03.fog);
-    ok('palette: M01 vs M03 grades bake different walls', t01 !== TEXL[0][0][2080]);
+    applyPalette(g05.pal, g05.fog);
+    ok('palette: M01 vs M05 grades bake different walls', t01 !== TEXL[0][0][2080]);
     ok('palette: fog colour follows the grade', FOGPX !== f01);
     ok('palette: sprite bakes stay neutral', psum() === s01);
     if (G.L) applyPalette(G.L.pal, G.L.fog);
@@ -4368,7 +4427,7 @@ function selfTest(runSim){
       P.has = savedHas; P.w = 0;
     }
 
-    /* the M03 duel is clearance-tuned: AGENT faces one slow slug, 00 AGENT
+    /* the M05 duel is clearance-tuned: AGENT faces one slow slug, 00 AGENT
        keeps the triple fan, and the escape fuse is longest where needed */
     {
       let bspot = null;
@@ -4538,7 +4597,8 @@ function selfTest(runSim){
       const WANT = {
         M01:{ full:{phish:4,goon:3,legacy:1,drone:1}, agent:{phish:2,goon:2,legacy:1,drone:1} },
         M02:{ full:{phish:3,goon:3,legacy:2,drone:1}, agent:{phish:2,goon:2,legacy:1,drone:1} },
-        M03:{ full:{phish:2,goon:2,drone:2,boss:1},   agent:{phish:1,goon:1,drone:1,boss:1} }
+        M03:{ full:{phish:3,goon:4,legacy:1,drone:1}, agent:{phish:2,goon:2,legacy:1,drone:1} },
+        M05:{ full:{phish:2,goon:2,drone:2,boss:1},   agent:{phish:1,goon:1,drone:1,boss:1} }
       };
       const tally = () => { const t={};
         for (const e of G.ents) if (e.kind==='enemy') t[e.sub]=(t[e.sub]||0)+1; return t; };
@@ -4795,11 +4855,13 @@ function drawTestReport(){
    deliberately absent from the blob — a reload has always been the cure.
    v2 re-keys the bests from level INDEX to mission CODE: the campaign grows by
    insertion, and a '2:1' best would silently jump missions the day a new one
-   lands in slot 2. v1 blobs migrate on load through V1_CODES — the campaign
-   order the day v1 shipped, frozen here forever. */
+   lands in slot 2. v1 blobs migrate on load through V1_CODES — the mission
+   each v1 INDEX pointed at, named by its CURRENT code: insertion never touches
+   this list, but renaming a mission v1 shipped must rename it here in the same
+   commit (slot 2 was LEGACY-DC01 — code M03 then, M05 now). */
 const SAVE_KEY = 'a360.v2';
 const SAVE_KEY_V1 = 'a360.v1';    // still read (once) so nobody's bests vanish
-const V1_CODES = ['M01','M02','M03'];
+const V1_CODES = ['M01','M02','M05'];
 const BEST = {};                  // 'M01:diff' -> { time, acc, rank, win }
 let campaignDone = false;
 let SCANOP = 50;                  // scanline slider 0..100; JS-side so it can be saved before the DOM syncs
@@ -4838,7 +4900,7 @@ function loadSettings(){
   if (d.best && typeof d.best === 'object')
     for (const k in d.best){ const b = d.best[k];
       /* v1 keyed bests by level index; re-key each through V1_CODES on the way
-         in ('2:1' -> 'M03:1'), so the entry follows its mission, not its slot */
+         in ('2:1' -> 'M05:1'), so the entry follows its mission, not its slot */
       let bk = k;
       if (d.v === 1){
         const m = /^(\d+):(\d+)$/.exec(k);
