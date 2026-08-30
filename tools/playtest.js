@@ -57,7 +57,9 @@ async function launch() {
       P.has = [true, false, true, true]; P.mag = [7, 0, 5, 3];
       P.ammo = { p9: 42, smg: 0, sh: 16, pt: 8 };
       G.shieldDown = true;
-      for (const o of G.objs) if (o.kind === 'console') { o.done = true; o.have = o.need; }
+      /* stage the tape too: it sits inside the boss orbit, and without it a WON
+         duel still refuses the exit — SECRET/00 could never record a win */
+      for (const o of G.objs) if (o.kind === 'console' || o.kind === 'tape') { o.done = true; o.have = o.need; }
       const AA = AIM_ASSIST; AIM_ASSIST = 2;
 
       // BFS distances to the exit; doors count walkable (they auto-open)

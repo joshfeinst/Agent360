@@ -67,7 +67,10 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
     const t = new Touch({ identifier: 9, target: el,
       clientX: r.left + r.width/2 + (dx||0)*r.width/2,
       clientY: r.top + r.height/2 + (dy||0)*r.height/2 });
-    (type === 'touchend' ? window : el).dispatchEvent(new TouchEvent(type, {
+    /* always on the element: a real touchend fires on the touch's ORIGINAL
+       target and bubbles to window — the one-owner buttons listen on the
+       element, and a window-only dispatch never reaches them */
+    el.dispatchEvent(new TouchEvent(type, {
       bubbles:true, cancelable:true, changedTouches:[t], touches: type==='touchend' ? [] : [t] }));
   }, [type, sel, dx, dy]);
 

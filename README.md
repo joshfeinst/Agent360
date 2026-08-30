@@ -128,9 +128,19 @@ winnable end to end from a cold pistol start, on every clearance, with each
 new mission's par calibrated from its own measured run. Same ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.21
+
+An adversarial bug hunt: four probe-driven finders, twenty-two reproduced
+fixes. The ones a player would have met first: a tap on the letterbox no
+longer fires the gun or silently drops your AIM, a laggy frame can no longer
+eat a tap or a flick, checkpoint wins stopped overwriting honest best times,
+the aim assist stopped courting an invulnerable boss, and secret caches
+stopped advertising themselves on the radar. Ledger as always:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## Development
 
-- **F4** runs the in-game self-test suite — **221 assertions**: level
+- **F4** runs the in-game self-test suite — **243 assertions**: level
   reachability audits, input model invariants (pointer-lock linearity,
   free-look symmetry, aim-assist never fighting the player's turn), movement
   and collision checks, touch-cluster behaviour, palette and zone rendering,

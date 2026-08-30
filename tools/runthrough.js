@@ -26,7 +26,7 @@ const LEVEL_ARG = process.argv[3] || 'all';
 const DIFF_ARG = process.argv[4] || 'all';
 const TRACE = process.argv.includes('--trace');   // per-half-second bot telemetry, for par calibration
 const MAX_TRIES = 5;          // attempts per combo; deaths beyond these fail it
-const MAX_SEC = 420;          // sim-seconds per attempt — 2.8x the slowest par
+const MAX_SEC = 420;          // sim-seconds per attempt — >2.3x the slowest par
 
 async function launch() {
   try { return await chromium.launch(); }
