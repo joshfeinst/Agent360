@@ -3,6 +3,8 @@
 Somebody at Riverbend Logistics propped the server-room door open. Somebody at
 Meridian Freight clicked the link. Somebody stopped paying for cage 40 at the
 Northpoint colo, and the crew that noticed is exfiltrating through it tonight.
+Somebody bolted a mast to the roof of the parking deck, and every rogue access
+point on this contract answers to it.
 And somewhere under a building nobody has the keys to, a domain controller
 with twenty-two years of uptime has decided that migration is an attack. You are the MSP's field agent. Deploy the agent,
 walk the CFO off the floor, decommission the machine, and be out before the
@@ -16,7 +18,7 @@ no libraries, no build step — the whole game is one HTML file. Its sibling
 project [Managed](https://github.com/joshfeinst/Managed) covers the desk job;
 this is the desk job seen from the field.
 
-Four missions on three clearances, GoldenEye-style aim assist, cheats
+Five missions on three clearances, GoldenEye-style aim assist, cheats
 unlocked from the start (the results screen just gets an asterisk), and a
 face-upload option so every hostile in the building can wear a colleague's
 photo. The photo never leaves the browser tab.
@@ -119,7 +121,7 @@ version, with the measurements that forced each change, is
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **199 assertions**: level
+- **F4** runs the in-game self-test suite — **220 assertions**: level
   reachability audits, input model invariants (pointer-lock linearity,
   free-look symmetry, aim-assist never fighting the player's turn), movement
   and collision checks, touch-cluster behaviour, palette and zone rendering,

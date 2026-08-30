@@ -4,7 +4,7 @@
    installed app keeps its faces with no network. Bump CACHE on every release —
    activate() deletes the old one, and verify.js fails if this drifts from the
    VERSION constant in index.html. */
-const CACHE = 'agent360-v1.11';
+const CACHE = 'agent360-v1.12';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'
