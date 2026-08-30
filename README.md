@@ -43,10 +43,12 @@ self-test **F4** · input diagnostics **F3 / F2**. Every action has a
 right-hand mirror for left-handed mouse users; the in-game CONTROLS screen has
 the full list.
 
-**On a phone it works out that it's a phone.** The left pad moves — push it to
-the rim and you sprint — dragging the view looks, and FIRE, AIM, RELOAD, GUN,
-USE, CROUCH and PAUSE sit where thumbs already are, every one of them at least
-44px. The pause screen's field watch stands in for Tab's floor plan. Landscape
+**On a phone it works out that it's a phone.** Two pads: the left one moves —
+push it to the rim and you sprint — and the right one looks, so you can walk
+and turn at once instead of choosing. Dragging the view still looks if you
+prefer it, a tap on the view shoots, and FIRE, AIM, RELOAD, GUN, USE, CROUCH
+and PAUSE cluster around whichever pad the thumb is already on, every one of
+them at least 44px. The pause screen's field watch stands in for Tab's floor plan. Landscape
 is the better way to hold it; installed from *Add to Home Screen*, it launches
 fullscreen. Settings and per-mission bests survive reloads, and cheated runs
 are never recorded.
@@ -140,7 +142,7 @@ stopped advertising themselves on the radar. Ledger as always:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **243 assertions**: level
+- **F4** runs the in-game self-test suite — **249 assertions**: level
   reachability audits, input model invariants (pointer-lock linearity,
   free-look symmetry, aim-assist never fighting the player's turn), movement
   and collision checks, touch-cluster behaviour, palette and zone rendering,

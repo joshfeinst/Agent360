@@ -134,22 +134,59 @@ body.touch #touch.on{display:block}
    tappable on small phones where vmin shrinks below thumb size. */
 .tbtn{position:absolute; pointer-events:auto; border:2px solid #35d0ff66; border-radius:50%;
   background:#35d0ff14; color:var(--paper); font-family:var(--pix); font-size:10px;
-  min-width:44px; min-height:44px; display:grid; place-items:center}
-.tbtn.on{border-color:var(--gold); background:#ffb02e2b; color:var(--gold)}
-#tstick{left:calc(3% + env(safe-area-inset-left,0px)); bottom:5%; width:33vmin; height:33vmin; border-radius:50%; position:absolute; pointer-events:auto;
-  border:2px dashed #35d0ff44}
-#tnub{position:absolute; left:50%; top:50%; width:12vmin; height:12vmin; margin:-6vmin 0 0 -6vmin; border-radius:50%;
+  min-width:44px; min-height:44px; display:grid; place-items:center;
+  /* idle buttons sit back out of the way; pressing or latching brings them
+     forward, so the cluster stops competing with the world for attention */
+  opacity:.58; transition:opacity .12s, background .12s, border-color .12s}
+.tbtn.press{opacity:1; background:#35d0ff33; border-color:var(--cyan)}
+.tbtn.on{opacity:1; border-color:var(--gold); background:#ffb02e2b; color:var(--gold)}
+/* THE TWO PADS. Left thumb walks, right thumb looks — the layout every phone
+   shooter settled on. Before this the only way to turn was dragging the view,
+   which is the same thumb FIRE needs, so a phone player could look or shoot
+   and never both. */
+.tpad{position:absolute; pointer-events:auto; border-radius:50%; width:31vmin; height:31vmin;
+  min-width:112px; min-height:112px; border:2px dashed #35d0ff44}
+.tpad .nub{position:absolute; left:50%; top:50%; width:12vmin; height:12vmin;
+  min-width:44px; min-height:44px; margin:-6vmin 0 0 -6vmin; border-radius:50%;
   background:#35d0ff33; border:2px solid #35d0ff88}
-/* Cluster geometry is picked around the canvas HUD: the radar owns the top 37%
-   of the right 21% (RW-80..RW, 0..80 at render scale) and the ammo plate the
-   bottom-right corner, so PAUSE sits inboard of the radar and the right-hand
-   arc curls around the ammo plate rather than across it. */
-#tfire{right:calc(4% + env(safe-area-inset-right,0px)); bottom:8%; width:20vmin; height:20vmin}
-#tuse{right:calc(26% + env(safe-area-inset-right,0px)); bottom:6%; width:13vmin; height:13vmin}
-#taim{right:calc(6% + env(safe-area-inset-right,0px)); bottom:36%; width:13vmin; height:13vmin}
-#tswap{right:calc(23% + env(safe-area-inset-right,0px)); bottom:24%; width:13vmin; height:13vmin}
-#trel{right:calc(25% + env(safe-area-inset-right,0px)); bottom:47%; width:13vmin; height:13vmin}
-#tcrouch{left:calc(4.5% + env(safe-area-inset-left,0px)); bottom:44%; width:13vmin; height:13vmin}
+#tstick{left:calc(3% + env(safe-area-inset-left,0px)); bottom:5%}
+#tlook{right:calc(3% + env(safe-area-inset-right,0px)); bottom:5%; border-style:dotted}
+/* Cluster geometry is picked around the canvas HUD and now around both pads:
+   the radar owns the top 37% of the right 21% (RW-80..RW, 0..80 at render
+   scale) and the ammo plate the bottom-right corner. FIRE and USE sit INBOARD
+   of their pads, where each thumb rocks in without leaving its pad; the rest
+   climb the flanks clear of both. */
+#tfire{right:calc(27% + env(safe-area-inset-right,0px)); bottom:6%; width:17vmin; height:17vmin}
+#tuse{left:calc(27% + env(safe-area-inset-left,0px)); bottom:6%; width:14vmin; height:14vmin}
+/* Each hand's buttons hug ITS pad rather than sharing one row at eye level:
+   the in-fight pair (FIRE, AIM / USE, GUN) climbs inboard where a thumb rocks
+   off the pad and back, and the between-fight one (RLD / CRCH) sits out on the
+   flank. A mid-screen row measured pretty and reached badly. */
+#taim{right:calc(28% + env(safe-area-inset-right,0px)); bottom:28%; width:14vmin; height:14vmin}
+#trel{right:calc(4% + env(safe-area-inset-right,0px)); bottom:50%; width:14vmin; height:14vmin}
+#tswap{left:calc(28% + env(safe-area-inset-left,0px)); bottom:28%; width:14vmin; height:14vmin}
+#tcrouch{left:calc(4% + env(safe-area-inset-left,0px)); bottom:50%; width:14vmin; height:14vmin}
+/* Portrait is the letterboxed strip the rotate chip apologises for. The cluster
+   is positioned against the FRAME, which there is only ~219px tall — two rows
+   of controls cannot share it without stacking. So in portrait the cluster
+   drops into the dead black BELOW the frame (negative offsets, vh so they
+   answer the viewport rather than the strip), which is empty screen the game
+   never draws to: a row of modifiers under the picture, pads and triggers
+   below that, thumbs clear of the view entirely. */
+@media (orientation:portrait){
+  .tpad{width:26vmin; height:26vmin; min-width:96px; min-height:96px}
+  .tpad .nub{width:11vmin; height:11vmin; min-width:40px; min-height:40px; margin:-5.5vmin 0 0 -5.5vmin}
+  #tstick,#tlook,#tfire,#tuse{bottom:-26vh}
+  #tstick{left:calc(3% + env(safe-area-inset-left,0px))}
+  #tlook{right:calc(3% + env(safe-area-inset-right,0px))}
+  #tfire{right:calc(31% + env(safe-area-inset-right,0px)); width:15vmin; height:15vmin}
+  #tuse{left:calc(31% + env(safe-area-inset-left,0px)); width:15vmin; height:15vmin}
+  #taim,#trel,#tswap,#tcrouch{bottom:-7vh; width:13vmin; height:13vmin}
+  #taim{right:calc(3% + env(safe-area-inset-right,0px))}
+  #trel{right:calc(27% + env(safe-area-inset-right,0px))}
+  #tswap{left:calc(27% + env(safe-area-inset-left,0px))}
+  #tcrouch{left:calc(3% + env(safe-area-inset-left,0px))}
+}
 #tpause{right:calc(23% + env(safe-area-inset-right,0px)); top:calc(6px + env(safe-area-inset-top,0px));
   width:13vmin; height:13vmin; min-width:48px; min-height:48px; border-radius:10px}
 #rothint{position:absolute; left:50%; top:14%; transform:translateX(-50%); pointer-events:none;
@@ -267,8 +304,8 @@ body.touch .no-touch{display:none}
       <div class="grid2 panel touch-only" id="ctl-touch">
         <div class="ctl"><span>Move / strafe</span><span>Left pad — speed follows deflection</span></div>
         <div class="ctl"><span>Sprint</span><span>Push the pad all the way to its rim</span></div>
-        <div class="ctl"><span>Look</span><span>Drag anywhere on the view</span></div>
-        <div class="ctl"><span>Fire</span><span>FIRE — hold for automatics</span></div>
+        <div class="ctl"><span>Look / turn</span><span>Right pad — or drag anywhere on the view</span></div>
+        <div class="ctl"><span>Fire</span><span>FIRE — hold for automatics — or tap the view</span></div>
         <div class="ctl"><span>Aim mode (zoom)</span><span>AIM — tap on, tap off</span></div>
         <div class="ctl"><span>Reload</span><span>RLD</span></div>
         <div class="ctl"><span>Next weapon</span><span>GUN</span></div>
@@ -356,7 +393,8 @@ body.touch .no-touch{display:none}
 
     <!-- TOUCH -->
     <div id="touch">
-      <div id="tstick"><div id="tnub"></div></div>
+      <div class="tpad" id="tstick"><div class="nub" id="tnub"></div></div>
+      <div class="tpad" id="tlook" aria-label="Look"><div class="nub" id="tlooknub"></div></div>
       <div class="tbtn" id="tfire">FIRE</div>
       <div class="tbtn" id="tuse">USE</div>
       <div class="tbtn" id="tswap">GUN</div>
@@ -380,7 +418,7 @@ body.touch .no-touch{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.21';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.22';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -460,6 +498,8 @@ const RET_HYST  = .06;            // ...and keep turning until this far back
 const TURN_MAX  = 4.3;            // rad/s at full push
 const RET_RELAX = .38;            // reticle eases back toward CENTRE while moving
 const RET_IDLE  = 2.4;            // and snaps back once the mouse stops
+const TPAD_TURN  = 3.1;           // right-pad yaw rad/s at the rim (TURN_MAX is 4.3)
+const TPAD_PITCH = 46;            // right-pad horizon px/s at the rim
 const isTouch = matchMedia('(hover:none) and (pointer:coarse)').matches;
 /* A finger tap also emits compatibility mouse events (mousemove with buttons=0,
    mousedown, mouseup, click). The touch cluster owns M.fire/M.aim on touch
@@ -532,6 +572,7 @@ function clearInput(){
   keys.clear();
   M.fire = false; M.aim = false; M.dragging = false; M.tapDone = false; M.fireEdge = 0; M.fireBuf = 0; M.pressNew = false; M.tlook = false;
   M.dx = 0; M.dy = 0; M.moved = 0; M.lx = null; M.ly = null; M.wheel = 0;
+  held.lx = 0; held.ly = 0;                 // the look pad, like the move stick
   /* Reticle state lives on the player object, which is declared in a later
      script block, so reach it through a hook rather than a bare reference. */
   if (typeof resetLookState === 'function') resetLookState();
@@ -750,31 +791,44 @@ function unlock(){
    mouse-only page and a desktop with a touchscreen is not a dead surface. */
 (function(){
   const stick = document.getElementById('tstick'), nub = document.getElementById('tnub');
-  const T = { move:null, look:null };
+  const lpad  = document.getElementById('tlook'), lnub = document.getElementById('tlooknub');
+  const T = { move:null, aimpad:null, look:null };
   /* Sprint lives on the stick rim with hysteresis: past .92 engages, and only
      easing back under .85 releases, so finger jitter at full deflection does
      not flutter run on and off every frame. */
   const runGate = m => { if (m > .92) held.run = true; else if (m < .85) held.run = false; };
-  function stickVec(t, el){
+  function padVec(t, el, nubEl, sprint){
     const r = el.getBoundingClientRect();
     const cx = r.left + r.width/2, cy = r.top + r.height/2;
     let dx = (t.clientX-cx)/(r.width/2), dy = (t.clientY-cy)/(r.height/2);
     const m = Math.hypot(dx,dy); if (m>1){ dx/=m; dy/=m; }
-    nub.style.transform = `translate(${dx*40}%, ${dy*40}%)`;
-    runGate(m);
+    nubEl.style.transform = `translate(${dx*40}%, ${dy*40}%)`;
+    if (sprint) runGate(m);
     return [dx,dy];
   }
-  stick.addEventListener('touchstart', e=>{
-    /* one owner: a second finger grazing the pad must not steal the stick —
-       its lift then zeroed movement while the first thumb still held course */
-    if (T.move !== null){ e.preventDefault(); return; }
-    T.move = e.changedTouches[0].identifier; [held.tx,held.ty]=stickVec(e.changedTouches[0],stick); e.preventDefault(); }, {passive:false});
+  /* one owner per pad: a second finger grazing a pad must not steal it — its
+     lift then zeroed the axis while the first thumb still held course */
+  const padStart = (el, nubEl, key, set, sprint) => el.addEventListener('touchstart', e=>{
+    e.preventDefault();
+    if (T[key] !== null) return;
+    audioInit();                       // a pad touch is a gesture like any other
+    T[key] = e.changedTouches[0].identifier;
+    set(padVec(e.changedTouches[0], el, nubEl, sprint));
+  }, {passive:false});
+  padStart(stick, nub,  'move',   v => { held.tx = v[0]; held.ty = v[1]; }, true);
+  padStart(lpad,  lnub, 'aimpad', v => { held.lx = v[0]; held.ly = v[1]; }, false);
   addEventListener('touchmove', e=>{
     for (const t of e.changedTouches){
-      if (t.identifier === T.move){ [held.tx,held.ty] = stickVec(t,stick); }
+      if (t.identifier === T.move){ const v = padVec(t,stick,nub,true); held.tx=v[0]; held.ty=v[1]; }
+      else if (t.identifier === T.aimpad){ const v = padVec(t,lpad,lnub,false); held.lx=v[0]; held.ly=v[1]; }
       else if (T.look && t.identifier === T.look.id){
-        M.dx += (t.clientX - T.look.x)*1.6; T.look.x = t.clientX;
-        M.dy += (t.clientY - T.look.y)*1.6; T.look.y = t.clientY;
+        /* deltas FIRST, then move the reference — reading the travel after
+           the assignment measured a constant zero, and every drag counted as
+           a tap-fire */
+        const ldx = t.clientX - T.look.x, ldy = t.clientY - T.look.y;
+        T.look.x = t.clientX; T.look.y = t.clientY;
+        T.look.moved += Math.abs(ldx) + Math.abs(ldy);
+        M.dx += ldx*1.6; M.dy += ldy*1.6;
         M.lastMove = performance.now();   // without this the idle guard ate every touch delta
       }
     }
@@ -782,12 +836,25 @@ function unlock(){
   const touchDone = e => {
     for (const t of e.changedTouches){
       if (t.identifier===T.move){ T.move=null; held.tx=held.ty=0; held.run=false; nub.style.transform=''; }
-      if (T.look && t.identifier===T.look.id){ T.look=null; M.tlook=false; }
+      if (t.identifier===T.aimpad){ T.aimpad=null; held.lx=held.ly=0; lnub.style.transform=''; }
+      if (T.look && t.identifier===T.look.id){
+        /* A quick, still touch on the world is a shot — the same rule the
+           desktop drag mode has always used, and what the title screen has
+           promised phone players since v1.02. With the look pad carrying the
+           turning, this is how the other hand shoots. */
+        if (e.type === 'touchend' && T.look.moved < 12 &&
+            performance.now() - T.look.t0 < 260 && G.state === 'play' && P.alive){
+          if (!playerFire()){ M.fireEdge = performance.now(); M.pressNew = true; }
+        }
+        T.look=null; M.tlook=false;
+      }
     }
   };
   addEventListener('touchend', touchDone);
   addEventListener('touchcancel', touchDone);   // else a cancelled stick walks (or sprints) forever
-  view.addEventListener('touchstart', e=>{ const t=e.changedTouches[0]; T.look={id:t.identifier,x:t.clientX,y:t.clientY}; M.tlook = true; e.preventDefault(); }, {passive:false});
+  view.addEventListener('touchstart', e=>{ const t=e.changedTouches[0];
+    T.look={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:performance.now()};
+    M.tlook = true; e.preventDefault(); }, {passive:false});
   const bind=(id,fn,fn2)=>{ const el=document.getElementById(id);
     /* preventDefault means these touches never become the document click that
        unlocks audio — so the cluster unlocks it itself (idempotent, cheap).
@@ -797,14 +864,14 @@ function unlock(){
     el.addEventListener('touchstart',e=>{e.preventDefault();audioInit();
       if (owner !== null) return;
       const t = e.changedTouches && e.changedTouches[0];
-      owner = t ? t.identifier : -1; fn();},{passive:false});
+      owner = t ? t.identifier : -1; el.classList.add('press'); fn();},{passive:false});
     const release = e=>{
       if (owner === null) return;
       const ts = e.changedTouches;
       /* a synthetic event with no touch list — or one taken with no list —
          releases unconditionally, so headless drivers keep working */
-      if (owner === -1 || !ts || !ts.length){ owner = null; fn2&&fn2(); return; }
-      for (const t of ts) if (t.identifier === owner){ owner = null; fn2&&fn2(); }
+      if (owner === -1 || !ts || !ts.length){ owner = null; el.classList.remove('press'); fn2&&fn2(); return; }
+      for (const t of ts) if (t.identifier === owner){ owner = null; el.classList.remove('press'); fn2&&fn2(); }
     };
     el.addEventListener('touchend',e=>{e.preventDefault();release(e);},{passive:false});
     /* The OS can steal a button touch (edge swipe, notification shade) and end
@@ -823,7 +890,10 @@ function unlock(){
   const taim = document.getElementById('taim'), tcr = document.getElementById('tcrouch');
   bind('taim',   ()=>setTog(taim, M.aim = !M.aim));
   bind('tcrouch',()=>setTog(tcr, held.crouch = !held.crouch));
-  window.resetTouchUI = () => { setTog(taim,false); setTog(tcr,false); };
+  window.resetTouchUI = () => { setTog(taim,false); setTog(tcr,false);
+    T.move = T.aimpad = null; T.look = null;
+    nub.style.transform = ''; lnub.style.transform = '';
+    for (const el of document.querySelectorAll('.tbtn.press')) el.classList.remove('press'); };
 })();
 
 /* ---------------------------------- audio -------------------------------- */
@@ -2807,6 +2877,14 @@ function step(dt){
          touch sensitivity dial (Options slider, persisted).                   */
       yaw = mdx * LOOK_PX * DRAG_MUL * M.sens * M.tsens * zsens;
       P.pitch = clamp(P.pitch - mdy*ydir * .10 * M.sens * M.tsens * zsens, -PITCH_MAX, PITCH_MAX);
+      /* ...and the right pad turns by RATE on top of it, so a parked thumb can
+         hold a turn while the other hand shoots. Squared response: small
+         deflections stay fine for tracking, the rim swings hard. */
+      if (held.lx || held.ly){
+        yaw += Math.sign(held.lx) * held.lx*held.lx * TPAD_TURN * M.tsens * zsens * dt;
+        P.pitch = clamp(P.pitch - Math.sign(held.ly) * held.ly*held.ly *
+                        ydir * TPAD_PITCH * M.tsens * zsens * dt, -PITCH_MAX, PITCH_MAX);
+      }
       P.rx = 0; P.turning = false;
     } else if (LOOKMODE === 'drag'){               /* only turns while held */
       if (M.dragging || M.tlook){                /* a look finger counts as holding */
@@ -3766,7 +3844,7 @@ function drawHUD(horizon){
     txt('CLICK THE VIEW TO CAPTURE THE MOUSE', RW>>1, RH-69, '#ffb02e', 6, 'center');
   } else if (G.time < 15){
     txtP(M.locked ? 'MOUSE CAPTURED · ESC TO RELEASE'
-       : LOOKMODE==='touch' ? 'DRAG THE VIEW TO LOOK · FIRE TO SHOOT'
+       : LOOKMODE==='touch' ? 'LEFT PAD MOVES · RIGHT PAD LOOKS · TAP TO SHOOT'
        : LOOKMODE==='drag' ? 'DRAG TO LOOK · TAP TO FIRE'
        : 'MOVE MOUSE TO AIM · PUSH PAST THE TICKS TO TURN',
         RW>>1, RH-72, '#7d93ab', 6);
@@ -4746,6 +4824,52 @@ function selfTest(runSim){
       INVERT_Y = false;
       LOOKMODE = savedLM;
 
+      /* the right pad turns by RATE, so a parked thumb holds a turn while the
+         other hand shoots — the twin-pad answer to look-or-fire-never-both */
+      { const savedLM2 = LOOKMODE; LOOKMODE = 'touch';
+        clearInput(); P.pitch = 0;
+        const lr = document.getElementById('tlook').getBoundingClientRect();
+        if (lr.width < 10) ok('touch: (no look pad geometry to test on)', true);
+        else {
+          const lcx = lr.left + lr.width/2, lcy = lr.top + lr.height/2;
+          const lat = (x,y) => [{ identifier:74, clientX:x, clientY:y }];
+          const a0 = P.ang;
+          tev('touchstart', document.getElementById('tlook'), lat(lcx + lr.width/2*.99, lcy));
+          for (let i=0;i<30;i++) step(0.016);
+          const turned = angDiff(a0, P.ang);
+          ok('touch: the right pad holds a turn without a drag', turned > .3,
+             'turned '+turned.toFixed(2)+' rad');
+          ok('touch: the pad turns without touching the reticle', P.rx === 0);
+          const a1 = P.ang;
+          tev('touchend', null, lat(lcx, lcy));
+          for (let i=0;i<20;i++) step(0.016);
+          ok('touch: releasing the pad stops the turn',
+             Math.abs(angDiff(a1, P.ang)) < 1e-9 && held.lx === 0);
+          /* vertical rim pitches, and the pad never sprints (that is the left pad) */
+          held.run = false;
+          tev('touchstart', document.getElementById('tlook'), lat(lcx, lcy - lr.height/2*.99));
+          for (let i=0;i<20;i++) step(0.016);
+          ok('touch: the right pad pitches the view', P.pitch > 2, 'pitch='+P.pitch.toFixed(1));
+          ok('touch: the look pad never triggers sprint', held.run === false);
+          tev('touchend', null, lat(lcx, lcy));
+        }
+        /* a quick still touch on the world is a shot; a drag is a look */
+        clearInput(); P.w = 0; P.mag[0] = 7; P.fireCd = 0; P.alive = true;
+        const vr = view.getBoundingClientRect();
+        const vat = (x,y) => [{ identifier:75, clientX:x, clientY:y }];
+        const vx = vr.left + vr.width*.5, vy = vr.top + vr.height*.35;
+        tev('touchstart', view, vat(vx, vy));
+        tev('touchend', null, vat(vx, vy));
+        step(0.016);
+        ok('touch: a tap on the view fires', P.mag[0] === 6, 'mag='+P.mag[0]);
+        P.fireCd = 0; P.mag[0] = 7;
+        tev('touchstart', view, vat(vx, vy));
+        tev('touchmove', null, vat(vx + 80, vy));
+        tev('touchend', null, vat(vx + 80, vy));
+        step(0.016);
+        ok('touch: a drag on the view looks and never fires', P.mag[0] === 7, 'mag='+P.mag[0]);
+        clearInput(); LOOKMODE = savedLM2; }
+
       P.w = 0; P.mag[0] = 3; P.ammo.p9 = Math.max(P.ammo.p9, 20); P.reload = 0;
       tap(document.getElementById('trel'));
       ok('touch: RELOAD button starts the reload', P.reload > 0, 'reload='+P.reload.toFixed(2));
@@ -5343,7 +5467,7 @@ function act(a){
     case 'cyclelook': {
       /* Touch has exactly one look mode. Offering CAPTURE here put phones into
          a mode that waits forever for a pointer lock no touch screen grants. */
-      if (isTouch){ toast('TOUCH USES DIRECT DRAG — DRAG THE VIEW TO LOOK', 'cyan', 3600); break; }
+      if (isTouch){ toast('TOUCH USES TWO PADS — THE RIGHT PAD LOOKS', 'cyan', 3600); break; }
       if (M.locked) unlock();
       LOOK = LOOK_ORDER[(LOOK_ORDER.indexOf(LOOK)+1) % LOOK_ORDER.length];
       M.lockFails = 0; M.lockNagged = false;   // a fresh choice gets a fresh chance
@@ -5517,7 +5641,7 @@ function boot(){
   bs.textContent = isTouch ? 'TAP TO SKIP' : 'CLICK TO SKIP';
   setTimeout(()=>{ if (G.state==='boot') bs.hidden = false; }, 400);
   if (isTouch) document.getElementById('titlehint').textContent =
-    'Left pad moves. Drag the view to look, FIRE to shoot. Headphones recommended.';
+    'Left pad moves, right pad looks. Tap the view or FIRE to shoot. Headphones recommended.';
   bootT = setInterval(()=>{
     bl.textContent = BOOTLINES[bootI] || '';
     if (++bootI >= BOOTLINES.length + 1) bootDone();

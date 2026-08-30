@@ -165,6 +165,55 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
   const stopped = await page.evaluate(() => !held.tx && !held.ty && !held.run);
   step('...and stops when the finger lifts', stopped);
 
+  /* 6b. the RIGHT pad turns without a drag, and both thumbs work at once */
+  const a0 = await page.evaluate(() => P.ang);
+  await finger(page, 'touchstart', '#tlook', .99, 0);
+  await page.waitForTimeout(500);
+  const turned = await page.evaluate((a) => {
+    const d = (P.ang - a) % (Math.PI*2);
+    return { d: Math.abs(d > Math.PI ? d - Math.PI*2 : d), rx: P.rx };
+  }, a0);
+  step('the right pad turns the view', turned.d > .3, turned.d.toFixed(2) + ' rad in .5s');
+  step('...without shoving the reticle', turned.rx === 0);
+  /* the whole point of two pads: walk and look at the same time */
+  const both0 = await page.evaluate(() => ({ x: P.x, y: P.y, a: P.ang }));
+  await finger(page, 'touchstart', '#tstick', 0, -.99);
+  await page.waitForTimeout(400);
+  const both = await page.evaluate((b) => ({
+    moved: Math.hypot(P.x - b.x, P.y - b.y) > .3, turnedToo: Math.abs(P.ang - b.a) > .1 }), both0);
+  step('both pads drive at once — walk while turning', both.moved && both.turnedToo,
+       'moved=' + both.moved + ' turned=' + both.turnedToo);
+  await finger(page, 'touchend', '#tstick', 0, -.99);
+  await finger(page, 'touchend', '#tlook', .99, 0);
+  const padStop = await page.evaluate(() => !held.lx && !held.ly && !held.tx && !held.ty);
+  step('...and both stop on release', padStop);
+
+  /* 6c. nothing in the cluster lands on anything else, at any phone size */
+  for (const [w, h, label] of [[844,390,'844x390'], [667,375,'667x375']]){
+    await page.setViewportSize({ width:w, height:h });
+    await page.waitForTimeout(120);
+    const geo = await page.evaluate(() => {
+      const ids = ['tstick','tlook','tfire','tuse','taim','trel','tswap','tcrouch','tpause'];
+      const R = {}, bad = { over:[], small:[] };
+      for (const id of ids){
+        const r = document.getElementById(id).getBoundingClientRect();
+        R[id] = r;
+        if (r.width < 44 || r.height < 44) bad.small.push(id);
+      }
+      const k = Object.keys(R);
+      for (let i=0;i<k.length;i++) for (let j=i+1;j<k.length;j++){
+        const a = R[k[i]], b = R[k[j]];
+        if (Math.min(a.right,b.right) - Math.max(a.left,b.left) > 0 &&
+            Math.min(a.bottom,b.bottom) - Math.max(a.top,b.top) > 0) bad.over.push(k[i]+'/'+k[j]);
+      }
+      return bad;
+    });
+    step('cluster is collision-free at ' + label, geo.over.length === 0, geo.over.join(' '));
+    step('...every control still clears 44px at ' + label, geo.small.length === 0, geo.small.join(' '));
+  }
+  await page.setViewportSize({ width:844, height:390 });
+  await page.waitForTimeout(120);
+
   /* 7. FIRE fires, AIM latches */
   const shots0 = await page.evaluate(() => G.shots);
   await finger(page, 'touchstart', '#tfire', 0, 0);
@@ -172,6 +221,14 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
   await finger(page, 'touchend', '#tfire', 0, 0);
   step('FIRE fires the sidearm', await page.evaluate((s) => G.shots > s, shots0),
        'shots ' + shots0 + ' -> ' + await page.evaluate(() => G.shots));
+  /* ...and so does a tap on the world, which is how the off hand shoots while
+     the right thumb is busy holding a turn */
+  const shotsT = await page.evaluate(() => { P.fireCd = 0; return G.shots; });
+  await finger(page, 'touchstart', '#view', -.3, -.3);
+  await finger(page, 'touchend', '#view', -.3, -.3);
+  await page.waitForTimeout(120);
+  step('a tap on the view fires too', await page.evaluate((s) => G.shots > s, shotsT),
+       'shots ' + shotsT + ' -> ' + await page.evaluate(() => G.shots));
   await finger(page, 'touchstart', '#taim', 0, 0);
   await finger(page, 'touchend', '#taim', 0, 0);
   step('AIM latches without a held thumb', await page.evaluate(() =>
