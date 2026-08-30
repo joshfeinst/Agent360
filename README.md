@@ -1,9 +1,12 @@
 # Agent 360 — GoldenShare
 
 Somebody at Riverbend Logistics propped the server-room door open. Somebody at
-Meridian Freight clicked the link. And somewhere under a building nobody has
-the keys to, a domain controller with twenty-two years of uptime has decided
-that migration is an attack. You are the MSP's field agent. Deploy the agent,
+Meridian Freight clicked the link. Somebody stopped paying for cage 40 at the
+Northpoint colo, and the crew that noticed is exfiltrating through it tonight.
+Somebody bolted a mast to the roof of the parking deck, and every rogue access
+point on this contract answers to it.
+And somewhere under a building nobody has the keys to, a domain controller
+with twenty-two years of uptime has decided that migration is an attack. You are the MSP's field agent. Deploy the agent,
 walk the CFO off the floor, decommission the machine, and be out before the
 night shift arrives.
 
@@ -15,7 +18,7 @@ no libraries, no build step — the whole game is one HTML file. Its sibling
 project [Managed](https://github.com/joshfeinst/Managed) covers the desk job;
 this is the desk job seen from the field.
 
-Three missions on three clearances, GoldenEye-style aim assist, cheats
+Five missions on three clearances, GoldenEye-style aim assist, cheats
 unlocked from the start (the results screen just gets an asterisk), and a
 face-upload option so every hostile in the building can wear a colleague's
 photo. The photo never leaves the browser tab.
@@ -110,21 +113,31 @@ A full TLC pass over v1.04, run the way Managed's overnight rounds were run:
 measure first, change second, and a self-test for everything that broke on the
 way. The short version — the game now plays properly on a phone, the three
 missions stopped sharing one grey wall texture, getting shot tells you where
-from, dying gets a beat before the debrief, the M03 duel got a checkpoint, the
+from, dying gets a beat before the debrief, the finale duel got a checkpoint, the
 soundtrack learned the difference between a menu and a meltdown, and every
 mission hides one cache behind a wall that doesn't advertise itself. The long
 version, with the measurements that forced each change, is
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.20
+
+The campaign grew from three missions to five. Two landed between the phishing floor and the
+finale — a colo at 03:15 and a parking-deck roof at dusk, the game's first
+open sky — and a scripted objective-chain bot now proves every mission humanly
+winnable end to end from a cold pistol start, on every clearance, with each
+new mission's par calibrated from its own measured run. Same ledger:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## Development
 
-- **F4** runs the in-game self-test suite — **171 assertions**: level
+- **F4** runs the in-game self-test suite — **221 assertions**: level
   reachability audits, input model invariants (pointer-lock linearity,
   free-look symmetry, aim-assist never fighting the player's turn), movement
   and collision checks, touch-cluster behaviour, palette and zone rendering,
   secrets, checkpoint and music-state logic.
-- `tools/verify.js` runs that suite headlessly plus a 5,400-frame
-  randomized-input soak across all nine mission/difficulty combinations —
+- `tools/verify.js` runs that suite headlessly plus a randomized-input soak
+  of 600 frames per mission/difficulty combination — the campaign's own
+  length, so a new mission is soaked the day it lands —
   then does it all again in a phone context (844×390, touch events driving
   the real cluster) and once more stepping the sim at 144 Hz and 30 Hz to
   prove frame-rate invariance. It also checks the `index.html`/`sw.js`
@@ -136,10 +149,15 @@ version, with the measurements that forced each change, is
   on every DOM overlay screen — zero-height, clipped or painted-over text
   fails the run — at desktop and phone viewports.
 - `tools/playtest.js` pits a deliberately mediocre scripted bot (bounded turn
-  rate, aim jitter, no cheats, no cover play) against the M03 boss and then the
+  rate, aim jitter, no cheats, no cover play) against the finale boss and then the
   meltdown escape: `node tools/playtest.js "$(pwd)/index.html" 0 30`. Balance
   changes are judged by its win rate — the AGENT duel is tuned so this bot wins
   ~93% of runs; on SECRET AGENT and 00 AGENT it dies, as it should.
+- `tools/runthrough.js` is the proof a mission is humanly playable: an
+  objective-chain bot loads each mission cold (no cheats, pistol start),
+  BFS-walks the watch's own objective order through live physics, and reports
+  time against par. New missions calibrate their par from its SECRET AGENT
+  time: `node tools/runthrough.js "$(pwd)/index.html" all all`.
 - The game has been through repeated adversarial review rounds — independent
   finders cross-examined by paired skeptics — and every confirmed regression
   became an F4 assertion. [NIGHT_LOG.md](NIGHT_LOG.md) is the ledger.

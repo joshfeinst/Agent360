@@ -16,15 +16,30 @@ the measurement that said it was needed and the test that proves it landed.
 | **8 · Infra / tools / docs** | `VERSION` 1.10 shown on title + boot line, sw.js cache bump + `r.ok` gating + font precache, iOS PWA metas, reduced-motion caps (shake ≤1.2, meltdown wash ≤.05), locked-door keyhole pip on radar + watch, verify.js mobile + frame-rate passes + version lockstep, ported touch.js and visual.js, README refresh, this file | v1.04 cache name would have served the old build to installed copies forever; sw cached 404s; colour alone separated locked amber from open teal for a deutan eye; nothing exercised the touch cluster or overlay glyphs in CI | VERIFY OK (desktop 170/170, mobile 168/168, three soaks faults=0), PHONE OK (32 checks), VISUAL OK (20 screen audits), playtest green |
 | **9 · Adversarial review** | Full-diff review of rounds 1–8; the one confirmed finding fixed: the F4 zone test replaced M01's `zones` with scratch rects and then `delete`d the field instead of restoring it, so any self-test run stripped the server-hall grate floor for the rest of the session | Found by a high-effort diff review; reproduced headlessly (post-F4 M01 rendered `G.zoned=false`) | Fix + guard test (**171 total**), guard mutation-verified: reintroducing the `delete` fails exactly that test; full battery re-run green |
 
+# Night log — the v1.20 campaign expansion
+
+Same rule, next pass: the campaign grows from three missions to five, by
+insertion between M02 and the finale, and every round ships with the
+measurement that said it was needed and the test that proves it landed.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · Campaign scaffolding** | Finale by `finale:true` flag + `finaleIndex()` (gold debrief, campaignDone, duel checkpoint, retryDuel all read the flag); bests re-keyed by mission CODE in an `a360.v2` blob, v1 index keys migrated once through `V1_CODES` — the shipped v1 order, frozen forever; SECRETS / roster-WANT self-test tables keyed by code, failing by name for a mission with no entry; verify.js soaks `LEVELS.length × DIFFS.length`; **`tools/runthrough.js`** — an objective-chain bot that BFS-walks each mission cold (god OFF, pistol start, real `held.*` inputs at a synchronous 60Hz) and proves it humanly winnable end to end | The finale was found by counting from the end of `LEVELS` and bests were keyed by array slot — both would quietly scramble the day a mission landed between M02 and the boss. And nothing proved a mission *completable*: the playtest bot only fights the finale duel | Self-tests 171 → **181** (migration roundtrip, junk keys, v2-over-v1, exactly-one-finale, next-mission walk); first runthrough table 8/9 — wins at 0.25–0.50 of par, the one DNF the finale duel on 00 AGENT, the same wall the playtest bot measures 0/8 on |
+| **2 · M03 · THE COLD AISLE** | New mission inserted M02→finale: Northpoint colo at 03:15, cage-bar aisles, COLD grade (near-white CRAC-mist fog, judged against an M01 control shot), NOC keycard, 00-only audit, rack-face secret cache, one legacy tower as mini-boss | The insertion trap fired exactly as the scaffolding predicted: the finale's code had to become M05 **in the same commit** as the insertion, and `V1_CODES` — which maps v1 *indexes* — had to track the rename (`['M01','M02','M05']`), proven by the existing migration self-test. Par 130 set from measurement: the runthrough bot wins SECRET in ~47s cold, 2.8×, inside the 2–4× family | Self-tests **199** (F4 gains M03 SECRETS/roster/zone rows); runthrough 3/3 WIN (AGENT 53s / SECRET 47s / 00 56s, zero deaths); campaign flow probed live: M02's win offers THE COLD AISLE, only LEGACY-DC01 goes gold |
+| **3 · M04 · SHADOW UPLINK** | The first open-sky map: the Riverbend parking deck at 19:40, ceiling 255 under a new two-stop sky band (`sky2` — violet zenith blending into an amber horizon, because one colour can only ramp brightness and dusk is a ramp of hue), parked-car cover, two enclosed stair cores, the mast landmark with 360-stencilled corners | One colour of sky had been enough indoors; open air at dusk measured flat without the second stop. Drones carry the difficulty (4 over the deck — no legacy tower, M03 owns that beat). Par 160 from measurement again: bot SECRET ~60s cold, 2.7× | Self-tests **220** (sky-band ramp probe, deck-open/cores-closed zone assertions); runthrough 3/3 WIN; full campaign 14/15 — every mission, every clearance, except the finale duel on 00, the documented skill ceiling; fourteen posed screenshots judged |
+| **4 · Ship round** | M03's loading bay softened: the full-chevron south wall becomes cinderblock with ONE chevron band at the roll-up (the hazard slab already carries the yellow); debrief ticket derived from the mission CODE (hash × 137 + diff × 11), not `G.level`; docs trued up; VERSION 1.20 | Before/after screenshots: chevron wall + hazard slab was a wall-of-yellow from every angle in the bay; the frame keeps the landmark (EXIT sign over one striped band) and kills the noise. The ticket had silently changed identity for M05 when M03 inserted — `104200 + G.level*137` was one more index key | Self-tests 220 → **221** (ticket deterministic per code, distinct across all five); full battery + 15-combo runthrough re-run green |
+
 ## Standing numbers
 
-- **Self-tests:** 171 (F4 in-game; run headlessly on desktop and phone
-  contexts by verify.js)
-- **The battery:** `tools/verify.js` (selftest + 9-combo soaks at 60Hz
+- **Self-tests:** 221 desktop / 219 mobile (F4 in-game; run headlessly on
+  desktop and phone contexts by verify.js)
+- **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
   index.html/sw.js version check) · `tools/touch.js` (phone-finger
   walkthrough, landscape + portrait) · `tools/visual.js` (glyph-box audit of
   all overlay screens, desktop + phone) · `tools/playtest.js` (scripted-bot
-  M03 duel + escape, the balance instrument)
-- **Versions:** game `VERSION = '1.10'` (index.html) ↔ `agent360-v1.10`
+  finale duel + escape, the balance instrument) · `tools/runthrough.js`
+  (objective-chain bot, every mission × clearance end to end — 14/15 WIN,
+  M05/00 the documented ceiling)
+- **Versions:** game `VERSION = '1.20'` (index.html) ↔ `agent360-v1.20`
   (sw.js CACHE), enforced by verify.js
