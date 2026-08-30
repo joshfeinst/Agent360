@@ -121,7 +121,7 @@ version, with the measurements that forced each change, is
 
 ## v1.20
 
-The campaign doubled. Two missions landed between the phishing floor and the
+The campaign grew from three missions to five. Two landed between the phishing floor and the
 finale — a colo at 03:15 and a parking-deck roof at dusk, the game's first
 open sky — and a scripted objective-chain bot now proves every mission humanly
 winnable end to end from a cold pistol start, on every clearance, with each

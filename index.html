@@ -1091,7 +1091,7 @@ const TEXFN = [
       g.moveTo(i,s); g.lineTo(i+8,s); g.lineTo(i+8+s,0); g.lineTo(i+s,0); g.fill(); }
     grain(g,s,.20);
     R(g,0,0,s,4,'#1c1916'); R(g,0,s-4,s,4,'#1c1916'); R(g,0,4,s,1,'#3a352e'); },
-  /* 17 painted cinderblock with conduit (M01) */ (g,s)=>{ R(g,0,0,s,s,'#5b6a7c'); grain(g,s,.24);
+  /* 17 painted cinderblock with conduit (M01, M03 bay) */ (g,s)=>{ R(g,0,0,s,s,'#5b6a7c'); grain(g,s,.24);
     for(let y=0;y<s;y+=16){ R(g,0,y,s,2,'#43505f');
       const off=(y/16)%2?0:16; for(let x=off;x<s;x+=32) R(g,x,y,2,16,'#43505f'); }
     R(g,0,22,s,6,'#8d97a1'); R(g,0,22,s,2,'#b3bcc5'); R(g,0,27,s,1,'#5b636e');   // conduit run
@@ -4853,9 +4853,11 @@ function selfTest(runSim){
       ok('finale: the flagged mission is the boss duel',
          LEVELS[finaleIndex()].objectives.some(o=>o.kind==='boss'));
 
-      /* debrief ticket: keyed by CODE, so insertion can never rename it */
-      ok('ticket: deterministic per code, distinct across codes',
-         ticketOf('M05',1) === ticketOf('M05',1) &&
+      /* debrief ticket: keyed by CODE, so insertion can never rename it. The
+         golden value is the real guard — determinism alone is true of any pure
+         function, and a hash tweak that renames every ticket would sail past it. */
+      ok('ticket: pinned golden value, distinct across codes',
+         ticketOf('M01',0) === 'INC-208183' &&
          new Set(LEVELS.map(L=>ticketOf(L.code,1))).size === LEVELS.length);
 
       /* duel checkpoint: the restart lands past the consoles, in the finale */
