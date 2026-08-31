@@ -158,7 +158,7 @@ different things five different shapes. Ledger:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **316 assertions**: level
+- **F4** runs the in-game self-test suite — **326 assertions**: level
   reachability audits, input model invariants (pointer-lock linearity,
   free-look symmetry, aim-assist never fighting the player's turn), movement
   and collision checks, touch-cluster behaviour, palette and zone rendering,

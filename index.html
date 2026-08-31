@@ -482,7 +482,7 @@ const M = { locked:false, dragging:false, dx:0, dy:0, fire:false, aim:false, sen
             /* pointer-lock bookkeeping */
             lockPending:false, lockPromise:false, lockAt:0, unlockAt:0, lockFails:0,
             lockNagged:false, lockErr:'', raw:false, lockTimer:0,
-            lastMove:0, diag:false, diag2:false, yawRate:0, inside:false,
+            lastMove:0, diag:false, diag2:false, yawRate:0, yawF:0, inside:false,
             /* input-trace counters, for the F2 panel */
             evt:0, evtF:0, rawMax:0, rawMaxF:0, sumF:0 };
 
@@ -632,6 +632,7 @@ function clearInput(keepHeld){
   }
   M.dragging = false; M.tapDone = false; M.fireEdge = 0; M.fireBuf = 0; M.pressNew = false; M.tlook = false;
   M.dx = 0; M.dy = 0; M.moved = 0; M.lx = null; M.ly = null; M.wheel = 0;
+  M.yawF = 0;                        // a stale sweep must not keep aimCone open
   /* the look pad is a held axis like the move stick: an in-window pause that
      keeps one and drops the other resumed with a dead turn under a thumb that
      was still pushing, and a nub that went on claiming the deflection */
@@ -2025,14 +2026,30 @@ const LEVELS = [
      indoors, so the warmth here lives in the sky, not the walls. The first
      open-air map: most of the deck is ceiling 255 under a two-stop band,
      violet zenith into an amber horizon (sky2). */
-  /* par 160: the runthrough bot wins SECRET in ~60s cold — 2.7x, in the
+  /* par 160: the runthrough bot wins SECRET in ~69s cold — 2.3x, in the
      2-4x family the other missions keep; the open deck is a longer walk
-     than the colo but the objectives chain tighter than the 14th floor */
+     than the colo but the objectives chain tighter than the 14th floor.
+     (~60s before the column grid: walking round the piers costs the bot
+     nine seconds, and par has the room.) */
   floor:21, ceil:20, par:160,
   pal:[1.08,.92,1.10], fog:[0x24,0x14,0x2a], sky:[70,48,102], sky2:[224,120,58],
   /* the whole roof opens to the sky first, then the two stair cores close
      back over it (ducts NW, office tile SE) — nothing hangs outdoors; hazard
      stripes paint the ramp lane at the west chevrons and the south drive lane */
+  /* THE DECK'S COLUMN GRID. This is the campaign's open map and stays one, but
+     it shipped with nothing to break a line on: 39% of the floor visible from
+     an average cell against 7-10% indoors, 3.5 of the nine hostiles holding a
+     sight line on that cell at once against 0.8 indoors, and a third of the
+     deck standing under five or more. A phone turns at the look pad's rim rate
+     and cannot answer four bearings, so what the deck was missing was its own
+     architecture, not softer hostiles — a parking level is a forest of columns,
+     and this one had five scattered singles. They are a 6x4 grid now (rows 3,
+     7, 11, 15, 19; the stair cores eat the south-east corner of it), with two
+     stacks of the crew's gear amidships where the van's load came from. Reads
+     as 24% visible, 2.15 sight lines, 7% of the deck under five — still the
+     widest map in the game after the finale arena, and a mouse-driven bot
+     takes MORE fire on it than before, not less: the deck did not get safer,
+     the shooting moved to a range a thumb can answer. */
   zones:[ {x0:0,y0:0,x1:31,y1:21,c:255},
           {x0:1,y0:1,x1:8,y1:5,f:9,c:20},
           {x0:23,y0:15,x1:30,y1:19,f:9,c:19},
@@ -2044,23 +2061,23 @@ const LEVELS = [
     '%VVVVVVV%VVVVVVV%VVVVVVV%VVVVVV%',
     '%########...........o......y.y.%',
     '%#..h..T#.1...............a.U..%',
-    '%#P.....#...#..X..#.....#....y.%',
+    '%#P.....#..#...X.#.....#.....y.%',
     '%#.....a#......................%',
     '%####+###....==............4...%',
     '%.....W......4......==.........%',
-    '%..........#.....#.............%',
-    '%......................*=*=*..o%',
-    'V.......g..............=Nva=...%',
+    '%....#.....#.....#.....#.....#.%',
+    '%........===...===.....*=*=*..o%',
+    'V.......g===...===.....=Nva=...%',
     'V.k...==........2....y.*=H=*...%',
-    'V...........m............X.....%',
+    'V....#.....#m....#.....#.X...#.%',
     '%..................a4........o.%',
-    '%....#.....#.....#.............%',
+    '%..............................%',
     '%..............v.....2.........%',
-    '%..==....4.............###L####%',
+    '%..==#...4.#.....#.....###L####%',
     '%...X........==........#a..h..#%',
     '%....2...a...c.....==..#.1..<.#%',
     '%......................#g.....#%',
-    '%....................m.########%',
+    '%....#.....#.....#...m.########%',
     '%.o.....y.......g..............%',
     '%VVVVVVV%VVVVVVV%VVVVVVV%VVVVVV%'
   ],
@@ -2687,6 +2704,22 @@ const AIM_ASSIST_NAMES = ['OFF', 'SNAP', 'SNAP + PULL'];
 const AIM_CONE  = .14;                  // half-width of the cone, in half-screen units
 const AIM_RANGE = 18;                   // world units; beyond this you are on your own
 const AIM_PULL  = 1.7;                  // rad/s the view eases onto a target in FULL mode
+/* Touch pays a tax a mouse does not. Measured on the deck: the lock window on a
+   body at 8-16u is 12-14 degrees wide, and one frame of the look pad's rim rate
+   on a phone drawing 15fps is 11.8 — a mouse at 60fps spends four to six frames
+   inside that window, a thumb sweeps through it in barely one, so the assist a
+   phone ships with is an assist it never gets. On touch the cone also forgives
+   half the angle the view actually swept this frame, each side: nothing while
+   the thumb is parked, so a placed shot stays the player's, and a frame's worth
+   mid-swing. It scales itself with the frame rate, which is what took the window
+   away in the first place. Consoles widen the cone for a stick for this reason;
+   this compensates for the input device, it does not soften the hostiles. */
+const AIM_SWEEP     = .5;               // share of the frame's own turn the cone forgives
+const AIM_SWEEP_MAX = .26;              // ...bounded, so one stalled frame is not a lock-on
+/* `touch` is a parameter, not a read of isTouch, so the desktop suite can prove
+   both branches on a machine that only has one of them. */
+const aimCone = (swept, touch) => AIM_CONE +
+  (touch ? Math.min(Math.abs(swept) || 0, AIM_SWEEP_MAX) * AIM_SWEEP / FOV_N : 0);
 function acquireTarget(){
   const prev = P.lockT;
   P.lockT = null;
@@ -2715,7 +2748,7 @@ function acquireTarget(){
     if (ty < .3 || ty > wRange) continue;
     const sx = tx/ty;                               // -1..1 across the screen
     const halfW = ((PROJ/ty)*e.r) / (RW*.5);         // the body's own half-width on screen
-    const cone = AIM_CONE*(1 - P.aim*.55) + halfW;
+    const cone = aimCone(M.yawF, isTouch)*(1 - P.aim*.55) + halfW;
     const off = sx - P.aimU;                         // measured from the reticle
     if (Math.abs(off) > cone || Math.abs(sx) > 1) continue;   // centre must be on screen
     if (!los(P.x,P.y,e.x,e.y)) continue;
@@ -3095,6 +3128,7 @@ function step(dt, scored){
 
   P.ang += yaw;
   M.yawRate = dt > 0 ? yaw/dt : 0;
+  M.yawF = Math.abs(yaw);                          // radians swept THIS frame, for aimCone
   P.ang = (P.ang % 6.283185307 + 6.283185307) % 6.283185307;
   P.aimU = M.locked ? 0 : P.rx;                    /* shots follow the reticle */
 
@@ -4564,6 +4598,16 @@ function selfTest(runSim){
      the wrong map, and a new mission without an entry here fails by name. */
   const SECRETS = { M01:[[24,4]], M02:[[13,16],[14,16]], M03:[[20,13],[21,13]],
                     M04:[[24,9],[25,9],[26,9]], M05:[[24,12],[25,12]] };
+  /* Cover budget: the most walkable floor a mission may leave with no wall
+     within two tiles of it — nowhere to duck, nothing to break a line on. The
+     deck shipped at 23.3% of its floor bare, with 3.5 hostiles holding a sight
+     line on an average cell against 0.8 indoors, and a player who turns at the
+     look pad's rim rate cannot answer that many bearings. Its column grid and
+     the crew's two gear stacks brought it to 12.1%; the ceilings here are each
+     mission's own number with a few points of slack, so a later grid edit that
+     flattens a deck fails by name instead of by playtest. The map's own border
+     is not cover — a parapet you are backed against is not somewhere to hide. */
+  const BARE = { M01:18, M02:13, M03:21, M04:15, M05:31 };
   const byCode = c => LEVELS.find(L => L.code === c);
 
   for (let i=0;i<LEVELS.length;i++){
@@ -4591,6 +4635,26 @@ function selfTest(runSim){
 
     const a = auditLevel(i, false);
     ok(L.code+' everything reachable', a.unreachable.length===0, a.unreachable.join(' '));
+
+    {
+      const H = L.map.length;
+      let floor = 0, bare = 0;
+      for (let y=0;y<H;y++) for (let x=0;x<W;x++){
+        if (WALLTEX[L.map[y][x]] !== undefined) continue;
+        floor++;
+        let near = false;
+        for (let dy=-2;dy<=2 && !near;dy++) for (let dx=-2;dx<=2;dx++){
+          const nx=x+dx, ny=y+dy;
+          if (nx<1 || ny<1 || nx>=W-1 || ny>=H-1) continue;
+          if (WALLTEX[L.map[ny][nx]] !== undefined){ near = true; break; }
+        }
+        if (!near) bare++;
+      }
+      const pct = bare/floor*100;
+      ok(L.code+' keeps its cover budget', BARE[L.code] !== undefined && pct <= BARE[L.code],
+         BARE[L.code] === undefined ? 'no BARE entry for '+L.code
+                                    : pct.toFixed(1)+'% bare, ceiling '+BARE[L.code]+'%');
+    }
 
     if (L.map.join('').indexOf('L')>=0){
       const s = auditLevel(i, true);
@@ -5060,6 +5124,41 @@ function selfTest(runSim){
         e.y = P.y + Math.sin(spot.a)*spot.d + Math.sin(spot.a+1.5708)*2.2;
         step(0.016);
         ok('aim assist: ignores a hostile outside the cone', P.lockT !== e);
+        /* The cone a thumb gets. Pure function first, both branches, because a
+           desktop suite has only one of them to run live. */
+        ok('aim cone: a parked thumb gets the standing cone', aimCone(0, true) === AIM_CONE);
+        ok('aim cone: a mouse never gets the sweep credit',
+           aimCone(TPAD_TURN/15, false) === AIM_CONE && aimCone(99, false) === AIM_CONE);
+        ok('aim cone: touch forgives half the frame it swept',
+           Math.abs(aimCone(.2, true) - (AIM_CONE + .1/FOV_N)) < 1e-12,
+           aimCone(.2, true).toFixed(4));
+        ok('aim cone: the credit is bounded',
+           aimCone(99, true) === aimCone(AIM_SWEEP_MAX, true) && aimCone(99, true) < AIM_CONE*4,
+           aimCone(99, true).toFixed(4));
+        /* ...and the live cone obeys the same rule on whatever this is running
+           on: the widest bearing that still takes the lock, parked against
+           mid-swing. On a mouse the two are the same number. */
+        {
+          const widest = (yawF) => {
+            M.yawF = yawF;
+            let best = 0;
+            for (let k = 0; k <= 1.4; k += .01){
+              e.x = P.x + Math.cos(spot.a)*spot.d + Math.cos(spot.a+1.5708)*k;
+              e.y = P.y + Math.sin(spot.a)*spot.d + Math.sin(spot.a+1.5708)*k;
+              if (isSolid(e.x,e.y) || !los(P.x,P.y,e.x,e.y)) break;
+              P.lockT = null; acquireTarget();
+              if (P.lockT !== e) break;
+              best = k;
+            }
+            return best;
+          };
+          P.ang = spot.a;
+          const parked = widest(0), swung = widest(TPAD_TURN/15);
+          ok('aim cone: the sweep credit reaches the live lock, on touch only',
+             isTouch ? swung > parked : swung === parked,
+             'parked '+parked.toFixed(2)+'u, mid-swing '+swung.toFixed(2)+'u');
+          M.yawF = 0; P.lockT = null;
+        }
         e.x = spot.px; e.y = spot.py; AIM_ASSIST = 0; step(0.016);
         ok('aim assist: OFF locks nothing', !P.lockT);
         /* the equipped gun's reach caps the lock: a 2u pistol must ignore this
