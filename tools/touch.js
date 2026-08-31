@@ -243,8 +243,42 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
   await page.waitForTimeout(300);
   step('the PAUSE button opens the field watch', await page.evaluate(() => G.state === 'pause') &&
        (await shown(page)) === 's-pause', await shown(page));
-  step('RESUME returns to play', await tapEl(page, '#s-pause [data-act="resume"]') &&
+  /* A paused game has to show a way out. The watch is taller than the frame on
+     every landscape phone, and show() switches the cluster off at the same
+     instant — taking the pause button with it — so an action row below the fold
+     leaves a paused player with nothing on screen to press and no scrollbar to
+     say the panel scrolls. Measured with no scrolling of any kind. */
+  const watch = await page.evaluate(() => {
+    const sc = document.getElementById('s-pause');
+    const rows = [...sc.querySelectorAll('.row button')].map(b => {
+      const r = b.getBoundingClientRect();
+      const mid = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+      return { t: (b.textContent||'').trim(), top: Math.round(r.top),
+               on: r.top >= 0 && r.bottom <= innerHeight, hit: !!mid && b.contains(mid) };
+    });
+    return { scrollTop: sc.scrollTop, rows, cluster: document.getElementById('touch').classList.contains('on') };
+  });
+  step('the watch shows its way out without scrolling',
+       watch.rows.length > 0 && watch.rows.every(r => r.on && r.hit) && watch.scrollTop === 0,
+       watch.rows.map(r => r.t + '@' + r.top + (r.on && r.hit ? '' : ' OFF')).join(', ') +
+       (watch.cluster ? '' : ' (cluster hidden)'));
+  /* ...and it must answer a finger while ANOTHER one rests on the glass: a tap
+     only becomes a click when it is the only touch point, so a thumb parked on
+     the frame used to make every menu control inert. */
+  const cdp = await ctx.newCDPSession(page);
+  const rb = await page.evaluate(() => {
+    const b = document.querySelector('#s-pause [data-act="resume"]'), r = b.getBoundingClientRect();
+    return { x: r.left + r.width/2, y: r.top + r.height/2 };
+  });
+  const rest = { x:120, y:200 };                 // a thumb parked on the panel, on no control
+  const touchEv = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints:pts });
+  await touchEv('touchStart', [{ ...rest, id:1 }]);
+  await touchEv('touchStart', [{ ...rest, id:1 }, { x:rb.x, y:rb.y, id:2 }]);
+  await touchEv('touchEnd',   [{ x:rb.x, y:rb.y, id:2 }]);
+  await page.waitForTimeout(300);
+  step('RESUME returns to play, with a second finger resting on the glass',
        await page.evaluate(() => G.state === 'play'), 'state ' + await page.evaluate(() => G.state));
+  await touchEv('touchEnd', [{ ...rest, id:1 }]);
 
   /* 9. control sizes, in the state that matters — mid-mission cluster */
   const small = await page.evaluate((min) => {

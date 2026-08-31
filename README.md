@@ -142,7 +142,7 @@ stopped advertising themselves on the radar. Ledger as always:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **249 assertions**: level
+- **F4** runs the in-game self-test suite — **275 assertions**: level
   reachability audits, input model invariants (pointer-lock linearity,
   free-look symmetry, aim-assist never fighting the player's turn), movement
   and collision checks, touch-cluster behaviour, palette and zone rendering,
@@ -156,7 +156,9 @@ stopped advertising themselves on the radar. Ledger as always:
   version lockstep: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
 - `tools/touch.js` is a phone-finger walkthrough: boot skipped, every menu
   visited, a mission started, walked, fired, paused and resumed by taps
-  alone, with 44px tap-target and screen-utilization measurements.
+  alone, with 44px tap-target and screen-utilization measurements. It also
+  proves the paused watch shows its way out without scrolling, and that a menu
+  row still answers a finger while a second one rests on the glass.
 - `tools/visual.js` measures the rendered glyph boxes of every text element
   on every DOM overlay screen — zero-height, clipped or painted-over text
   fails the run — at desktop and phone viewports.
