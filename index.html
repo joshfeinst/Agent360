@@ -514,7 +514,11 @@ const LOOK_PX  = .0024;           // radians per raw pixel at sensitivity 1.0
 const PITCH_PX = .13;             // horizon pixels per raw pixel
 const PITCH_MAX = 30;             // the raycaster shears the horizon, so keep it modest
 const DRAG_MUL = 1.6;             // dragging covers less ground, so it needs more per pixel
-const FIRE_BUFFER_MS = 160;       // a click is honoured for this long if the gun was busy
+/* A click is honoured for this long if the gun was busy. It has to outlast the
+   longest lockout it bridges: at 160 it was 20ms short of the 180ms weapon-swap
+   lockout, so the swap-and-shoot reflex — flick the wheel or hit E, pull the
+   trigger in the same movement — ate the shot silently at every frame rate. */
+const FIRE_BUFFER_MS = 200;
 const JUMP_PX  = 3000;            // one captured event past this is a browser glitch, not a hand
                                   // (a 125 Hz mouse flick is ~750 raw counts per event)
 const MAX_EVENT_PX = 60;          // UNLOCKED deltas only: window re-entry can jump
@@ -865,6 +869,14 @@ function unlock(){
   const runGate = m => { if (m > .92) held.run = true; else if (m < .85) held.run = false; };
   function padVec(t, el, nubEl, sprint){
     const r = el.getBoundingClientRect();
+    /* A screen over the mission — the ❚❚ watch, the only pause a phone has —
+       drops #touch's .on class, so the pad has no box at all. Dividing by a
+       zero half-width gives Infinity, and the normalise below turned both axes
+       into NaN: a dead stick that step() reads as falsy and that survives
+       resume()'s keepHeld clear, so the player got the watch back and then
+       could not walk. No box, no reading — the thumb keeps the axes it last
+       set, which is exactly what keepHeld is for. */
+    if (!r.width || !r.height) return null;
     const cx = r.left + r.width/2, cy = r.top + r.height/2;
     let dx = (t.clientX-cx)/(r.width/2), dy = (t.clientY-cy)/(r.height/2);
     const m = Math.hypot(dx,dy); if (m>1){ dx/=m; dy/=m; }
@@ -879,14 +891,15 @@ function unlock(){
     if (T[key] !== null) return;
     audioInit();                       // a pad touch is a gesture like any other
     T[key] = e.changedTouches[0].identifier;
-    set(padVec(e.changedTouches[0], el, nubEl, sprint));
+    const v0 = padVec(e.changedTouches[0], el, nubEl, sprint);
+    if (v0) set(v0); else T[key] = null;
   }, {passive:false});
   padStart(stick, nub,  'move',   v => { held.tx = v[0]; held.ty = v[1]; }, true);
   padStart(lpad,  lnub, 'aimpad', v => { held.lx = v[0]; held.ly = v[1]; }, false);
   addEventListener('touchmove', e=>{
     for (const t of e.changedTouches){
-      if (t.identifier === T.move){ const v = padVec(t,stick,nub,true); held.tx=v[0]; held.ty=v[1]; }
-      else if (t.identifier === T.aimpad){ const v = padVec(t,lpad,lnub,false); held.lx=v[0]; held.ly=v[1]; }
+      if (t.identifier === T.move){ const v = padVec(t,stick,nub,true); if (v){ held.tx=v[0]; held.ty=v[1]; } }
+      else if (t.identifier === T.aimpad){ const v = padVec(t,lpad,lnub,false); if (v){ held.lx=v[0]; held.ly=v[1]; } }
       else if (T.look && t.identifier === T.look.id){
         /* deltas FIRST, then move the reference — reading the travel after
            the assignment measured a constant zero, and every drag counted as
@@ -924,10 +937,10 @@ function unlock(){
       const heirOn = pad => e.type==='touchend' && e.touches &&
         Array.prototype.find.call(e.touches, x => x.identifier !== t.identifier && x.target && pad.contains(x.target));
       if (t.identifier===T.move){ const h = heirOn(stick);
-        if (h){ T.move=h.identifier; const v=padVec(h,stick,nub,true); held.tx=v[0]; held.ty=v[1]; }
+        if (h){ T.move=h.identifier; const v=padVec(h,stick,nub,true); if (v){ held.tx=v[0]; held.ty=v[1]; } }
         else { T.move=null; held.tx=held.ty=0; held.run=false; nub.style.transform=''; } }
       if (t.identifier===T.aimpad){ const h = heirOn(lpad);
-        if (h){ T.aimpad=h.identifier; const v=padVec(h,lpad,lnub,false); held.lx=v[0]; held.ly=v[1]; }
+        if (h){ T.aimpad=h.identifier; const v=padVec(h,lpad,lnub,false); if (v){ held.lx=v[0]; held.ly=v[1]; } }
         else { T.aimpad=null; held.lx=held.ly=0; lnub.style.transform=''; } }
       if (T.look && t.identifier===T.look.id){
         /* hand the drag to a finger that is still down, the way the pads and
@@ -2372,7 +2385,11 @@ function loadLevel(li, di){
   P.has=[true, !!G.cheats.allguns, !!G.cheats.allguns, !!G.cheats.allguns];
   P.mag=[7, G.cheats.allguns?20:0, G.cheats.allguns?5:0, G.cheats.allguns?3:0];
   P.ammo={ p9:42, smg:G.cheats.allguns?120:0, sh:G.cheats.allguns?20:0, pt:G.cheats.allguns?6:0 };
-  P.fireCd=0; P.reload=0; P.aim=0; P.recoil=0; P.muzzle=0; P.useHold=0; P.hurt=0;
+  /* crouch belongs in this reset beside its siblings from the P literal: left
+     out, it froze the instant play stopped (step() returns early on a corpse)
+     and rode into the next mission, which opened with the camera 28% low and
+     stood up over half a second — and made P.camZ=.5 above mean nothing. */
+  P.fireCd=0; P.reload=0; P.aim=0; P.crouch=0; P.recoil=0; P.muzzle=0; P.useHold=0; P.hurt=0;
   P.hitT=0; P.killT=0; P.dmgDir.length=0; P.lastFireT=-9;
 }
 
@@ -2802,7 +2819,15 @@ function playerFire(){
     else { sfx('dryfire'); P.fireCd=.35; startReload(); return true; }   // the click was consumed, by the dry-fire
   }
   if (!G.cheats.ammo) P.mag[P.w]--;
-  P.fireCd = w.rof;
+  /* Spend the overshoot, never discard it. An absolute reset here made the
+     effective period ceil(rof/dt)*dt, so the Klobb — rof .075, under two frames
+     at 60fps — fired 24% slower on a 30fps phone while the guards' cadence,
+     which is clocked from their own timers, did not move at all. P.fireCd is
+     always in (-dt, 0] at this point: the early-out above blocks entry while it
+     is positive, and step() stops decrementing at the first non-positive value.
+     So at most one clamped frame of credit is carried and the sum stays
+     strictly positive — it can never bank enough to double-fire. */
+  P.fireCd += w.rof;
   P.recoil = 1; P.muzzle = .07;
   sfx(w.sfx);
   G.shots++; G.heat = Math.min(1, G.heat + .18); P.lastFireT = G.time;
@@ -3274,10 +3299,19 @@ function step(dt, scored){
         hurtPlayer(e.dmg, P.x - Math.cos(e.ang), P.y - Math.sin(e.ang)); fx('spark',e.x,e.y,1.0); }
       continue;
     }
+    /* The killing blow can land earlier in THIS frame — the blast splash, the
+       guard's hitscan and the slug above all resolve inside this same loop —
+       while step()'s own early-out only bites from the next one. A corpse picks
+       nothing up and does not walk out of the building: an agent shot on the
+       frame they touched the pad was handed MISSION COMPLETE, a green SLA row
+       and a false personal best. `continue`, not `break`, so the rest of the
+       frame's projectiles and fx still tick out and the reap below still runs. */
+    if (!P.alive) continue;
     if (e.kind==='item' && dist2(P.x,P.y,e.x,e.y) < .38) pickup(e);
     if (e.kind==='exit' && dist2(P.x,P.y,e.x,e.y) < .55) tryExit();
   }
   G.ents = G.ents.filter(e => !e.dead2);
+  if (!P.alive) return;              // ...and finishes no hack, and ticks no fuse
 
   /* interaction */
   const wasTarget = P.useTarget;
@@ -4279,7 +4313,11 @@ function show(id){
       sub.style.color = campaignDone ? 'var(--gold)' : '';
     }
   }
-  document.getElementById('touch').classList.toggle('on', id===null && isTouch);
+  /* "no screen" means play — except for the F4 report, which is painted on the
+     canvas with no screen behind it. The cluster used to stay live and on top
+     of it, so an AIM/CROUCH/RLD tap set a latch on the mission paused behind
+     the report and keepHeld rode it back into play on RESUME. */
+  document.getElementById('touch').classList.toggle('on', id===null && isTouch && !G.showTests);
   syncRotHint();
 }
 /* Portrait on a phone is a letterboxed strip a third of the screen tall. Say
@@ -4304,10 +4342,15 @@ function buildSelect(){
     b.innerHTML = '<span>'+L.code+' · '+L.name+
       (bb && bb.win ? '<small class="best">BEST '+fmt(bb.time)+(bb.rank?' · '+bb.rank:'')+'</small>' : '')+
       '</span><span class="k">'+(i===selLevel?'◀ SELECTED':'▶')+'</span>';
-    /* rebuilding drops focus to BODY, restarting keyboard Tab from the top —
-       hand it back to the same row so Enter-Enter-Enter walks the list */
-    b.onclick = ()=>{ selLevel=i; buildSelect();
-      const nb = document.getElementById('misslist').children[i]; if (nb) nb.focus(); };
+    /* Rebuilding drops focus to BODY, restarting keyboard Tab from the top —
+       hand it back to the same row so Enter-Enter-Enter walks the list. Only
+       for a click the KEYBOARD made, though (detail 0): after a mouse or touch
+       pick the row kept focus, and the global Enter handler defers to a focused
+       button, so the gold row's advertised ENTER ▶ was dead for the rest of the
+       screen. A tap routes through .click(), which is also detail 0. */
+    b.onclick = ev=>{ selLevel=i; buildSelect();
+      const nb = document.getElementById('misslist').children[i];
+      if (nb && ev && ev.detail === 0) nb.focus(); };
     list.appendChild(b);
   });
   const dl = document.getElementById('difflist'); dl.innerHTML='';
@@ -4315,8 +4358,9 @@ function buildSelect(){
     const b=document.createElement('button'); b.className='mi'; b.style.flex='1';
     b.setAttribute('aria-pressed', String(i===G.diff));
     b.textContent = d.name;
-    b.onclick = ()=>{ G.diff=i; saveSettings(); buildSelect();
-      const nb = document.getElementById('difflist').children[i]; if (nb) nb.focus(); };
+    b.onclick = ev=>{ G.diff=i; saveSettings(); buildSelect();      // same rule as the mission rows
+      const nb = document.getElementById('difflist').children[i];
+      if (nb && ev && ev.detail === 0) nb.focus(); };
     dl.appendChild(b);
   });
   /* The blurb is per-clearance, but the task list is per mission AND clearance
@@ -4477,6 +4521,11 @@ function ticketOf(code, diff){
 }
 function endMission(win, why){
   if (G.state!=='play') return;
+  /* A death latched earlier in the same frame outranks the exit it happened on.
+     step() already refuses to run the pad test over a corpse; this says the
+     same thing at the sink, so no later caller can file a win for a dead agent.
+     The beat still files its own AGENT DOWN when G.deadT runs out. */
+  if (win && !P.alive) return;
   G.state='result'; unlock(); clearInput();
   sfx(win?'objective':'fail');
   /* Winning the flagged finale is the campaign, and it reads like it: gold
@@ -4585,7 +4634,24 @@ function buildCheats(){
    reference implementation of some other game cannot verify my level maps or my
    input model; only assertions against this build can.                       */
 function selfTest(runSim){
+  /* Storage is swapped out from under the suite for its whole run, so nothing
+     it does — an assertion's saveSettings(), a scripted endMission(), a probe
+     blob — can reach the player's save. The finally is load-bearing: an
+     assertion that throws must not leave the game writing to a scratch key. */
+  const k0 = SAVE_KEY, k1 = SAVE_KEY_V1;
+  SAVE_KEY = SAVE_KEY_TEST; SAVE_KEY_V1 = SAVE_KEY_V1_TEST;
+  try { return selfTestBody(runSim); }
+  finally {
+    SAVE_KEY = k0; SAVE_KEY_V1 = k1;
+    try { localStorage.removeItem(SAVE_KEY_TEST);
+          localStorage.removeItem(SAVE_KEY_V1_TEST); } catch(_){}
+  }
+}
+function selfTestBody(runSim){
   const R = [];
+  /* what the player's blob held on the way in — nothing below may move it */
+  let realRaw0 = null, realRawOK = true;
+  try { realRaw0 = localStorage.getItem(SAVE_KEY_REAL); } catch(_){ realRawOK = false; }
   const ok = (name, pass, detail) => R.push({ name, pass, detail: detail || '' });
   /* The suite drives desktop look modes with synthetic mouse events; on a
      phone the touch-ghost guard would eat them all. Tests that check the
@@ -4698,16 +4764,41 @@ function selfTest(runSim){
        (PROP.gunP.w!==PROP.ammoP.w || sum(PROP.gunP)!==sum(PROP.ammoP)));
   }
 
+  /* ---- the frame: a pinch must never shrink the game permanently ---- */
+  {
+    ok('fit: an unpinched frame measures itself', fitClamp(844, 844, 844, 1) === 844);
+    /* pinched to 3x the visual viewport reports a third of the width, and the
+       first resize after that used to freeze the canvas at that third for good */
+    ok('fit: a pinch cannot shrink the frame', fitClamp(844, 844, 281, 3) === 843);
+    /* ...while an area that really is smaller — an embed, a soft keyboard —
+       still wins, which is the whole reason the clamp reads vv at all */
+    ok('fit: a genuinely smaller visible area still clamps',
+       fitClamp(1200, 1200, 500, 1) === 500);
+    ok('fit: no visualViewport falls back to the window', fitClamp(800, 900, 0, 1) === 800);
+    /* a screen change moves devicePixelRatio with no resize event at all */
+    const d0 = FIT_DPR; FIT_DPR = -1; checkDpr();
+    ok('fit: a devicePixelRatio change re-runs the device-pixel snap',
+       FIT_DPR === (devicePixelRatio || 1), 'FIT_DPR='+FIT_DPR);
+    FIT_DPR = d0 > 0 ? d0 : (devicePixelRatio || 1);
+  }
+
   /* ---- persistence: the roundtrip must ride the REAL save/load path ---- */
   {
     let raw0 = null, raw0v1 = null, lsOK = true;
     try { raw0 = localStorage.getItem(SAVE_KEY); raw0v1 = localStorage.getItem(SAVE_KEY_V1); }
     catch(_){ lsOK = false; }
     if (lsOK){
+      /* Reduce Motion shipped and was then wiped on every boot: the probe
+         loads below drive RM_OPT from blobs that carry no rm, and the restore
+         had no line for it. Enter the block with it deliberately ON so a
+         dropped restore cannot pass by luck on a player who never turned it
+         on; what the player actually chose goes back at the end. */
+      const rmEntry = RM_OPT;
+      RM_OPT = true;
       const s0 = { sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
                    keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn, scan:SCANOP,
-                   map:G.mapOn, cd:campaignDone, god:G.cheats.god, taint:G.tainted,
-                   diff:G.diff, best:JSON.stringify(BEST) };
+                   map:G.mapOn, campaignDone:campaignDone, god:G.cheats.god, taint:G.tainted,
+                   diff:G.diff, rm:RM_OPT, best:JSON.stringify(BEST) };
       M.sens = 1.23; M.tsens = .77; INVERT_Y = true; AIM_ASSIST = 0; KEYS_LAYOUT = 'arrows';
       A.sfxVol = .12; A.musVol = .21; A.musOn = false; SCANOP = 15; G.mapOn = false;
       G.diff = 2;
@@ -4720,14 +4811,23 @@ function selfTest(runSim){
       ok('save carries schema v2 and code-keyed bests',
          blob.indexOf('"v":2') >= 0 && blob.indexOf('"M01:2"') >= 0);
       ok('cheats never persisted', !/cheat|taint|god/i.test(blob));
+      /* The bug class this block has shipped twice: a field is added to
+         saveSettings() and forgotten in s0, so the probe loads below leave it
+         clobbered for the rest of the session — which is how Reduce Motion was
+         lost on every load. Name the survivors rather than trust the list. */
+      { let miss = [];
+        try { miss = Object.keys(JSON.parse(blob)).filter(k => k!=='v' && !(k in s0)); } catch(_){}
+        ok('the persistence snapshot covers every saved field',
+           miss.length === 0, miss.join(' ')); }
       M.sens = .5; M.tsens = 1; INVERT_Y = false; AIM_ASSIST = 2; KEYS_LAYOUT = 'wasd';
       A.sfxVol = .7; A.musVol = .34; A.musOn = true; SCANOP = 50; G.mapOn = true; G.diff = 0;
+      RM_OPT = false;
       delete BEST['M01:2'];
       loadSettings();
       ok('settings roundtrip', Math.abs(M.sens-1.23)<1e-9 && Math.abs(M.tsens-.77)<1e-9
          && INVERT_Y && AIM_ASSIST===0 && KEYS_LAYOUT==='arrows'
          && Math.abs(A.sfxVol-.12)<1e-9 && !A.musOn && SCANOP===15 && !G.mapOn
-         && (isTouch || LOOK==='drag'));
+         && RM_OPT === true && (isTouch || LOOK==='drag'));
       const bb = BEST['M01:2'];
       ok('best result roundtrip', !!bb && bb.win && Math.abs(bb.time-99.5)<1e-6
          && bb.rank==='TIER 2 TECH');
@@ -4789,8 +4889,8 @@ function selfTest(runSim){
       }
       M.sens = s0.sens; M.tsens = s0.tsens; INVERT_Y = s0.inv; AIM_ASSIST = s0.aim;
       KEYS_LAYOUT = s0.keys; A.sfxVol = s0.sfx; A.musVol = s0.mus; A.musOn = s0.musOn;
-      SCANOP = s0.scan; G.mapOn = s0.map; campaignDone = s0.cd; G.diff = s0.diff;
-      G.cheats.god = s0.god; G.tainted = s0.taint;
+      SCANOP = s0.scan; G.mapOn = s0.map; campaignDone = s0.campaignDone; G.diff = s0.diff;
+      G.cheats.god = s0.god; G.tainted = s0.taint; RM_OPT = s0.rm;
       if (!isTouch) LOOK = s0.look;
       for (const k in BEST) delete BEST[k];
       Object.assign(BEST, JSON.parse(s0.best));
@@ -4799,6 +4899,8 @@ function selfTest(runSim){
                           : localStorage.setItem(SAVE_KEY, raw0); } catch(_){}
       try { raw0v1 === null ? localStorage.removeItem(SAVE_KEY_V1)
                             : localStorage.setItem(SAVE_KEY_V1, raw0v1); } catch(_){}
+      ok('reduce motion survives the probe loads', RM_OPT === true, 'rm='+RM_OPT);
+      RM_OPT = rmEntry; syncRMLabel();
     }
   }
 
@@ -4952,13 +5054,19 @@ function selfTest(runSim){
        player's mission, difficulty, cheats or look settings. */
     const save = { look:LOOK, layout:KEYS_LAYOUT, lvl:selLevel, diff:G.diff, aim:AIM_ASSIST,
                    cheats:Object.assign({}, G.cheats), fails:M.lockFails,
-                   nagged:M.lockNagged, locked:M.locked, sens:M.sens,
+                   nagged:M.lockNagged, locked:M.locked, sens:M.sens, tsens:M.tsens,
+                   inv:INVERT_Y, rm:RM_OPT,
                    tainted:G.tainted, tscale:G.tscale, unlockAt:M.unlockAt, sfx:A.sfxVol };
     /* The sim fires real guns and wakes real guards; without this the report
        opens over an inexplicable one-frame firefight of overlapping SFX. */
     A.sfxVol = 0;
     selLevel = 0; G.diff = 1; LOOK = 'free';
-    M.lockFails = 0; M.lockNagged = false; M.sens = 0.7; M.locked = false; resolveLook();
+    /* Pinned, not inherited. The pitch, pad and shake assertions below are
+       about the code, and a player who flies inverted or who asked for reduced
+       motion used to read their own settings back as red FAILs. */
+    INVERT_Y = false; RM_OPT = false;
+    M.lockFails = 0; M.lockNagged = false; M.sens = 0.7; M.tsens = 1;
+    M.locked = false; resolveLook();
     startMission(false); G.cheats.god = true; clearInput();
     /* resolveLook pins touch devices to 'touch'; these assertions are about the
        desktop modes, so drive LOOKMODE directly and F4 stays green on a phone. */
@@ -6099,6 +6207,36 @@ function selfTest(runSim){
           if (!hadOn) tEl.classList.remove('on');
         } else ok('stick: one-owner guard', true, 'no Touch ctor here');
 
+        /* the watch is the only pause a phone has, and it hides the pads out
+           from under the thumbs that are still on them */
+        if (typeof Touch === 'function' && typeof TouchEvent === 'function'){
+          const body = document.body, tEl = document.getElementById('touch');
+          const hadT = body.classList.contains('touch'), hadOn = tEl.classList.contains('on');
+          body.classList.add('touch'); tEl.classList.add('on');
+          clearInput();
+          const st = document.getElementById('tstick'), lp = document.getElementById('tlook');
+          const rs = st.getBoundingClientRect(), rl = lp.getBoundingClientRect();
+          const ev = (type,t)=>new TouchEvent(type,{changedTouches:[t],bubbles:true,cancelable:true});
+          const at = (el,id,r,fx,fy)=>new Touch({identifier:id, target:el,
+            clientX:r.left+r.width*fx, clientY:r.top+r.height*fy});
+          st.dispatchEvent(ev('touchstart', at(st,61,rs,.5,.1)));   // left thumb walking
+          lp.dispatchEvent(ev('touchstart', at(lp,62,rl,.8,.5)));   // right thumb turning
+          const held0 = [held.tx, held.ty, held.lx, held.ly];
+          tEl.classList.remove('on');                               // ❚❚ — the watch opens
+          dispatchEvent(ev('touchmove', at(st,61,rs,.55,.1)));      // ...and the thumbs settle
+          dispatchEvent(ev('touchmove', at(lp,62,rl,.85,.5)));
+          const now = [held.tx, held.ty, held.lx, held.ly];
+          ok('pads: a thumb still down when the watch opens cannot NaN the axes',
+             now.every(v => typeof v === 'number' && isFinite(v)) &&
+             now.every((v,i) => v === held0[i]), JSON.stringify(now));
+          tEl.classList.add('on');
+          dispatchEvent(ev('touchend', at(st,61,rs,.55,.1)));
+          dispatchEvent(ev('touchend', at(lp,62,rl,.85,.5)));
+          clearInput();
+          if (!hadT) body.classList.remove('touch');
+          if (!hadOn) tEl.classList.remove('on');
+        } else ok('pads: the zero-box guard', true, 'no Touch ctor here');
+
         /* compat mouse ghosts from taps never reach fire/aim */
         { SIMGHOSTS = false;
           ok('ghost guard: touch-sourced mouse events are ignored',
@@ -6146,29 +6284,38 @@ function selfTest(runSim){
                   document.getElementById('titlehint').textContent.indexOf('Left pad') === 0);
 
         /* P drives the stored SCANOP, not a shadow class the blob never sees */
-        { let rawS = null; try { rawS = localStorage.getItem(SAVE_KEY); } catch(_){}
+        { let rawS = null, lsOK2 = true;
+          try { rawS = localStorage.getItem(SAVE_KEY); } catch(_){ lsOK2 = false; }
           const sc0 = SCANOP, sp0 = SCAN_PREV;
           const key = code => onKey({ code, preventDefault(){}, target:null });
           const blobScan = () => { let d = null;
             try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(_){}
             return d ? d.scan : null; };
+          /* Storage denied — a sandboxed embed, or a browser set to block all
+             site data — makes blobScan() null for reasons that have nothing to
+             do with P, and the report printed three red FAILs about a feature
+             that was working. Gate the persistence half the way the persistence
+             suite gates itself, and let the functional half keep its teeth. */
+          const storedScan = (want, on) => !on || blobScan() === want;
           SCANOP = 84; SCAN_PREV = 84; syncOptionsUI(); saveSettings();
           key('KeyP');
           ok('scanlines: P turns them off in the SAVED value, not a class',
-             SCANOP === 0 && blobScan() === 0, 'SCANOP='+SCANOP+' blob='+blobScan());
+             SCANOP === 0 && storedScan(0, lsOK2), 'SCANOP='+SCANOP+' blob='+blobScan());
           ok('scanlines: ...and the Options slider agrees with the screen',
              document.getElementById('o-scan').value === '0' &&
              document.getElementById('v-scan').textContent === '0%' &&
              document.getElementById('scan').style.opacity === '0');
           key('KeyP');
           ok('scanlines: a second press restores the level the player chose',
-             SCANOP === 84 && blobScan() === 84, 'SCANOP='+SCANOP);
+             SCANOP === 84 && storedScan(84, lsOK2), 'SCANOP='+SCANOP);
           /* the dead first press: from a stored 0 it used to hide an overlay
              that was already invisible and change nothing a player could see */
           SCANOP = 0; SCAN_PREV = 50; syncOptionsUI(); saveSettings();
           key('KeyP');
           ok('scanlines: from a stored 0 the first press is not a dead key',
-             SCANOP > 0 && blobScan() === SCANOP, 'SCANOP='+SCANOP);
+             SCANOP > 0 && storedScan(SCANOP, lsOK2), 'SCANOP='+SCANOP);
+          ok('scanlines: a denied store drops the persistence half, not the test',
+             storedScan(-1, false) === true && storedScan(-1, true) === false);
           SCANOP = sc0; SCAN_PREV = sp0; syncOptionsUI();
           try { rawS === null ? localStorage.removeItem(SAVE_KEY)
                               : localStorage.setItem(SAVE_KEY, rawS); } catch(_){} }
@@ -6194,6 +6341,121 @@ function selfTest(runSim){
              document.getElementById('toasts').children.length === 1,
              'doorNag='+G.doorNag.toFixed(1));
           clearToasts(); G.doorNag = 0; }
+
+        /* A death latched mid-frame used to be erased by the same frame's exit
+           test: the killing shot resolves inside the entity loop, the pad test
+           ran after it, and an agent at 0 hp was handed MISSION COMPLETE, a
+           green SLA row and a false best. Injected at three points in that loop
+           and at three frame lengths — the kill must win from every one. */
+        { const ch0 = Object.assign({}, G.cheats), t0 = G.tainted;
+          const sl0 = selLevel, b0 = JSON.stringify(BEST);
+          let wins = 0, deaths = 0, meds = 0, hacks = 0;
+          for (const fdt of [1/144, 1/60, 1/30]) for (const at of [0, .5, 1]){
+            for (const k in G.cheats) G.cheats[k] = false;
+            selLevel = 0; startMission(false); clearInput();
+            for (const o of G.objs){ o.done = true; o.have = o.need; }
+            const ex = G.ents.find(e => e.kind === 'exit');
+            P.x = ex.x; P.y = ex.y; P.ang = 0;          // on the pad, well inside .55
+            /* a guard's slug already in flight, resolved before / among / just
+               ahead of the pad entity, which is where the real ones sit — and a
+               field kit right behind it, because a corpse must not loot either */
+            G.ents.splice(Math.round(G.ents.indexOf(ex) * at), 0,
+              { kind:'proj', sub:'slug', x:P.x+.05, y:P.y, ang:0, spd:.01,
+                life:0, size:.2, zoff:.5, mine:false, dmg:400 },
+              { kind:'item', sub:'med', x:P.x, y:P.y, r:.3, probe:true });
+            /* ...nor finish the hack it was one frame short of, which lives
+               after the entity loop rather than inside it */
+            const term = { kind:'prop', sub:'term', x:P.x+.5, y:P.y, r:.3, prog:0 };
+            G.ents.push(term); P.useTarget = term; P.useHold = 1.895; held.use = true;
+            step(fdt);
+            held.use = false;
+            if (G.state === 'result') wins++;
+            if (!P.alive) deaths++;
+            if (G.ents.some(e => e.probe)) meds++;
+            if (term.hacked) hacks++;
+          }
+          ok('a death on the exit frame is never erased by the exit',
+             wins === 0 && deaths === 9, 'wins='+wins+' deaths='+deaths);
+          ok('...and the corpse loots nothing on the way down', meds === 9, 'kits left '+meds);
+          ok('...and finishes no hack on the frame it dies', hacks === 0, 'hacks='+hacks);
+          ok('...and no best is filed for the corpse', JSON.stringify(BEST) === b0);
+          for (const k in BEST) delete BEST[k];
+          Object.assign(BEST, JSON.parse(b0));
+          Object.assign(G.cheats, ch0); G.tainted = t0; selLevel = sl0;
+          loadLevel(0,1); G.state = 'play'; clearInput(); }
+
+        /* The Klobb's cadence has to be the weapon's, not the frame rate's. An
+           absolute fireCd reset threw away up to a whole frame of overshoot per
+           shot, making the effective period ceil(rof/dt)*dt — 13.3 rounds a
+           second at 144fps against 10.1 at 30, while the guards, clocked from
+           their own timers, never lost a thing. */
+        { const am0 = G.cheats.ammo, g0 = G.cheats.god, w0 = P.w;
+          const rate = fdt => {
+            loadLevel(0,1); G.state = 'play'; clearInput();
+            G.cheats.god = true; G.cheats.ammo = true;
+            P.has[1] = true; P.w = 1; P.mag[1] = WEAPS[1].mag; P.fireCd = 0;
+            const s0 = G.shots;
+            held.fire = true;
+            for (let i = 0, N = Math.round(2/fdt); i < N; i++) step(fdt);
+            held.fire = false;
+            return (G.shots - s0) / 2;
+          };
+          const want = 1/WEAPS[1].rof;                  // the weapon table's 13.33/s
+          const r144 = rate(1/144), r60 = rate(1/60), r30 = rate(1/30);
+          ok('klobb: a held trigger keeps its cadence at any frame rate',
+             Math.abs(r144-want) < .8 && Math.abs(r60-want) < .8 && Math.abs(r30-want) < .8,
+             [r144,r60,r30].map(v=>v.toFixed(2)).join(' / ')+' want '+want.toFixed(2));
+          G.cheats.ammo = am0; G.cheats.god = g0; P.w = w0;
+          loadLevel(0,1); G.state = 'play'; clearInput(); }
+
+        /* the press buffer was 20ms shorter than the swap lockout it exists to
+           bridge, so the swap-and-shoot reflex lost the shot with no feedback */
+        { loadLevel(0,1); G.state = 'play'; clearInput(); G.cheats.god = true;
+          P.has[1] = true; P.mag[1] = WEAPS[1].mag; P.w = 0; P.mag[0] = 7; P.fireCd = 0;
+          switchWeapon(1);                              // the swap...
+          M.fireEdge = performance.now(); M.pressNew = true;   // ...and the trigger, same frame
+          const s0 = G.shots;
+          for (let i=0;i<24;i++) step(1/60);
+          ok('a same-frame weapon swap and trigger pull still fires',
+             G.shots > s0, 'shots '+(G.shots-s0));
+          ok('...and the buffer outlasts the lockout at every frame rate',
+             FIRE_BUFFER_MS/1000 >= .18, FIRE_BUFFER_MS+'ms');
+          clearInput(); }
+
+        /* play stops with the agent crouched — shot behind cover, or paused
+           with the phone's CRCH latch lit — and the next mission opened low */
+        { P.crouch = .93; loadLevel(0,1);
+          ok('loadLevel: the next mission opens standing',
+             P.crouch === 0 && P.camZ === .5, 'crouch='+P.crouch); }
+
+        /* the gold row advertises ENTER ▶, and the Enter handler defers to a
+           focused button — so re-focusing the row after a MOUSE pick killed the
+           shortcut for the rest of the screen */
+        { const st0 = G.state, sc0 = G.screenId, sel0 = selLevel;
+          const ml = () => document.getElementById('misslist');
+          G.state = 'select'; show('s-select'); buildSelect();
+          ml().children[0].focus();
+          ml().children[1].dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1}));
+          const ae = document.activeElement;
+          ok('select: a mouse pick leaves ENTER a target',
+             selLevel === 1 && !(ae && ae.classList && ae.classList.contains('mi')),
+             'focus '+(ae ? ae.tagName+'.'+ae.className : 'none'));
+          ml().children[2].click();                     // the keyboard's own click, detail 0
+          ok('select: a keyboard pick still hands the row back its focus',
+             selLevel === 2 && document.activeElement === ml().children[2]);
+          selLevel = sel0; buildSelect();
+          G.state = st0; show(sc0); }
+
+        /* the report is painted with no screen behind it, and show() reads "no
+           screen" as play — so the cluster used to sit live on top of it */
+        { const sc0 = G.screenId, sh0 = G.showTests;
+          const cls = document.getElementById('touch');
+          G.showTests = true; show(null);
+          const over = cls.classList.contains('on');
+          G.showTests = false; show(null);
+          ok('the touch cluster never overlays the self-test report',
+             over === false && cls.classList.contains('on') === isTouch, 'over='+over);
+          G.showTests = sh0; show(sc0); }
 
         /* the watch: no toasts over it, and a keyboard route into its buttons */
         { loadLevel(0,1); G.state = 'play'; P.alive = true; G.deadT = 0; clearInput();
@@ -6295,10 +6557,19 @@ function selfTest(runSim){
     selLevel = save.lvl; G.diff = save.diff; G.cheats = save.cheats;
     M.lockFails = save.fails; M.lockNagged = save.nagged; M.locked = save.locked;
     M.unlockAt = save.unlockAt; M.lockPending = false;
-    M.sens = save.sens; G.tainted = save.tainted; G.tscale = save.tscale; AIM_ASSIST = save.aim;
-    A.sfxVol = save.sfx;
-    resolveLook(); clearInput();
+    M.sens = save.sens; M.tsens = save.tsens; G.tainted = save.tainted;
+    G.tscale = save.tscale; AIM_ASSIST = save.aim;
+    A.sfxVol = save.sfx; INVERT_Y = save.inv; RM_OPT = save.rm;
+    resolveLook(); syncOptionsUI(); clearInput();
     loadLevel(save.lvl, save.diff); P.x = 3.5; P.y = 2.5;
+  }
+  /* The suite is a diagnostic, never a save. One F4 used to leave its scratch
+     settings on disk — silent SFX, the wrong look mode, the wrong clearance —
+     and the player only met it on their next launch. */
+  if (realRawOK){
+    let realNow = null; try { realNow = localStorage.getItem(SAVE_KEY_REAL); } catch(_){}
+    ok('the suite never writes the player\'s own save',
+       SAVE_KEY !== SAVE_KEY_REAL && realNow === realRaw0, 'key=' + SAVE_KEY);
   }
   SIMGHOSTS = false;                 // live play gets the ghost guard back
   G.tests = R;
@@ -6346,8 +6617,18 @@ function drawTestReport(){
    each v1 INDEX pointed at, named by its CURRENT code: insertion never touches
    this list, but renaming a mission v1 shipped must rename it here in the same
    commit (slot 2 was LEGACY-DC01 — code M03 then, M05 now). */
-const SAVE_KEY = 'a360.v2';
-const SAVE_KEY_V1 = 'a360.v1';    // still read (once) so nobody's bests vanish
+const SAVE_KEY_REAL = 'a360.v2';
+const SAVE_KEY_V1_REAL = 'a360.v1';    // still read (once) so nobody's bests vanish
+/* The suite drives the REAL save/load path — that is the whole point of it —
+   so it must not be pointed at the player's own data while it does. selfTest()
+   swaps both keys to this scratch pair for its entire run: its scripted
+   endMission()s each call saveSettings(), and one F4 used to leave their
+   scratch state (SFX 0, look free, clearance 1, Reduce Motion off) on disk,
+   where the next launch read it back as the player's own choices. */
+const SAVE_KEY_TEST = 'a360.selftest.v2';
+const SAVE_KEY_V1_TEST = 'a360.selftest.v1';
+let SAVE_KEY = SAVE_KEY_REAL;
+let SAVE_KEY_V1 = SAVE_KEY_V1_REAL;
 const V1_CODES = ['M01','M02','M05'];
 const BEST = {};                  // 'M01:diff' -> { time, acc, rank, win }
 let campaignDone = false;
@@ -6763,6 +7044,7 @@ function loop(t){
   const raw = last ? (t-last)/1000 : .016;
   const dt = Math.min(.05, raw);
   last = t; G.lastDt = dt;
+  checkDpr();
   /* Separate try blocks: a throw inside step() used to skip entity reaping,
      interaction and the meltdown timer every frame while the game still looked
      alive, and the one-shot latch hid every repeat. */
@@ -6781,13 +7063,26 @@ function loop(t){
   requestAnimationFrame(loop);
 }
 
+/* The smallest honest measure of what is actually visible: an embedded frame
+   can report an innerWidth larger than the area the user can see. The visual
+   viewport is the PINCH-ZOOMED window onto the layout viewport, though, and it
+   moves without firing the window 'resize' fit() listens to — so a resize taken
+   while the player was pinched in (rotating the phone, leaving fullscreen, the
+   URL bar sliding) sized the game to a fraction of the screen and never came
+   back: a 166x93 postage stamp with the whole touch cluster piled up in it.
+   Multiplying the zoom back out keeps the clamp honest while making the
+   measurement zoom-invariant, so the stuck state cannot form. vv.scale is 1 in
+   an embedded frame, so the case this clamp was written for is untouched. */
+function fitClamp(win, cli, vv, scale){
+  return Math.min(win || 1e9, cli || 1e9, (vv ? vv * (scale || 1) : 0) || 1e9);
+}
+let FIT_DPR = 0;                  // the ratio the snap below was last computed at
 function fit(){
-  /* Prefer the smallest honest measure of what is actually visible: an embedded
-     frame can report an innerWidth larger than the area the user can see. */
   const vv = window.visualViewport;
   const de = document.documentElement;
-  const w = Math.min(innerWidth || 1e9, de && de.clientWidth || 1e9, vv && vv.width || 1e9);
-  const h = Math.min(innerHeight || 1e9, de && de.clientHeight || 1e9, vv && vv.height || 1e9);
+  const vs = (vv && vv.scale) || 1;
+  const w = fitClamp(innerWidth, de && de.clientWidth, vv && vv.width, vs);
+  const h = fitClamp(innerHeight, de && de.clientHeight, vv && vv.height, vs);
   let s = Math.min(w/RW, h/RH);
   /* Integer scale once there is room for it: a 2.37x stretch turns 1-game-pixel
      detail (door digits, HUD glyphs) into unevenly fat and thin columns. Below
@@ -6795,6 +7090,7 @@ function fit(){
      Snap in DEVICE pixels: a CSS-px snap still landed on fractional device
      pixels at 125%/150% display scaling, and the uneven columns came back. */
   const dpr = devicePixelRatio || 1;
+  FIT_DPR = dpr;
   if (s * dpr >= 2) s = Math.floor(s * dpr) / dpr;
   view.style.width = (RW*s)+'px';
   view.style.height = (RH*s)+'px';
@@ -6805,6 +7101,12 @@ function fit(){
   if (scan) scan.style.backgroundSize = '100% ' +
     (s * dpr >= 2 ? (Math.floor(s * dpr) / dpr) : 3) + 'px';
 }
+/* devicePixelRatio can change with no CSS-size change at all — the window
+   dragged to a screen with different scaling, or the OS display-scale slider
+   moved — and no resize fires, so the DEVICE-pixel snap above would keep the
+   old ratio and hand the art back the uneven columns it exists to prevent.
+   There is no event for it that every engine agrees on, so the loop asks. */
+function checkDpr(){ if ((devicePixelRatio || 1) !== FIT_DPR) fit(); }
 addEventListener('resize', fit);
 fit();
 boot();
@@ -6817,6 +7119,11 @@ boot();
    entirely, so double-clicking the single HTML file behaves exactly as always. */
 if ('serviceWorker' in navigator &&
     (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')){
-  addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+  /* `in` is a prototype test and never invokes the getter: under
+     sandbox="allow-scripts" the READ throws SecurityError, before there is a
+     promise for the .catch to attach to. */
+  addEventListener('load', () => {
+    try { navigator.serviceWorker.register('sw.js').catch(()=>{}); } catch(_){}
+  });
 }
 </script>
