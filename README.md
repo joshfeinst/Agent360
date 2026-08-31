@@ -156,13 +156,26 @@ under-counting on a slow device, and the radar and floor plan gave five
 different things five different shapes. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.24
+
+Housekeeping with teeth. Two of the fixes are things a player would have felt
+without ever knowing why: a mission no longer starts with the last one's walk
+cycle, footstep and aim-assist lock still attached, and on a tablet with a
+keyboard a tap on MISSION SELECT stopped killing the ENTER shortcut the gold
+row advertises. The rest is the test suite growing the habit of asking
+generic questions instead of remembered ones — *does any field of the player
+survive a mission load*, rather than *did we remember crouch* — which is how
+the first two were found. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## Development
 
-- **F4** runs the in-game self-test suite — **326 assertions**: level
-  reachability audits, input model invariants (pointer-lock linearity,
-  free-look symmetry, aim-assist never fighting the player's turn), movement
-  and collision checks, touch-cluster behaviour, palette and zone rendering,
-  secrets, checkpoint and music-state logic.
+- **F4** runs the in-game self-test suite — **358 assertions** (361 in a touch
+  context, which has three more to make): level reachability audits, input
+  model invariants (pointer-lock linearity, free-look symmetry, aim-assist
+  never fighting the player's turn), movement isotropy and collision, the
+  player and audio state a mission load has to hand back, touch-cluster
+  behaviour, palette and zone rendering, secrets, checkpoint and music-state
+  logic.
 - `tools/verify.js` runs that suite headlessly plus a randomized-input soak
   of 600 frames per mission/difficulty combination — the campaign's own
   length, so a new mission is soaked the day it lands —
@@ -188,8 +201,13 @@ different things five different shapes. Ledger:
 - `tools/runthrough.js` is the proof a mission is humanly playable: an
   objective-chain bot loads each mission cold (no cheats, pistol start),
   BFS-walks the watch's own objective order through live physics, and reports
-  time against par. New missions calibrate their par from its SECRET AGENT
-  time: `node tools/runthrough.js "$(pwd)/index.html" all all`.
+  time against par. It finishes 14 of the 15 mission x clearance pairs at
+  0.27-0.52 of par; the fifteenth is the finale duel on 00 AGENT, the same
+  wall the playtest bot measures its 0/8 against, and the campaign's
+  deliberate ceiling. `--thumb` re-runs the table with a phone's reflexes —
+  stop-and-turn steering at the look pad's own rate — so a map that only works
+  with a mouse fails here. New missions calibrate their par from the SECRET
+  AGENT time: `node tools/runthrough.js "$(pwd)/index.html" all all`.
 - The game has been through repeated adversarial review rounds — independent
   finders cross-examined by paired skeptics — and every confirmed regression
   became an F4 assertion. [NIGHT_LOG.md](NIGHT_LOG.md) is the ledger.

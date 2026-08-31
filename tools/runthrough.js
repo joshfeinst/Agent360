@@ -22,8 +22,12 @@ const fs = require('fs');
 const path = require('path');
 
 const target = process.argv[2];
-const LEVEL_ARG = process.argv[3] || 'all';
-const DIFF_ARG = process.argv[4] || 'all';
+/* positional args, flags removed first — `runthrough index.html --thumb` is the
+   form the docs describe, and reading argv[3] blind made it the level index,
+   loaded LEVELS[NaN] and crashed the harness. */
+const POS = process.argv.slice(3).filter(a => !a.startsWith('--'));
+const LEVEL_ARG = POS[0] || 'all';
+const DIFF_ARG = POS[1] || 'all';
 const TRACE = process.argv.includes('--trace');   // per-half-second bot telemetry, for par calibration
 /* --thumb plays the game the way a PHONE does: the right pad's rim rate
    instead of a wrist flick, and a thumb's reaction time before it answers a
@@ -157,8 +161,6 @@ async function launch() {
         /* thumb profile: the look pad's rim rate, and a hand's delay before it
            answers. TPAD_TURN is the game's own constant, read live. */
         const THUMB_TURN = (typeof TPAD_TURN === 'number' ? TPAD_TURN : 3.1);
-        const THUMB_LAG = .20;
-        const aimLag = [{ a: P.ang, t: 0 }];
         try {
           while (t < MAX_SEC && G.state === 'play') {
             t += dt; replan -= dt;
@@ -350,8 +352,9 @@ async function launch() {
               if (err > .9){ held.fwd = false; held.run = false; }
               else if (err > .45) held.run = false;
               P.ang += clamp(angDiff(P.ang, wantAng), -THUMB_TURN * dt, THUMB_TURN * dt);
-            } else
-            P.ang += clamp(angDiff(P.ang, wantAng), -4.5 * dt, 4.5 * dt);
+            } else {
+              P.ang += clamp(angDiff(P.ang, wantAng), -4.5 * dt, 4.5 * dt);
+            }
 
             /* wedged against geometry (or waiting out a door): sidestep, and
                if that fails long enough, throw the plan away and re-path */

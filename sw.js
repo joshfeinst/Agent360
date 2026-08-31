@@ -4,7 +4,7 @@
    installed app keeps its faces with no network. Bump CACHE on every release —
    activate() deletes the old one, and verify.js fails if this drifts from the
    VERSION constant in index.html. */
-const CACHE = 'agent360-v1.23';
+const CACHE = 'agent360-v1.24';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'
@@ -13,7 +13,7 @@ const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Press+Start+2P&family
 
 /* Only a good response is worth keeping: caching a 404 or an opaque 5xx would
    serve the failure forever once the network went away. */
-const putOk = (c, req, r) => { if (r && r.ok) c.put(req, r.clone()); return r; };
+const putOk = (c, req, r) => (r && r.ok) ? c.put(req, r.clone()).then(() => r) : r;
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(async c => {
@@ -60,7 +60,11 @@ self.addEventListener('fetch', e => {
              time caches.open() resolved, the page had already begun reading
              the body, so every runtime put threw 'body already used' and the
              cache only ever held what install() precached. */
-          if (r.ok){ const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
+          /* waitUntil, not a floating promise: respondWith settles the moment
+             r is returned, and the browser may kill the worker before an
+             orphaned put ever lands. */
+          if (r.ok){ const copy = r.clone();
+            e.waitUntil(caches.open(CACHE).then(c => c.put(e.request, copy))); }
           return r;
         })
         .catch(() =>
@@ -75,10 +79,15 @@ self.addEventListener('fetch', e => {
       caches.match(e.request).then(m => {
         const net = fetch(e.request)
           .then(r => {
-            if (r.ok){ const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
+            if (r.ok){ const copy = r.clone();
+              e.waitUntil(caches.open(CACHE).then(c => c.put(e.request, copy))); }
             return r;
           })
           .catch(() => m);
+        /* on a hit the revalidation is handed to the event as well, or the
+           worker can be killed the instant the stale copy is served and the
+           fresh one is never written */
+        if (m) e.waitUntil(net.catch(() => {}));
         return m || net;
       })
     );

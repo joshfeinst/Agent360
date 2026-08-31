@@ -40,7 +40,14 @@ function sourceCheck() {
   console.log('SW CACHE cleanup is scoped to agent360-* ' + (swScoped ? '— yes' : '— NO, IT DELETES THE ORIGIN'));
   /* And a runtime put must clone BEFORE the response reaches the page, or the
      body is already being read and every write throws. */
-  const swClone = !/c\.put\(e\.request, r\.clone\(\)\)/.test(sw);
+  /* The exact bug was caches.open(C).then(c => c.put(req, r.clone())): by the
+     time open() resolved the page had begun reading the body, so the clone
+     threw and the cache only ever held what install() precached. Cloning
+     inline is fine where the response was never handed to a page — what must
+     never happen is a clone taken INSIDE an open() continuation. So find every
+     deferred put and require it to take a copy captured earlier. */
+  const deferred = sw.match(/caches\.open\([^)]*\)\.then\([^;]*?\.put\([^)]*\)/g) || [];
+  const swClone = deferred.length > 0 && !deferred.some(c => /\.clone\(\)/.test(c));
   console.log('SW runtime caching clones before handing off ' + (swClone ? '— yes' : '— NO, EVERY PUT THROWS'));
   const vOK = hv && sv && hv === sv;
   console.log('VERSION index.html v' + hv + ' / sw.js v' + sv + (vOK ? ' — in step' : ' — MISMATCH'));
@@ -51,7 +58,7 @@ function sourceCheck() {
   const stat = (html.match(/id="titlehint">([^<]+)</) || [])[1];
   const hOK = !!cap && !!stat && stat.indexOf(cap) === 0;
   console.log('TITLE HINT static default ' + (hOK ? 'matches the shipped look mode' : 'DRIFTED from TITLE_HINT.capture'));
-  return vOK && hOK;
+  return vOK && hOK && swScoped && swClone;
 }
 
 async function wirePage(page, errors, resourceErrs) {
@@ -67,6 +74,34 @@ async function wirePage(page, errors, resourceErrs) {
 }
 
 async function runSelfTest(page, label) {
+  /* F4 is a documented control, and the suite it runs scribbles on the live
+     settings and once wrote them to disk. Assert the end-to-end property from
+     OUT HERE — the suite cannot be trusted to mark its own homework. */
+  const f4Safe = await page.evaluate(() => {
+    const distinct = { sens:1.93, tsens:1.4, inv:true, aim:0, sfx:0.31, mus:0.11,
+                       scan:83, map:false, rm:true, diff:2, look:'drag' };
+    M.sens = distinct.sens; M.tsens = distinct.tsens; INVERT_Y = distinct.inv;
+    AIM_ASSIST = distinct.aim; A.sfxVol = distinct.sfx; A.musVol = distinct.mus;
+    SCANOP = distinct.scan; G.mapOn = distinct.map; RM_OPT = distinct.rm;
+    G.diff = distinct.diff; if (!isTouch) LOOK = distinct.look;
+    saveSettings();
+    const before = localStorage.getItem('a360.v2');
+    selfTest(true);
+    const after = localStorage.getItem('a360.v2');
+    const live = { sens:M.sens, tsens:M.tsens, inv:INVERT_Y, aim:AIM_ASSIST,
+                   sfx:A.sfxVol, mus:A.musVol, scan:SCANOP, map:G.mapOn,
+                   rm:RM_OPT, diff:G.diff, look:LOOK };
+    const moved = Object.keys(distinct).filter(k =>
+      (k === 'look' && isTouch) ? false : live[k] !== distinct[k]);
+    G.state = 'title'; if (typeof show === 'function') show('s-title');
+    return { blobHeld: before === after, moved,
+             scratchGone: localStorage.getItem('a360.selftest.v2') === null };
+  });
+  console.log('F4 SAFETY blob held ' + (f4Safe.blobHeld ? 'yes' : 'NO') +
+              ' · settings moved: ' + (f4Safe.moved.length ? f4Safe.moved.join(',') : 'none') +
+              ' · scratch key cleaned ' + (f4Safe.scratchGone ? 'yes' : 'NO'));
+  const f4Bad = (!f4Safe.blobHeld || f4Safe.moved.length || !f4Safe.scratchGone) ? 1 : 0;
+
   const tests = await page.evaluate(() => {
     const R = selfTest(true);
     G.state = 'title';               // selfTest via console leaves state 'play'; F4 path restores it itself
@@ -76,7 +111,7 @@ async function runSelfTest(page, label) {
   const fails = tests.filter(t => !t.pass);
   console.log('SELFTEST[' + label + '] ' + (tests.length - fails.length) + '/' + tests.length + ' passed');
   fails.forEach(f => console.log('  FAIL ' + f.name + '  ' + f.detail));
-  return fails.length;
+  return fails.length + f4Bad;
 }
 
 /* Soak every mission x difficulty combo (the campaign's own length, so a new
