@@ -167,10 +167,24 @@ generic questions instead of remembered ones — *does any field of the player
 survive a mission load*, rather than *did we remember crouch* — which is how
 the first two were found. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.25
+
+A round spent asking whether the game's own promises are kept. The field
+manual lists thirty-seven keys; a test now presses every one of them, parsed
+out of the screen itself rather than a list beside it, so a row that starts
+naming a new key is checked the day it is written. Every character a mission
+map uses has to leave a mark on the level, because one the loader does not
+answer becomes floor in silence — a medkit that simply is not there. Every
+sound the code plays has to exist in the sound table, because `sfx()` on a
+missing name is not an error, it is quiet. And the one real defect: a stored
+best time was checked for a floor but not a ceiling, so a corrupted save could
+put `BEST 1.66e+306:56` on MISSION SELECT. Ledger:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## Development
 
-- **F4** runs the in-game self-test suite — **358 assertions** (361 in a touch
-  context, which has three more to make): level reachability audits, input
+- **F4** runs the in-game self-test suite — **365 assertions** (366 in a touch
+  context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the
   player and audio state a mission load has to hand back, touch-cluster
@@ -183,8 +197,9 @@ the first two were found. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
   the real cluster) and once more stepping the sim at 144 Hz and 30 Hz to
   prove frame-rate invariance. It also reads the source for the things that
   have to be right before a script runs — the `index.html`/`sw.js` version
-  lockstep, and the title screen's static how-to matching the look mode the
-  build ships: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
+  lockstep, the title screen's static how-to matching the look mode the build
+  ships, the service worker's cache scoping and clone timing, and every sound
+  name the code plays existing in the sound table: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
 - `tools/touch.js` is a phone-finger walkthrough: boot skipped, every menu
   visited, a mission started, walked, fired, paused and resumed by taps
   alone, with 44px tap-target and screen-utilization measurements. It also

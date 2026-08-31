@@ -49,6 +49,42 @@ function sourceCheck() {
   const deferred = sw.match(/caches\.open\([^)]*\)\.then\([^;]*?\.put\([^)]*\)/g) || [];
   const swClone = deferred.length > 0 && !deferred.some(c => /\.clone\(\)/.test(c));
   console.log('SW runtime caching clones before handing off ' + (swClone ? '— yes' : '— NO, EVERY PUT THROWS'));
+  /* sfx(name) returns quietly when the table has no such key, so a renamed or
+     mistyped sound is not an error — it is silence, and silence is the one
+     symptom nobody notices in a review. Read every name the source hands to
+     sfx/sfxAt (first argument only, ternaries included, which is where four of
+     them live) and require the table to answer it. */
+  const sfxTable = (() => {
+    const a = html.indexOf('const SFX = {');
+    if (a < 0) return null;
+    const body = html.slice(a, html.indexOf('\n};', a));
+    return new Set([...body.matchAll(/^ {2}([A-Za-z0-9_]+)\(\)\s*\{/gm)].map(m => m[1]));
+  })();
+  /* the first argument of each call: scan to the matching top-level comma or
+     close paren, then take every bare-word string literal inside it */
+  const sfxNamed = new Set();
+  for (const m of html.matchAll(/\bsfx(?:At)?\(/g)){
+    let i = m.index + m[0].length, depth = 0, arg = '';
+    for (; i < html.length; i++){
+      const c = html[i];
+      if (c === '(' || c === '[') depth++;
+      else if (c === ']') depth--;
+      else if (c === ')'){ if (depth === 0) break; depth--; }
+      else if (c === ',' && depth === 0) break;
+      arg += c;
+    }
+    /* in a ternary only the RESULT sides are sound names — the condition's own
+       literal is something being compared (sfxAt(e.sub==='drone' ? ...)) */
+    const q = arg.indexOf('?');
+    const results = q >= 0 ? arg.slice(q + 1) : arg;
+    for (const lit of results.matchAll(/'([A-Za-z0-9_]+)'/g)) sfxNamed.add(lit[1]);
+  }
+  const mute = sfxTable ? [...sfxNamed].filter(n => !sfxTable.has(n)) : ['NO SFX TABLE FOUND'];
+  const sfxOK = !!sfxTable && sfxNamed.size >= 20 && mute.length === 0;
+  console.log('SFX every name the code plays is in the table — ' +
+    (sfxOK ? sfxNamed.size + ' names, all answered'
+           : (mute.length ? 'SILENT: ' + mute.join(' ')
+                          : 'ONLY ' + sfxNamed.size + ' NAMES FOUND — the scan broke')));
   const vOK = hv && sv && hv === sv;
   console.log('VERSION index.html v' + hv + ' / sw.js v' + sv + (vOK ? ' — in step' : ' — MISMATCH'));
   /* syncTitleHint() rewrites the title how-to the moment scripts run, but the
@@ -58,7 +94,7 @@ function sourceCheck() {
   const stat = (html.match(/id="titlehint">([^<]+)</) || [])[1];
   const hOK = !!cap && !!stat && stat.indexOf(cap) === 0;
   console.log('TITLE HINT static default ' + (hOK ? 'matches the shipped look mode' : 'DRIFTED from TITLE_HINT.capture'));
-  return vOK && hOK && swScoped && swClone;
+  return vOK && hOK && swScoped && swClone && sfxOK;
 }
 
 async function wirePage(page, errors, resourceErrs) {

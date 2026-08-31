@@ -90,18 +90,38 @@ remembered question as a generic one, and then reading what fell out.
 | **6 · A denied store means a denied write** | `lsWritable()` — a real `setItem`/`getItem`/`removeItem` round trip — replaces the `getItem` probe that gated both persistence suites | A browser that blocks site data while still answering reads is the common shape, not a rare one. The read probe called that storage healthy and the suite printed three red FAILs about a feature that was working | An assertion that stubs `Storage.prototype.setItem` to throw and requires the probe to notice — so reverting it to a read probe fails by name. `verify.js` also gained an end-to-end F4 safety check outside the game: set distinctive settings, save, run the suite, and require the blob byte-identical, no setting moved, and the scratch key cleaned |
 | **What the evidence did not support** | An out-of-range `P.w` takes the frame down, and no guard was added | The probe that found it sets `P.w = 99` by hand. Every real path — `1`–`4`, `Q`/`E`, the wheel, `switchWeapon`, `GUN` — is bounded, and the 25,500-frame randomized soak has never produced it. A guard here would be dead code standing where a reader would read it as a live hazard |
 
+---
+
+# Night log — the promises round
+
+The method round ended with a rule of thumb: a test that names the bug it
+remembers only catches that bug again. This round applied it to the things the
+game *tells* the player, and to the two failure modes that produce no error at
+all — a character the map loader does not answer, and a sound name the sound
+table does not have. Both fail into silence, which is the one symptom nobody
+reviews.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · A clock has to be able to say it** | `fmt()` is total — anything not a finite number in [0, 86400] prints `--:--` — and the save loader now bounds a stored best time at the top as well as the bottom | The loader's own comment records this bug from the other end: *"time >= 0 (a stored -61 rendered BEST -2:0-1)"*. The floor was fixed and the ceiling left open, so a corrupted or hand-edited blob put **`BEST 1.6666666666666665e+306:56`** on MISSION SELECT. Asked totally instead — is there any input `fmt` cannot say — it also answered `NaN:NaN` to NaN, ±Infinity, undefined, a string and an object | Two assertions: `fmt` over a dozen hostile inputs, and the store fed seven blob shapes and required six rejected and the honest one kept. Mutation-verified: revert either half and exactly its assertion fails, naming `1.66e+306:56` and `1e308=>1e+308` |
+| **2 · A map character has to leave a mark** | A behavioural assertion: every character used anywhere in the campaign is placed alone in a sealed 5x5 room, and the cell must come back solid or holding an entity | A character the loader's `switch` does not answer falls through to floor. The flood-fill reachability audit still passes — a hole in a wall is still reachable. The roster tables still pass — they count what spawned, not what was asked for. The only symptom is a prop that is not there. **44 characters** are in use across five missions and nothing checked them | No table to drift from the switch: the assertion reads the maps and drives the real loader. Mutation-verified by deleting the `case 'm'` medkit line — every medkit in the campaign disappears, and the guard fails with `silently ignored: "m"` |
+| **3 · A key the manual names has to answer** | An assertion that parses the desktop rows of the CONTROLS screen, turns each key glyph into the code a browser sends, and presses it for real — under conditions where it can act (a full magazine cannot reload, one owned weapon cannot cycle, `1` from slot 0 is correctly a no-op) | This game has already shipped a screen that lied: the title how-to taught DRAG on a build that ships CAPTURE, wrong on three of three fresh profiles. The manual promises **37 keys** across 19 rows and nothing checked them. All 37 answer — the first probe said eleven were dead and every one of those was the probe not arming the agent | Closed in both directions. Mutation A: drop `KeyW` from `KEYMAP` and it fails with `Move / strafe → KeyW`. Mutation B: add a `B` to the radar row and it fails with `Corner radar → "B"` — a second assertion requires every token in a keys cell to be either a glyph the test can press or known prose, so the manual cannot grow a promise in silence |
+| **4 · A sound name has to exist** | A `verify.js` source check: every name the code hands to `sfx`/`sfxAt` must be a key in the `SFX` table, reading the first argument only and taking ternary results (four sounds — `hurt`, `tick`, `tick2`, `tink` — are only ever reached that way) | `sfx(name)` returns quietly when the table has no such key. A rename is not an error, it is silence. **31 names** are played across the source; the existing self-test checked eleven of them against a hand-kept list | Mutation-verified by renaming `SFX.stepBoss` and leaving the call sites: `SILENT: stepBoss`. The scanner's first draft flagged `drone` — a comparison operand inside `sfxAt(e.sub==='drone' ? 'smg' : 'pistol', ...)`, not a sound — which is why it now reads only the result side of a ternary |
+| **What the evidence did not support** | Five reported anomalies, all refuted before they could become fixes | **Pause does not freeze the world** — the probe called `step()` directly; `loop()` only steps in `play`. **A corpse keeps shooting** — alone with one corpse the agent took 0 damage and saw 0 projectiles; the 75.7 came from the eight live hostiles the probe left standing. **Accuracy can exceed 100%** — the probe set `G.hits` by hand; `playerFire` clamps a trigger pull to one hit and `hitscan` returns on the first. **RESET TO DEFAULT is dead** — it resets the face photo, and no-ops correctly when there is none. **Diagonal movement is 11% faster** — the cardinal runs were clipping geometry; re-measured in open space it is 1.0000 |
+
 ## Standing numbers
 
-- **Self-tests:** 358 desktop / 361 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 365 desktop / 366 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
   source checks: index.html/sw.js version lockstep, the title screen's static
-  how-to, the service worker's cache scoping and its clone timing — plus an
-  end-to-end check that running F4 leaves the player's saved blob untouched) · `tools/touch.js` (phone-finger walkthrough, landscape +
+  how-to, the service worker's cache scoping and its clone timing, and every sound name
+  the code plays existing in the sound table — plus an end-to-end check that
+  running F4 leaves the player's saved blob untouched) · `tools/touch.js` (phone-finger walkthrough, landscape +
   portrait) · `tools/visual.js` (glyph-box audit of all overlay screens,
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.24'` (index.html) ↔ `agent360-v1.24`
+- **Versions:** game `VERSION = '1.25'` (index.html) ↔ `agent360-v1.25`
   (sw.js CACHE), enforced by verify.js
