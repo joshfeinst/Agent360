@@ -62,9 +62,15 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
     return true;
   };
   /* hold-surfaces: a synthetic finger with an identity, at real client rects */
-  const finger = (page, type, sel, dx, dy) => page.evaluate(([type, sel, dx, dy]) => {
+  /* One identifier per CONTROL, not one for the whole harness: with every
+     synthetic finger sharing id 9 the two pads took the same owner slot, so
+     'both pads at once' passed without a second touch ever existing and one
+     lift silently zeroed the other pad. The checks could not fail. */
+  const FID = {};
+  let nextFid = 10;
+  const finger = (page, type, sel, dx, dy) => page.evaluate(([type, sel, dx, dy, id]) => {
     const el = document.querySelector(sel), r = el.getBoundingClientRect();
-    const t = new Touch({ identifier: 9, target: el,
+    const t = new Touch({ identifier: id, target: el,
       clientX: r.left + r.width/2 + (dx||0)*r.width/2,
       clientY: r.top + r.height/2 + (dy||0)*r.height/2 });
     /* always on the element: a real touchend fires on the touch's ORIGINAL
@@ -72,7 +78,7 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
        element, and a window-only dispatch never reaches them */
     el.dispatchEvent(new TouchEvent(type, {
       bubbles:true, cancelable:true, changedTouches:[t], touches: type==='touchend' ? [] : [t] }));
-  }, [type, sel, dx, dy]);
+  }, [type, sel, dx, dy, (FID[sel] = FID[sel] || ++nextFid)]);
 
   console.log('AGENT 360 ON A PHONE — 844x390 landscape, taps only, no keyboard\n');
 

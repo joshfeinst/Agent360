@@ -73,7 +73,12 @@ canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:bloc
    scrollport, they are reachable at every offset. Only these two screens: the
    select screen's last row is BACK, and pinning that floats it over READ
    BRIEFING and eats the tap. */
-#s-pause>.row:last-child,#s-brief>.row:last-child{position:sticky; bottom:0; z-index:2;
+/* ...and any screen reached MID-MISSION gets the same pin (.pinrow), because
+   there the touch cluster is hidden and a BACK below the fold leaves nothing
+   on screen to press. Off the menus it stays unpinned: pinned there, the row
+   floats over the last rows of content instead of ending them. */
+#s-pause>.row:last-child,#s-brief>.row:last-child,
+.screen.pinrow>.row:last-child{position:sticky; bottom:0; z-index:2;
   width:100%; padding:10px 0 2px;
   background:linear-gradient(180deg, rgba(5,7,12,0), rgba(5,7,12,.97) 40%)}
 .screen[hidden]{display:none}
@@ -627,7 +632,10 @@ function clearInput(keepHeld){
   }
   M.dragging = false; M.tapDone = false; M.fireEdge = 0; M.fireBuf = 0; M.pressNew = false; M.tlook = false;
   M.dx = 0; M.dy = 0; M.moved = 0; M.lx = null; M.ly = null; M.wheel = 0;
-  held.lx = 0; held.ly = 0;                 // the look pad, like the move stick
+  /* the look pad is a held axis like the move stick: an in-window pause that
+     keeps one and drops the other resumed with a dead turn under a thumb that
+     was still pushing, and a nub that went on claiming the deflection */
+  if (!keepHeld){ held.lx = 0; held.ly = 0; }
   /* Reticle state lives on the player object, which is declared in a later
      script block, so reach it through a hook rather than a bare reference. */
   if (typeof resetLookState === 'function') resetLookState();
@@ -921,8 +929,13 @@ function unlock(){
         if (h){ T.aimpad=h.identifier; const v=padVec(h,lpad,lnub,false); held.lx=v[0]; held.ly=v[1]; }
         else { T.aimpad=null; held.lx=held.ly=0; lnub.style.transform=''; } }
       if (T.look && t.identifier===T.look.id){
+        /* hand the drag to a finger that is still down, the way the pads and
+           buttons pass their owner on — otherwise a mid-fight regrip left the
+           survivor stranded in the tap slot, unable to turn at all */
+        const heirT = T.tap && T.tap.id !== t.identifier ? T.tap : null;
         viewTap(T.look, e);
         T.look=null; M.tlook=false;
+        if (heirT){ T.tap = null; T.look = heirT; M.tlook = true; }
       } else if (T.tap && t.identifier===T.tap.id){
         viewTap(T.tap, e);
         T.tap=null;
@@ -2147,6 +2160,7 @@ const G = {
   time:0, kills:0, shots:0, hits:0, dmgTaken:0, heat:0,
   meltdown:-1, meltMax:0, shieldDown:true, bossAlive:false, tscale:1, shake:0, mapOn:true,
   deadT:0, ckpt:null, ckptRun:false, bossSeen:false,
+  frame:0, objT:null, objTAt:-1, objTX:NaN, objTY:NaN,   // per-frame memo, void if the agent moved
   cheats:{ god:false, ammo:false, allguns:false, bighead:false, paint:false, slow:false },
   tainted:false, doorNag:0
 };
@@ -2458,8 +2472,10 @@ function moveActor(a, nx, ny, r){
      holding east stopped dead at x 4.73 with 4cm of shoulder still inside the
      jamb — a doorway the mission routes the player through, refusing to let go
      of them. The nudge is bounded by the step itself, so it can only ever
-     round a corner, never slide a body along a flat wall. */
-  const ease = m => Math.min(r*.5, Math.abs(m)*2);
+     round a corner, never slide a body along a flat wall. It is scaled to the
+     STEP, not capped per frame: a per-frame cap slid a body sideways at twice
+     its own top speed and gave a different result at 30Hz than at 144Hz. */
+  const ease = m => Math.min(r*.5, Math.abs(m)) * .85;
   const freeX = x => { const e = x + (x>a.x?r:-r);
     return !isSolid(e, a.y) && !isSolid(e, a.y-w) && !isSolid(e, a.y+w); };
   const freeY = y => { const e = y + (y>a.y?r:-r);
@@ -3396,6 +3412,7 @@ function wallCol(x, perp, side, rdx, rdy, texi, dOff, horizon, PROJ){
 }
 
 function render(){
+  G.frame++;                               // stamps the per-frame memos below
   if (!G.solid){ buf.fill(FOGPX); ctx.putImageData(img,0,0); return; }
   const zoom = 1 - P.aim*.42;
   const PROJ = RH / zoom;
@@ -3658,6 +3675,14 @@ function nearestFor(o){
    left[0] aimed the chevron through a wall at a task on the far side of the
    building while the player stood on top of another one. */
 function objTarget(){
+  /* Both the radar and the waypoint want this every frame, and finding the
+     nearest of N objectives walks every entity N times — so the answer is
+     computed once per frame and handed to the second caller. */
+  if (G.objTAt === G.frame && G.objTX === P.x && G.objTY === P.y) return G.objT;
+  G.objTAt = G.frame; G.objTX = P.x; G.objTY = P.y; G.objT = objTargetScan();
+  return G.objT;
+}
+function objTargetScan(){
   const left = objsLeft();
   let bo = null, bn = null;
   for (const o of left){
@@ -4804,8 +4829,12 @@ function selfTest(runSim){
 
     /* reduced motion is two live sources, and the meltdown countdown — the only
        readout of the remaining fuse — must hold rather than blink under it */
-    { const o0 = RM_OPT;
-      RM_OPT = false;
+    { const o0 = RM_OPT, m0 = RM_MEDIA;
+      /* BOTH sources have to be neutral to observe the blink at all: the
+         platform preference is not ours to assume, and leaving it in meant
+         this assertion failed for every player whose OS asks for reduced
+         motion — taking the whole boot self-test, and CI, down with it. */
+      RM_OPT = false; RM_MEDIA = false;
       const blinks = meltShow(5.30) !== meltShow(5.55);   // 21 vs 22 quarter-seconds
       ok('meltdown: the countdown blinks at 2Hz normally', blinks);
       ok('meltdown: ...and holds under reduced motion',
@@ -4814,7 +4843,7 @@ function selfTest(runSim){
       RM_OPT = false;
       ok('reduced motion: ...and off again unless the platform asks for it',
          reducedMotion() === RM_MEDIA);
-      RM_OPT = o0; syncRMLabel(); }
+      RM_MEDIA = m0; RM_OPT = o0; syncRMLabel(); }
 
     /* the toast column grows out of #frame, which has no overflow clip */
     { const w = document.getElementById('toasts');
@@ -5874,6 +5903,58 @@ function selfTest(runSim){
           ku('KeyW'); clearInput(); G.state = 'play'; show(null);
         }
 
+        /* ---- the review round's own regressions, each one guarded ---- */
+        /* an in-window pause keeps the look pad exactly as it keeps the stick:
+           dropping one and not the other resumed with a dead turn under a
+           thumb that was still pushing, and a nub still claiming it */
+        held.tx = 0; held.ty = -.9; held.lx = .9; held.ly = 0;
+        clearInput(true);
+        ok('pause: the look pad is held across an in-window pause, like the stick',
+           held.ty === -.9 && held.lx === .9, 'ty='+held.ty+' lx='+held.lx);
+        clearInput();
+        ok('blur: ...and a full clear still drops both', !held.ty && !held.lx);
+
+        /* a tap whose SCREEN was dismissed by another finger must not fire:
+           a thumb resting on RESTART used to throw the run away after the
+           other hand had already tapped RESUME */
+        { const btn = document.querySelector('#s-pause [data-act="restart"]');
+          const st0 = G.state, t0 = G.time;
+          G.state = 'pause'; show('s-pause');
+          const r = btn.getBoundingClientRect();
+          const mk = ty => { const ev = new Event(ty, {bubbles:true, cancelable:true});
+            /* the shim resolves the button from the TOUCH's target, so a
+               synthetic touch without one registers nothing at all */
+            ev.changedTouches = [{ identifier:91, target:btn,
+              clientX:r.left + r.width/2, clientY:r.top + r.height/2 }];
+            return ev; };            // back-to-back dispatch is inside the tap window
+          btn.dispatchEvent(mk('touchstart'));
+          /* the other hand tapped RESUME in between and the watch went away */
+          G.state = 'play'; show(null); G.time = 77;
+          btn.dispatchEvent(mk('touchend'));
+          ok('menus: a pending tap dies with the screen it belonged to',
+             G.time === 77, 'G.time='+G.time.toFixed(2)+' (restart would zero it)');
+          G.state = st0; G.time = t0; }
+
+        /* every screen a player can reach mid-mission pins its way out */
+        { const pinned = id => { const r = document.querySelector('#'+id+'>.row:last-child');
+            return !!r && getComputedStyle(r).position === 'sticky'; };
+          const opt = document.getElementById('s-options');
+          opt.classList.add('pinrow');
+          const optPinned = pinned('s-options');
+          opt.classList.remove('pinrow');
+          ok('screens: the watch and a mid-mission Options pin their action row',
+             pinned('s-pause') && optPinned, pinned('s-pause')+'/'+optPinned);
+          ok('screens: ...and Options off the menus does not, so it cannot cover a row',
+             !pinned('s-options'));
+          const sel = document.querySelector('#s-select>.row:last-child');
+          ok('screens: ...and the select screen deliberately does not',
+             !sel || getComputedStyle(sel).position !== 'sticky'); }
+
+        /* the clearance check follows the DIFFS table it indexes, so a fourth
+           rung would persist instead of silently vanishing with its bests */
+        ok('settings: the stored clearance is validated against DIFFS, not 0-2',
+           /d\.diff < DIFFS\.length/.test(loadSettings.toString()));
+
         /* the watch's OPTIONS row exists to reach the radar and the soundtrack
            mid-mission on a phone, so BACK owes the player the watch */
         { G.state = 'play'; pause();
@@ -6208,7 +6289,7 @@ function loadSettings(){
   /* The clearance was the one choice a reload threw away — and since bests are
      keyed CODE:diff, the select screen then listed somebody else's rung and the
      player's own BEST line vanished with it. */
-  if (d.diff === 0 || d.diff === 1 || d.diff === 2) G.diff = d.diff;
+  if ((d.diff|0) === d.diff && d.diff >= 0 && d.diff < DIFFS.length) G.diff = d.diff;
   campaignDone = d.campaignDone === true;
   if (d.best && typeof d.best === 'object')
     for (const k in d.best){ const b = d.best[k];
@@ -6317,6 +6398,7 @@ function act(a){
        watch they left, not the title screen — leaving that way would abandon
        the run. */
     case 'options': optReturn = (G.state==='pause') ? 'pause' : null;
+      document.getElementById('s-options').classList.toggle('pinrow', optReturn === 'pause');
       syncOptionsUI(); G.state='options'; show('s-options'); break;
     case 'cheats': buildCheats(); G.state='cheats'; show('s-cheats'); break;
     case 'start': startMission(true); break;
@@ -6399,7 +6481,12 @@ document.addEventListener('click', e=>{
       pending.delete(t.identifier);
       if (e.timeStamp - s.t0 > 700) continue;                          // a long press is not a tap
       if (Math.hypot(t.clientX - s.x, t.clientY - s.y) > 12) continue; // that was a scroll
-      if (!document.contains(s.el) || s.el.hidden) continue;
+      /* `hidden` lives on the .screen, not the button — checking only the
+         button let a thumb resting on RESTART fire it after another finger
+         had already tapped RESUME and dismissed the watch, throwing the run
+         away. The screen it belongs to must still be the one on show. */
+      const scr = s.el.closest('.screen');
+      if (!document.contains(s.el) || s.el.hidden || (scr && scr.hidden)) continue;
       e.preventDefault();                 // suppress the compat click so this fires exactly once
       s.el.click();
     }
@@ -6584,7 +6671,9 @@ function loop(t){
     if (G.state === 'play') step(dt * G.tscale, Math.min(.5, raw) * G.tscale);
     else {
       M.dx = 0; M.dy = 0;
-      if (G.solid && G.state!=='pause' && G.state!=='result')
+      /* ...and never while a menu opened FROM the pause is up: the heading
+         drifted the whole time a phone player sat on the Options sliders */
+      if (G.solid && G.state!=='pause' && G.state!=='result' && !optReturn)
         { P.ang += dt*.075; P.bob += dt*.4; }
       if (G.shake) G.shake = Math.max(0, G.shake - dt*22);   // a death blast must not jitter the debrief forever
     }
