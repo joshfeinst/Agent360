@@ -45,13 +45,17 @@ canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:bloc
   background-size:100% 3px; background-repeat:repeat;}
 #vig{position:absolute; inset:0; pointer-events:none;
   background:radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,.55) 100%);}
-body.noscan #scan{display:none}
 
 /* ---------- overlay screens ---------- */
+/* No backdrop-filter. Behind a gradient that is already 93-97% opaque the blur
+   was invisible (mean difference 0.28/255), and the compositor re-blurs the
+   whole surface on every presented frame whether or not the backdrop moved:
+   measured 38fps at 720p and 13fps at 1080p on every menu and pause screen,
+   against 60 with the declaration gone. */
 .screen{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
   gap:clamp(10px,2.2vh,22px); padding:clamp(14px,3vh,36px); line-height:1.5; text-align:center;
   background:linear-gradient(180deg, rgba(5,7,12,.93), rgba(5,7,12,.97));
-  backdrop-filter:blur(2px); overflow-y:auto; overflow-x:hidden; touch-action:pan-y;
+  overflow-y:auto; overflow-x:hidden; touch-action:pan-y;
   scrollbar-width:thin; scrollbar-color:var(--line) transparent;}
 /* centred while it fits, top-aligned and scrollable once it doesn't — the auto
    margins absorb equal free space and collapse to zero on overflow. Without
@@ -83,6 +87,7 @@ h2.ttl{font-family:var(--pix); font-size:clamp(11px,2.1vh,18px); margin:0; color
 .blink{font-family:var(--pix); font-size:clamp(8px,1.4vh,12px); color:var(--paper); animation:bl 1.1s steps(2,end) infinite}
 @keyframes bl{50%{opacity:.15}}
 @media (prefers-reduced-motion:reduce){.blink{animation:none}}
+body.reduce .blink{animation:none}
 #ver{position:absolute; right:10px; bottom:7px; font-family:var(--pix); font-size:8px;
   letter-spacing:.08em; color:#3b485c; pointer-events:none}
 
@@ -236,7 +241,8 @@ body.touch .no-touch{display:none}
         <button class="mi" data-act="options">OPTIONS &amp; FACE UPLOAD <span class="k">▶</span></button>
         <button class="mi" data-act="cheats">CHEAT MENU <span class="k">▶</span></button>
       </div>
-      <p class="hint" id="titlehint">Click the viewport, then drag to look and tap to fire. Headphones recommended.</p>
+      <!-- the shipped desktop default; syncTitleHint() owns it from boot on -->
+      <p class="hint" id="titlehint">The mouse is captured when the mission starts — move to look, click to fire, Esc releases. Headphones recommended.</p>
       <div id="ver"></div>
     </div>
 
@@ -281,8 +287,9 @@ body.touch .no-touch{display:none}
           <canvas id="pmap" width="330" height="215"
                   style="image-rendering:pixelated;width:100%;height:auto;border:1px solid var(--line)"></canvas>
           <p class="hint" style="margin:8px 0 0;font-size:clamp(9px,1.3vh,12px)">
-            Lettered markers are your outstanding objectives. Amber terminals, cyan consoles,
-            red hostiles, green is the way out. Doors with a dark keyhole pip need a keycard.</p>
+            Lettered markers are your outstanding objectives. Shape says what it is — screen: terminal,
+            rack: patch console, diamond: rogue access point, figure: the CFO, cross: hostile,
+            doorway: the way out, tick: done. Doors with a dark keyhole pip need a keycard.</p>
         </div>
         <div>
           <div class="eyebrow" style="margin-bottom:10px">objectives</div>
@@ -340,7 +347,7 @@ body.touch .no-touch{display:none}
         <div class="ctl"><span>Sprint</span><span>Either Shift</span></div>
         <div class="ctl"><span>Next / prev weapon</span><span>Q E · [ ] · wheel · 1–4</span></div>
         <div class="ctl"><span>Corner radar</span><span>N</span></div>
-        <div class="ctl"><span>Floor plan / pause</span><span>Tab or Esc</span></div>
+        <div class="ctl"><span>Floor plan / pause</span><span>Tab opens · Esc resumes</span></div>
         <div class="ctl"><span>Reset stuck input</span><span>Backspace</span></div>
         <div class="ctl"><span>Input diagnostics</span><span>F3</span></div>
         <div class="ctl"><span>Raw input trace</span><span>F2</span></div>
@@ -368,24 +375,31 @@ body.touch .no-touch{display:none}
       <div class="eyebrow">options</div>
       <h2 class="ttl">SETTINGS</h2>
       <div class="grid2 panel">
-        <div class="ctl"><span>Mouse sensitivity</span><span><input type="range" id="o-sens" min="15" max="220" value="70"> <b class="sv" id="v-sens">70</b></span></div>
+        <!-- the same slider also scales a DRAG on the view, so on touch it is
+             relabelled rather than left promising a mouse nobody has -->
+        <div class="ctl"><span id="lab-sens">Mouse sensitivity</span><span><input type="range" id="o-sens" min="15" max="220" value="70"> <b class="sv" id="v-sens">70</b></span></div>
         <div class="ctl touch-only"><span>Touch look sensitivity</span><span><input type="range" id="o-tsens" min="30" max="220" value="100"> <b class="sv" id="v-tsens">100</b></span></div>
-        <div class="ctl"><span>Look mode</span><span><button class="btn ghost" id="o-look" data-act="cyclelook" style="padding:4px 9px;font-size:8px">CAPTURE</button></span></div>
+        <div class="ctl no-touch"><span>Look mode</span><span><button class="btn ghost" id="o-look" data-act="cyclelook" style="padding:4px 9px;font-size:8px">CAPTURE</button></span></div>
         <div class="ctl"><span>Invert Y axis</span><span><button class="btn ghost" id="o-inv" data-act="toggleinv" aria-pressed="false" style="padding:4px 9px;font-size:8px">OFF</button></span></div>
         <div class="ctl"><span>Aim assist</span><span><button class="btn ghost" id="o-aim" data-act="cycleaim" style="padding:4px 9px;font-size:8px">SNAP + PULL</button></span></div>
-        <div class="ctl"><span>Movement keys</span><span><button class="btn ghost" id="o-keys" data-act="togglekeys" style="padding:4px 9px;font-size:8px">WASD</button></span></div>
+        <div class="ctl no-touch"><span>Movement keys</span><span><button class="btn ghost" id="o-keys" data-act="togglekeys" style="padding:4px 9px;font-size:8px">WASD</button></span></div>
         <div class="ctl"><span>Corner radar</span><span><button class="btn ghost" id="o-radar" data-act="togglemap" aria-pressed="true" style="padding:4px 9px;font-size:8px">ON</button></span></div>
         <div class="ctl"><span>Soundtrack</span><span><button class="btn ghost" id="o-muson" data-act="togglemus" aria-pressed="true" style="padding:4px 9px;font-size:8px">ON</button></span></div>
         <div class="ctl"><span>Sound effects</span><span><input type="range" id="o-sfx" min="0" max="100" value="70"> <b class="sv" id="v-sfx">70%</b></span></div>
         <div class="ctl"><span>Music</span><span><input type="range" id="o-mus" min="0" max="100" value="34"> <b class="sv" id="v-mus">34%</b></span></div>
         <div class="ctl"><span>Scanlines</span><span><input type="range" id="o-scan" min="0" max="100" value="50"> <b class="sv" id="v-scan">50%</b></span></div>
+        <div class="ctl"><span>Reduce motion</span><span><button class="btn ghost" id="o-rm" data-act="togglerm" aria-pressed="false" style="padding:4px 9px;font-size:8px">OFF</button></span></div>
       </div>
       <div class="panel" style="width:min(760px,92vw);text-align:left">
         <div class="eyebrow" style="margin-bottom:8px">enemy face</div>
         <p class="hint" style="margin:0 0 10px">Drop in a photo and every hostile in the building wears it, sample-image style. The image is used
         only inside this browser tab — it is never uploaded, saved, or published with the page.</p>
         <div class="row" style="justify-content:flex-start">
-          <label class="btn ghost" style="cursor:pointer">CHOOSE PHOTO<input type="file" id="o-face" accept="image/*" hidden></label>
+          <!-- a button, not a label: the file input is unfocusable, so the
+               only route to the picker was a pointer. The input must stay a
+               SIBLING — nested, its own synthetic click would re-match the
+               delegated [data-act] handler and recurse. -->
+          <button class="btn ghost" data-act="facepick">CHOOSE PHOTO</button><input type="file" id="o-face" accept="image/*" hidden>
           <button class="btn ghost" data-act="facereset">RESET TO DEFAULT</button>
           <canvas id="facePrev" width="48" height="48" style="image-rendering:pixelated;width:48px;height:48px;border:1px solid var(--line)"></canvas>
         </div>
@@ -432,7 +446,7 @@ body.touch .no-touch{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.22';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.23';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -523,9 +537,26 @@ const isTouch = matchMedia('(hover:none) and (pointer:coarse)').matches;
 let SIMGHOSTS = false;   // F4 drives desktop look modes with synthetic mouse events on phones
 const touchGhost = e => !SIMGHOSTS && !!(isTouch || (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents));
 /* Reduced motion is honoured where the game shakes or strobes the whole frame:
-   camera shake is capped to a nudge and the meltdown wash to a faint tint. The
-   CSS .blink rule above handles the DOM side. */
-const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches;
+   camera shake is capped to a nudge, the meltdown wash to a faint tint, and the
+   countdown plate stops blinking. The CSS .blink rule above handles the DOM
+   side, and body.reduce carries the in-game toggle to it.
+   Two sources, both live: the OS preference was read once at parse, so turning
+   it on mid-session never reached the canvas, and a player whose OS offers no
+   such switch had no way to ask for calm at all. */
+let RM_MEDIA = false;             // the platform preference
+let RM_OPT = false;               // ...and the Options row, persisted beside it
+{ const q = matchMedia('(prefers-reduced-motion: reduce)');
+  RM_MEDIA = q.matches;
+  const onRM = e => { RM_MEDIA = e.matches; };
+  try { q.addEventListener('change', onRM); }
+  catch(_){ if (q.addListener) q.addListener(onRM); }   // pre-2019 WebKit
+}
+const reducedMotion = () => RM_MEDIA || RM_OPT;
+/* The countdown plate blinks at 2Hz for the last ten seconds — and it is the
+   only readout of the remaining fuse anywhere in the game, so under reduced
+   motion it holds instead. Urgency survives: the text still turns red under 15s
+   and the audible tick still doubles under 10. */
+const meltShow = t => reducedMotion() || t > 10 || Math.floor(t*4)%2 === 0;
 if (isTouch){ document.body.classList.add('touch'); LOOK = 'free'; }   // LOOK is moot on touch (resolveLook forces 'touch'); 'free' just keeps it off 'capture'
 
 /* Two movement layouts. Every action also has a right-hand mirror, so a
@@ -2087,11 +2118,11 @@ const finaleIndex = () => LEVELS.findIndex(L => L.finale);
    fraction can only cut in raster order, which is how M01 once lost its only
    legacy tower to a %3. */
 const DIFFS = [
-  { name:'AGENT',        note:'Fewer hostiles, softer hits, four objectives.', dmg:.55, hp:.75, acc:.55 },
+  { name:'AGENT',        note:'Fewer hostiles, softer hits, a shorter task list.', dmg:.55, hp:.75, acc:.55 },
   /* dmg .8/acc .7, not the old 1.0/.78: with AGENT at .55/.55 and 00 at
      1.6/.93 the middle rung sat within a whisker of 00's punishment — a
      measured cliff (playtest bot: 15/15 AGENT, dead in 9s median on SECRET). */
-  { name:'SECRET AGENT', note:'Full roster, one extra objective, they aim.',     dmg:.8, hp:1.0, acc:.7 },
+  { name:'SECRET AGENT', note:'Full roster, deeper tasking, they aim.',            dmg:.8, hp:1.0, acc:.7 },
   { name:'00 AGENT',     note:'Every objective, every hostile, and they hit.',   dmg:1.6, hp:1.4, acc:.93 }
 ];
 
@@ -2921,7 +2952,10 @@ function updateBoss(e, dt, dd, see){
 }
 
 /* -------------------------------- the step ------------------------------ */
-function step(dt){
+/* `scored` is the real seconds this frame took, which the mission clock spends
+   instead of the clamped physics dt; callers that step synchronously (the self
+   test, the tools' bots) pass nothing and score their own dt, as before. */
+function step(dt, scored){
   /* Death beat: the corpse is not steerable. The camera sinks, the hurt wash
      holds, the world waits a breath, then endMission reopens the ticket. */
   if (!P.alive){
@@ -2932,7 +2966,7 @@ function step(dt){
     if (G.deadT <= 0) endMission(false, G.deadWhy || 'AGENT DOWN');
     return;
   }
-  G.time += dt;
+  G.time += (scored === undefined ? dt : scored);
   G.heat = Math.max(0, G.heat - dt*.14);
   if (G.shake) G.shake = Math.max(0, G.shake - dt*22);
   P.hurt = Math.max(0, P.hurt - dt*1.5);
@@ -3315,7 +3349,9 @@ function pickup(e){
 function tryExit(){
   const left = objsLeft();
   if (left.length){
-    if (G.doorNag<=0){ G.doorNag=3.4; sfx('fail');
+    /* 4.4s, not 3.4: toast() holds the node for its 3800ms plus a 400ms fade,
+       so a shorter re-arm stacked a second identical banner under the first. */
+    if (G.doorNag<=0){ G.doorNag=4.4; sfx('fail');
       toast('OBJECTIVE '+left[0].tag+' INCOMPLETE — '+left[0].text.toUpperCase(), 'red', 3800); }
     return;
   }
@@ -3365,7 +3401,7 @@ function render(){
   const PROJ = RH / zoom;
   const dirX = Math.cos(P.ang), dirY = Math.sin(P.ang);
   const planeX = -dirY*FOV_N*zoom, planeY = dirX*FOV_N*zoom;
-  const shk = G.shake ? (Math.random()-.5)*(REDUCED_MOTION ? Math.min(G.shake, 1.2) : G.shake) : 0;
+  const shk = G.shake ? (Math.random()-.5)*(reducedMotion() ? Math.min(G.shake, 1.2) : G.shake) : 0;
   const bobY = Math.sin(P.bob*2)*1.6*P.speed + Math.sin(P.bob)*.6;
   const horizon = Math.round(HALFH + P.pitch + bobY + shk - P.recoil*7);
 
@@ -3643,6 +3679,72 @@ function compass(dx,dy){
   return dirs[i%8];
 }
 
+/* One glyph vocabulary for the corner radar and the watch floor plan. Hue says
+   what STATE a blip is in; the stencil says WHAT it is — a terminal, a patch
+   console, a rogue AP, the CFO and the way out all drew the same hollow ring,
+   so shape carried nothing between them, and the watch drew hostiles as a bare
+   hue-only square with no keyline at all. Rows of a square grid, '#' paints;
+   the grid size sets the blip size, which is why a hostile is 3 and its boss 5. */
+const BLIP = {
+  hostile: ['#.#',                                    // a small X
+            '.#.',
+            '#.#'],
+  boss:    ['#...#',                                  // ...and a big one
+            '.#.#.',
+            '..#..',
+            '.#.#.',
+            '#...#'],
+  term:    ['#####',                                  // a screen on a stand
+            '#...#',
+            '#####',
+            '..#..',
+            '.###.'],
+  console: ['#####',                                  // stacked rack units
+            '.....',
+            '#####',
+            '.....',
+            '#####'],
+  ap:      ['..#..',                                  // a broadcast diamond
+            '.#.#.',
+            '#...#',
+            '.#.#.',
+            '..#..'],
+  npc:     ['..#..',                                  // a person, arms out
+            '.....',
+            '#####',
+            '..#..',
+            '.#.#.'],
+  exit:    ['#####',                                  // a doorway, gap at the sill
+            '#...#',
+            '#...#',
+            '#...#',
+            '##.##'],
+  done:    ['.....',                                  // a tick: this one is finished
+            '....#',
+            '...#.',
+            '#.#..',
+            '.#...'],
+  loot:    ['.....',                                  // a case
+            '#####',
+            '#...#',
+            '#####',
+            '.....'],
+  debris:  ['###',                                    // ammo, armour, scenery
+            '###',
+            '###']
+};
+/* Centred on (x,y), `px` canvas pixels per stencil cell, over a dark keyline so
+   no blip melts into a wall. */
+function blip(c, key, x, y, px, col){
+  const rows = BLIP[key]; if (!rows) return;
+  const n = rows.length, p = Math.max(1, Math.round(px)), side = n*p;
+  const x0 = Math.round(x - side/2), y0 = Math.round(y - side/2);
+  c.fillStyle = '#0b0f16'; c.fillRect(x0-1, y0-1, side+2, side+2);
+  c.fillStyle = col;
+  for (let r=0;r<n;r++){ const row = rows[r];
+    for (let q=0;q<n;q++) if (row[q] !== '.') c.fillRect(x0+q*p, y0+r*p, p, p); }
+}
+
 const MM = 74, MMPAD = 6, MMR = 12.5;      // radar size px, margin, world radius
 /* Heading-up: the radar rotates with you, so "left on the radar" is always
    "left on screen". North-up meant translating every glance in your head. */
@@ -3681,44 +3783,26 @@ function drawMinimap(){
     const p = radarRot((e.x-P.x)*k, (e.y-P.y)*k, rc, rs);
     const dx = p[0], dy = p[1];
     if (Math.abs(dx) > MM/2 || Math.abs(dy) > MM/2) continue;
-    /* Shape carries the meaning as well as hue: amber-outstanding and green-done
-       are luminance-matched and collapse into one colour under red-green colour
-       blindness. hollow = outstanding, filled with a white core = done,
-       X = hostile, bar = pickup, plain box = scenery. */
-    let col = null, sz = 3, shape = 'box';
+    /* Hue alone cannot carry this: amber-outstanding and green-done are
+       luminance-matched and collapse into one colour under red-green colour
+       blindness. Every blip takes a BLIP glyph, and the watch draws the same. */
+    let col = null, key = null;
     if (e.kind==='enemy'){ if (e.state!=='dead'){
-      col = e.sub==='boss'?'#ff3b30':'#e0483c'; sz = e.sub==='boss'?5:3; shape='x'; } }
-    else if (e.kind==='exit'){ col='#4ade80'; sz=5; shape='ring'; }
+      col = e.sub==='boss'?'#ff3b30':'#e0483c'; key = e.sub==='boss'?'boss':'hostile'; } }
+    else if (e.kind==='exit'){ col='#4ade80'; key='exit'; }
     else if (e.kind==='prop'){
-      sz = 5;
-      if (e.sub==='term'||e.sub==='audit'){ col = e.hacked?'#4ade80':'#ffb02e'; shape = e.hacked?'done':'ring'; }
-      else if (e.sub==='console'){ col = e.hacked?'#4ade80':'#35d0ff'; shape = e.hacked?'done':'ring'; }
-      else if (e.sub==='ap'||e.sub==='infected'){ col = e.hp>0?'#ff3b30':'#46525f'; shape = e.hp>0?'ring':'done'; }
-      else if (e.sub==='npc'){ col = '#8be6ff'; shape='ring'; }
+      if (e.sub==='term'||e.sub==='audit'){ col = e.hacked?'#4ade80':'#ffb02e'; key = e.hacked?'done':'term'; }
+      else if (e.sub==='console'){ col = e.hacked?'#4ade80':'#35d0ff'; key = e.hacked?'done':'console'; }
+      else if (e.sub==='ap'||e.sub==='infected'){ col = e.hp>0?'#ff3b30':'#46525f'; key = e.hp>0?'ap':'done'; }
+      else if (e.sub==='npc'){ col = '#8be6ff'; key='npc'; }
     }
     else if (e.kind==='item') {
       if (e.hidden) continue;                        // cache loot keeps its secret
       const keyItem = (e.sub==='key'||e.sub==='case'||e.sub==='tape');
-      col = keyItem ? '#ffd76a' : '#66748a'; sz = keyItem ? 5 : 3; shape = keyItem ? 'bar' : 'box';
+      col = keyItem ? '#ffd76a' : '#66748a'; key = keyItem ? 'loot' : 'debris';
     }
     if (!col) continue;
-    const mx2 = Math.round(cx+dx), my2 = Math.round(cy+dy), h2 = sz>>1;
-    ctx.fillStyle = '#0b0f16';                       // keyline, so nothing melts into a wall
-    ctx.fillRect(mx2-h2-1, my2-h2-1, sz+2, sz+2);
-    ctx.fillStyle = col;
-    if (shape==='x'){
-      ctx.fillRect(mx2-h2, my2, sz, 1); ctx.fillRect(mx2, my2-h2, 1, sz);
-    } else if (shape==='ring'){
-      ctx.fillRect(mx2-h2, my2-h2, sz, 1); ctx.fillRect(mx2-h2, my2+h2, sz, 1);
-      ctx.fillRect(mx2-h2, my2-h2, 1, sz); ctx.fillRect(mx2+h2, my2-h2, 1, sz);
-    } else if (shape==='done'){
-      ctx.fillRect(mx2-h2, my2-h2, sz, sz);
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(mx2, my2, 1, 1);
-    } else if (shape==='bar'){
-      ctx.fillRect(mx2-h2, my2-1, sz, 2);
-    } else {
-      ctx.fillRect(mx2-h2, my2-h2, sz, sz);
-    }
+    blip(ctx, key, cx+dx, cy+dy, 1, col);
     if (tgt && e === tgt.e){
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(cx+dx, cy+dy, 5+Math.sin(G.time*6)*1.5, 0, 7); ctx.stroke();
@@ -3786,19 +3870,27 @@ function drawPauseMap(){
     return null;
   };
   for (const e of G.ents){
-    let col = null, sz = Math.max(4, k*.8);
-    if (e.kind==='exit') col = '#4ade80';
+    /* Same glyphs as the radar, same reason: a hostile drew here as a bare
+       hue-only square while the locked-door pip two loops up carried its
+       meaning in shape, which is the rule this canvas already keeps. */
+    let col = null, key = null, sz = Math.max(5, k*.9);
+    if (e.kind==='exit'){ col = '#4ade80'; key = 'exit'; }
     else if (e.kind==='prop'){
-      if (e.sub==='term'||e.sub==='audit') col = e.hacked?'#4ade80':'#ffb02e';
-      else if (e.sub==='console') col = e.hacked?'#4ade80':'#35d0ff';
-      else if (e.sub==='ap'||e.sub==='infected') col = e.hp>0?'#ff3b30':'#3a4553';
-      else if (e.sub==='npc') col = '#8be6ff';
+      if (e.sub==='term'||e.sub==='audit'){ col = e.hacked?'#4ade80':'#ffb02e'; key = e.hacked?'done':'term'; }
+      else if (e.sub==='console'){ col = e.hacked?'#4ade80':'#35d0ff'; key = e.hacked?'done':'console'; }
+      else if (e.sub==='ap'||e.sub==='infected'){ col = e.hp>0?'#ff3b30':'#3a4553'; key = e.hp>0?'ap':'done'; }
+      else if (e.sub==='npc'){ col = '#8be6ff'; key = 'npc'; }
     }
-    else if (e.kind==='item' && !e.hidden && (e.sub==='key'||e.sub==='case'||e.sub==='tape')) col = '#ffd76a';
-    else if (e.kind==='enemy' && e.state!=='dead'){ col = '#7a2f2a'; sz = Math.max(3, k*.5); }
+    else if (e.kind==='item' && !e.hidden && (e.sub==='key'||e.sub==='case'||e.sub==='tape')){
+      col = '#ffd76a'; key = 'loot'; }
+    else if (e.kind==='enemy' && e.state!=='dead'){
+      col = e.sub==='boss' ? '#a83c33' : '#7a2f2a';
+      key = e.sub==='boss' ? 'boss' : 'hostile';
+      sz = Math.max(4, k*.6);
+    }
     if (!col) continue;
     const px = ox+e.x*k, py = oy+e.y*k;
-    g.fillStyle = col; g.fillRect(px-sz/2, py-sz/2, sz, sz);
+    blip(g, key, px, py, sz/BLIP[key].length, col);
     const L = tagFor(e);
     if (L){
       g.font = 'bold 10px monospace'; g.textAlign = 'center';
@@ -3939,13 +4031,13 @@ function drawHUD(horizon){
     const t = G.meltdown;
     /* red wash breathing faster and deeper as the fuse burns down */
     const frac = G.meltMax > 0 ? 1 - t/G.meltMax : .5;
-    const pulse = REDUCED_MOTION ? .5 : .5 + .5*Math.sin(G.time*(t < 10 ? 9 : 4));
-    const wash = Math.min(REDUCED_MOTION ? .05 : 1, (.04 + .16*frac)*pulse);
+    const pulse = reducedMotion() ? .5 : .5 + .5*Math.sin(G.time*(t < 10 ? 9 : 4));
+    const wash = Math.min(reducedMotion() ? .05 : 1, (.04 + .16*frac)*pulse);
     ctx.fillStyle = 'rgba(255,30,15,'+wash.toFixed(3)+')';
     ctx.fillRect(0,0,RW,RH);
     /* the countdown sits under the waypoint row — the DOM toast stack (top:17%)
        parks squarely over canvas y36 for the first seconds of the escape */
-    if (t > 10 || Math.floor(t*4)%2===0){
+    if (meltShow(t)){
       ctx.fillStyle='rgba(5,8,14,.72)'; ctx.fillRect((RW>>1)-58, 126, 116, 12);
       txt('MELTDOWN '+fmt(Math.max(0,t)), RW>>1, 135, t<15?'#ff3b30':'#ffb02e', 8, 'center');
     }
@@ -4102,6 +4194,10 @@ function toast(text, kind, ms){
     'padding:7px 11px;background:rgba(7,13,22,.92);border:1px solid '+c+';color:'+c+
     ';box-shadow:0 6px 20px rgba(0,0,0,.6);max-width:80%;text-align:center;line-height:1.5';
   wrap.appendChild(d);
+  /* The column grows downward out of #frame, which has no overflow clip, so an
+     unbounded stack paints onto the letterbox bars and off the window edge.
+     Six fits every viewport measured; the oldest line is the one to lose. */
+  while (wrap.children.length > 6) wrap.firstChild.remove();
   setTimeout(()=>{ d.style.transition='opacity .35s'; d.style.opacity='0';
     setTimeout(()=>d.remove(), 400); }, ms||2400);
 }
@@ -4160,11 +4256,16 @@ function buildSelect(){
     const b=document.createElement('button'); b.className='mi'; b.style.flex='1';
     b.setAttribute('aria-pressed', String(i===G.diff));
     b.textContent = d.name;
-    b.onclick = ()=>{ G.diff=i; buildSelect();
+    b.onclick = ()=>{ G.diff=i; saveSettings(); buildSelect();
       const nb = document.getElementById('difflist').children[i]; if (nb) nb.focus(); };
     dl.appendChild(b);
   });
-  document.getElementById('diffnote').textContent = DIFFS[G.diff].note;
+  /* The blurb is per-clearance, but the task list is per mission AND clearance
+     — loadLevel filters exactly this way — so the count is derived here rather
+     than asserted in a fixed string that was wrong on three of five missions. */
+  { const n = LEVELS[selLevel].objectives.filter(o => o.diff <= G.diff).length;
+    document.getElementById('diffnote').textContent = DIFFS[G.diff].note +
+      ' ' + n + ' objective' + (n===1 ? '' : 's') + ' on ' + LEVELS[selLevel].code + '.'; }
   const go = document.createElement('button');
   go.className='mi'; go.style.borderColor='#ffb02e'; go.style.color='#ffb02e';
   go.innerHTML='<span>READ BRIEFING</span><span class="k">ENTER ▶</span>';
@@ -4257,7 +4358,10 @@ function retryDuel(gesture){
 function pause(){
   /* the death beat plays out — a watch over a corpse offered a live RESUME */
   if (G.state!=='play' || !P.alive) return;
-  G.state='pause'; unlock(); clearInput(true);
+  /* Toasts paint over every screen (they are the last child of #frame), and a
+     mission banner squarely covers the watch's OBJECTIVES header — the same
+     reason boot, startMission and abort all wipe them. */
+  G.state='pause'; unlock(); clearInput(true); clearToasts();
   document.getElementById('p-title').textContent = G.L.code+' · '+G.L.name;
   document.getElementById('p-meta').innerHTML =
     '<dt>Elapsed</dt><dd>'+fmt(G.time)+'</dd>'+
@@ -4268,6 +4372,12 @@ function pause(){
   objList(document.getElementById('p-objs'), G.objs, true);
   drawPauseMap();
   show('s-pause');
+  /* Seed focus inside the panel or activeElement stays on the canvas for the
+     whole pause, and RESTART / OPTIONS / ABORT have no keyboard route at all.
+     preventScroll: the row is sticky, and scrolling to it would undo show()'s
+     open-at-the-top rule. */
+  const rb = document.querySelector('#s-pause [data-act="resume"]');
+  if (rb) rb.focus({ preventScroll:true });
 }
 function resume(gesture){
   if (G.state!=='pause') return;
@@ -4339,8 +4449,11 @@ function endMission(win, why){
      a real finale kill, so it completes the campaign too. */
   if (finale) campaignDone = true;
   saveSettings();
+  /* A tainted run files no best, so its career line would read "0 of 15
+     engagements resolved · 0:00" under a gold CONTRACT COMPLETE. Better to owe
+     the player no number than a false one — the asterisk already says why. */
   let career = '';
-  if (finale){
+  if (finale && !G.tainted){
     let cw = 0, ct = 0;
     for (const k in BEST) if (BEST[k].win){ cw++; ct += BEST[k].time; }
     career = '<dt>Career to date</dt><dd style="color:#ffb02e">'+cw+' of '+
@@ -4505,9 +4618,10 @@ function selfTest(runSim){
       const s0 = { sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
                    keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn, scan:SCANOP,
                    map:G.mapOn, cd:campaignDone, god:G.cheats.god, taint:G.tainted,
-                   best:JSON.stringify(BEST) };
+                   diff:G.diff, best:JSON.stringify(BEST) };
       M.sens = 1.23; M.tsens = .77; INVERT_Y = true; AIM_ASSIST = 0; KEYS_LAYOUT = 'arrows';
       A.sfxVol = .12; A.musVol = .21; A.musOn = false; SCANOP = 15; G.mapOn = false;
+      G.diff = 2;
       if (!isTouch) LOOK = 'drag';
       BEST['M01:2'] = { time:99.5, acc:61, rank:'TIER 2 TECH', win:true };
       G.cheats.god = true; G.tainted = true;          // must NOT reach the blob
@@ -4518,7 +4632,7 @@ function selfTest(runSim){
          blob.indexOf('"v":2') >= 0 && blob.indexOf('"M01:2"') >= 0);
       ok('cheats never persisted', !/cheat|taint|god/i.test(blob));
       M.sens = .5; M.tsens = 1; INVERT_Y = false; AIM_ASSIST = 2; KEYS_LAYOUT = 'wasd';
-      A.sfxVol = .7; A.musVol = .34; A.musOn = true; SCANOP = 50; G.mapOn = true;
+      A.sfxVol = .7; A.musVol = .34; A.musOn = true; SCANOP = 50; G.mapOn = true; G.diff = 0;
       delete BEST['M01:2'];
       loadSettings();
       ok('settings roundtrip', Math.abs(M.sens-1.23)<1e-9 && Math.abs(M.tsens-.77)<1e-9
@@ -4528,6 +4642,12 @@ function selfTest(runSim){
       const bb = BEST['M01:2'];
       ok('best result roundtrip', !!bb && bb.win && Math.abs(bb.time-99.5)<1e-6
          && bb.rank==='TIER 2 TECH');
+      /* the clearance is the rung the BEST lines are keyed by, so losing it
+         across a reload took the player's own best times off the list */
+      ok('clearance roundtrip: the chosen rung survives a reload', G.diff === 2, 'diff='+G.diff);
+      { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v:2, diff:7 })); } catch(_){}
+        G.diff = 1; loadSettings();
+        ok('clearance: a rung outside 0-2 never reaches loadLevel', G.diff === 1, 'diff='+G.diff); }
       let threw = false;
       try { localStorage.setItem(SAVE_KEY, '{"v":1,oops'); } catch(_){}
       try { localStorage.removeItem(SAVE_KEY_V1); } catch(_){}
@@ -4580,7 +4700,7 @@ function selfTest(runSim){
       }
       M.sens = s0.sens; M.tsens = s0.tsens; INVERT_Y = s0.inv; AIM_ASSIST = s0.aim;
       KEYS_LAYOUT = s0.keys; A.sfxVol = s0.sfx; A.musVol = s0.mus; A.musOn = s0.musOn;
-      SCANOP = s0.scan; G.mapOn = s0.map; campaignDone = s0.cd;
+      SCANOP = s0.scan; G.mapOn = s0.map; campaignDone = s0.cd; G.diff = s0.diff;
       G.cheats.god = s0.god; G.tainted = s0.taint;
       if (!isTouch) LOOK = s0.look;
       for (const k in BEST) delete BEST[k];
@@ -4637,6 +4757,101 @@ function selfTest(runSim){
       act('togglemus');
       ok('options music row exists and drives A.musOn', !!b && flipped && A.musOn === m0);
     }
+  }
+
+  /* ---- shell copy, glyph vocabulary and the motion policy: pure enough to
+          run on every boot, so a regression is caught before the splash ---- */
+  {
+    /* the clearance blurbs promised counts three of the five missions do not
+       have; the count is derived on screen now, so no note may assert one */
+    ok('clearance notes assert no objective count',
+       DIFFS.every(d => !/\d/.test(d.note)),
+       DIFFS.map(d => d.note).join(' | '));
+
+    /* the title how-to described DRAG on a desktop that ships CAPTURE */
+    ok('title hint: every look mode has prose of its own',
+       LOOK_ORDER.every(m => typeof TITLE_HINT[m] === 'string' && TITLE_HINT[m].length > 20) &&
+       new Set(LOOK_ORDER.map(m => TITLE_HINT[m])).size === LOOK_ORDER.length,
+       LOOK_ORDER.join(','));
+
+    /* the blur was invisible over a 93-97% opaque gradient and cost the
+       compositor a full re-blur per presented frame: 38fps at 720p */
+    { let filt = null;
+      for (const sh of document.styleSheets){
+        try { for (const r of sh.cssRules)
+          if (r.selectorText === '.screen') filt = r.style.backdropFilter || r.style.webkitBackdropFilter || ''; }
+        catch(_){}
+      }
+      ok('menus declare no backdrop-filter', filt === '' || filt === null, String(filt)); }
+
+    /* shape has to carry meaning as well as hue on both maps */
+    { const keys = Object.keys(BLIP);
+      const square = keys.every(k => BLIP[k].every(r => r.length === BLIP[k].length));
+      ok('blip glyphs are square stencils', square, keys.join(','));
+      const sig = k => BLIP[k].join('/');
+      ok('blip glyphs are all distinct', new Set(keys.map(sig)).size === keys.length);
+      /* the five that used to share one hollow ring */
+      const ring = ['term','console','ap','npc','exit'];
+      ok('the five ring-alike blips now differ from each other',
+         new Set(ring.map(sig)).size === ring.length);
+      /* ...and they actually paint differently once rendered */
+      const cv = document.createElement('canvas'); cv.width = 16; cv.height = 16;
+      const g2 = cv.getContext('2d');
+      const paint = k => { g2.clearRect(0,0,16,16); blip(g2, k, 8, 8, 1, '#ffffff');
+        return Array.from(g2.getImageData(0,0,16,16).data).join(''); };
+      const shots = keys.map(paint);
+      ok('blip glyphs render distinct pixels', new Set(shots).size === keys.length); }
+
+    /* reduced motion is two live sources, and the meltdown countdown — the only
+       readout of the remaining fuse — must hold rather than blink under it */
+    { const o0 = RM_OPT;
+      RM_OPT = false;
+      const blinks = meltShow(5.30) !== meltShow(5.55);   // 21 vs 22 quarter-seconds
+      ok('meltdown: the countdown blinks at 2Hz normally', blinks);
+      ok('meltdown: ...and holds under reduced motion',
+         (RM_OPT = true, meltShow(5.30) && meltShow(5.55)));
+      ok('reduced motion: the Options row alone turns it on', reducedMotion() === true);
+      RM_OPT = false;
+      ok('reduced motion: ...and off again unless the platform asks for it',
+         reducedMotion() === RM_MEDIA);
+      RM_OPT = o0; syncRMLabel(); }
+
+    /* the toast column grows out of #frame, which has no overflow clip */
+    { const w = document.getElementById('toasts');
+      const n0 = w ? w.children.length : -1;
+      for (let i=0;i<12;i++) toast('STACK TEST '+i, 'cyan', 60);
+      ok('toasts: the stack is capped at six', !!w && w.children.length === 6,
+         'was '+n0+', now '+(w?w.children.length:-1));
+      clearToasts(); }
+
+    /* the Options screen must not offer a touch device rows it cannot act on */
+    { const look = document.getElementById('o-look'), lab = document.getElementById('lab-sens');
+      const row = look && look.closest('.ctl');
+      const shown = row ? getComputedStyle(row).display !== 'none' : null;
+      ok('options: look mode is offered on a mouse and hidden on a phone',
+         isTouch ? shown === false : shown === true, 'display '+shown);
+      ok('options: the sensitivity row names the device it is on',
+         !!lab && lab.textContent === (isTouch ? 'View-drag sensitivity' : 'Mouse sensitivity'),
+         lab ? lab.textContent : 'no label'); }
+
+    /* CHOOSE PHOTO was a <label>, which no key can reach */
+    { const fb = document.querySelector('#s-options [data-act="facepick"]');
+      const fi = document.getElementById('o-face');
+      ok('options: CHOOSE PHOTO is a focusable button',
+         !!fb && fb.tagName === 'BUTTON' && fb.tabIndex >= 0);
+      ok('options: ...with the file input beside it, not inside it',
+         !!fi && !!fb && !fb.contains(fi) && !fi.closest('[data-act]'));
+      /* Re-picking the file already selected fires no change event at all
+         unless the input is cleared — the dead path after RESET TO DEFAULT or
+         a failed decode. Driven through a stand-in event rather than a real
+         File: a real one would decode a tick later and toast over the splash. */
+      if (fi && typeof fi.onchange === 'function'){
+        const ev = { target: { files:[null], value:'C:\\fakepath\\agent.png' } };
+        fi.onchange(ev);
+        ok('options: the photo input clears itself, so the same file re-picks',
+           ev.target.value === '', 'value="'+ev.target.value+'"');
+      } else ok('options: the photo input clears itself, so the same file re-picks',
+                false, 'no change handler'); }
   }
 
   if (runSim){
@@ -5522,6 +5737,10 @@ function selfTest(runSim){
         endMission(true, 'MISSION COMPLETE');
         ok('finale: a tainted win still completes the campaign', campaignDone === true);
         ok('finale: the tainted win files no best', JSON.stringify(BEST) === b1);
+        /* ...so its career line would have read "0 of 15 resolved · 0:00" under
+           a gold CONTRACT COMPLETE. Owe the player no number rather than a lie. */
+        ok('finale: a tainted win prints no career row',
+           document.getElementById('r-stats').innerHTML.indexOf('Career to date') < 0);
         campaignDone = cd1; G.tainted = t2;
         for (const k in BEST) delete BEST[k]; Object.assign(BEST, JSON.parse(b1));
         try { raw2 === null ? localStorage.removeItem(SAVE_KEY)
@@ -5715,6 +5934,144 @@ function selfTest(runSim){
           }
           SIMGHOSTS = true; }
 
+        /* ---- round B guards: shell copy, the scored clock, the scanline key,
+                toast discipline, the watch's keyboard route ---- */
+
+        /* the clearance note prints the count the mission will actually give */
+        { const l0 = selLevel, d0 = G.diff;
+          let bad = null;
+          for (let li = 0; li < LEVELS.length && !bad; li++)
+            for (let di = 0; di < DIFFS.length && !bad; di++){
+              selLevel = li; G.diff = di; buildSelect();
+              const want = LEVELS[li].objectives.filter(o => o.diff <= di).length;
+              const note = document.getElementById('diffnote').textContent;
+              if (note.indexOf(' ' + want + ' objective') < 0 || note.indexOf(LEVELS[li].code) < 0)
+                bad = LEVELS[li].code + '/' + di + ': ' + note;
+            }
+          ok('select: the clearance note counts the mission in front of you', !bad, bad || '5x3 pairs');
+          selLevel = l0; G.diff = d0; buildSelect(); }
+
+        /* the title how-to follows the look mode in force */
+        if (!isTouch){
+          const lk0 = LOOK;
+          let wrong = null;
+          for (const m of LOOK_ORDER){
+            LOOK = m; resolveLook(); syncLookLabel();
+            const got = document.getElementById('titlehint').textContent;
+            if (got.indexOf(TITLE_HINT[m]) !== 0) wrong = m + ': ' + got;
+          }
+          ok('title: the how-to follows the look mode', !wrong, wrong || LOOK_ORDER.join(','));
+          LOOK = lk0; resolveLook(); syncLookLabel();
+        } else ok('title: the how-to names the pads on touch',
+                  document.getElementById('titlehint').textContent.indexOf('Left pad') === 0);
+
+        /* P drives the stored SCANOP, not a shadow class the blob never sees */
+        { let rawS = null; try { rawS = localStorage.getItem(SAVE_KEY); } catch(_){}
+          const sc0 = SCANOP, sp0 = SCAN_PREV;
+          const key = code => onKey({ code, preventDefault(){}, target:null });
+          const blobScan = () => { let d = null;
+            try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(_){}
+            return d ? d.scan : null; };
+          SCANOP = 84; SCAN_PREV = 84; syncOptionsUI(); saveSettings();
+          key('KeyP');
+          ok('scanlines: P turns them off in the SAVED value, not a class',
+             SCANOP === 0 && blobScan() === 0, 'SCANOP='+SCANOP+' blob='+blobScan());
+          ok('scanlines: ...and the Options slider agrees with the screen',
+             document.getElementById('o-scan').value === '0' &&
+             document.getElementById('v-scan').textContent === '0%' &&
+             document.getElementById('scan').style.opacity === '0');
+          key('KeyP');
+          ok('scanlines: a second press restores the level the player chose',
+             SCANOP === 84 && blobScan() === 84, 'SCANOP='+SCANOP);
+          /* the dead first press: from a stored 0 it used to hide an overlay
+             that was already invisible and change nothing a player could see */
+          SCANOP = 0; SCAN_PREV = 50; syncOptionsUI(); saveSettings();
+          key('KeyP');
+          ok('scanlines: from a stored 0 the first press is not a dead key',
+             SCANOP > 0 && blobScan() === SCANOP, 'SCANOP='+SCANOP);
+          SCANOP = sc0; SCAN_PREV = sp0; syncOptionsUI();
+          try { rawS === null ? localStorage.removeItem(SAVE_KEY)
+                              : localStorage.setItem(SAVE_KEY, rawS); } catch(_){} }
+
+        /* the scored clock spends real seconds; physics keeps its clamp */
+        { loadLevel(0,1); G.state = 'play'; G.cheats.god = true; clearInput();
+          const t0 = G.time; step(0.05, 0.2);
+          const scored = G.time - t0;
+          const t1 = G.time; step(0.016);
+          const plain = G.time - t1;
+          ok('clock: a long frame scores the seconds it really took',
+             Math.abs(scored - 0.2) < 1e-6, scored.toFixed(4));
+          ok('clock: a caller with no wall time still scores its own dt',
+             Math.abs(plain - 0.016) < 1e-6, plain.toFixed(4)); }
+
+        /* the exit nag must not stack a copy of itself under the live one */
+        { loadLevel(0,1); G.state = 'play'; G.doorNag = 0;
+          clearToasts(); tryExit();
+          const first = document.getElementById('toasts').children.length;
+          tryExit();                                   // the same frame, still nagging
+          ok('exit nag: the re-arm outlasts the 4.2s banner it posts',
+             G.doorNag >= 4.2 && first === 1 &&
+             document.getElementById('toasts').children.length === 1,
+             'doorNag='+G.doorNag.toFixed(1));
+          clearToasts(); G.doorNag = 0; }
+
+        /* the watch: no toasts over it, and a keyboard route into its buttons */
+        { loadLevel(0,1); G.state = 'play'; P.alive = true; G.deadT = 0; clearInput();
+          toast('MISSION M01 — THE OPEN DOOR', 'gold', 4000);
+          pause();
+          ok('watch: opening it clears the toasts painting over the panel',
+             document.getElementById('toasts').children.length === 0);
+          const af = document.activeElement;
+          ok('watch: focus lands inside the panel, so its buttons have a key route',
+             !!af && !!af.closest && !!af.closest('#s-pause'),
+             af ? (af.id || af.textContent || af.tagName) : 'none');
+          const key = code => onKey({ code, preventDefault(){}, target:null });
+          key('Tab');
+          ok('watch: Tab walks the panel instead of closing it under the player',
+             G.state === 'pause', 'state '+G.state);
+          key('Escape');
+          ok('watch: Esc still resumes', G.state === 'play', 'state '+G.state);
+          show(null); clearInput(); }
+
+        /* F4 through the death beat: pause() refuses a watch over a corpse, so
+           the guard has to file the mission instead of leaving it running */
+        { loadLevel(0,1); G.state = 'play'; P.alive = true; G.deadT = 0;
+          f4Guard();
+          ok('report guard: a live mission is paused behind the report', G.state === 'pause');
+          G.state = 'play'; show(null);
+          P.alive = false; G.deadT = .5; G.deadWhy = 'AGENT DOWN';
+          const t2 = G.tainted; G.tainted = true;      // the scripted death files no best
+          f4Guard();
+          ok('report guard: the death beat is filed, never left running',
+             G.state === 'result', 'state '+G.state);
+          G.tainted = t2; P.alive = true; G.deadT = 0;
+          /* ...and Esc, inert through the beat by design, is answered here */
+          onKey({ code:'Escape', preventDefault(){}, target:null });
+          ok('debrief: Esc leaves it, the acknowledgement the beat could not give',
+             G.state === 'title', 'state '+G.state);
+          G.state = 'play'; show(null); clearInput(); }
+
+        /* the watch's floor plan draws a hostile with a keyline and a glyph,
+           the rule the radar and this canvas's own keyhole pip already keep */
+        { loadLevel(0,1); G.state = 'play';
+          const foe = G.ents.find(e => e.kind === 'enemy' && e.state !== 'dead');
+          const c = document.getElementById('pmap');
+          if (foe && c){
+            drawPauseMap();
+            const g2 = c.getContext('2d');
+            const k = Math.min((c.width-10)/G.W, (c.height-10)/G.H);
+            const px = (c.width - G.W*k)/2 + foe.x*k, py = (c.height - G.H*k)/2 + foe.y*k;
+            const d = g2.getImageData(Math.max(0,(px|0)-9), Math.max(0,(py|0)-9), 18, 18).data;
+            let keyline = false, fill = false;
+            for (let i=0;i<d.length;i+=4){
+              if (d[i]===11 && d[i+1]===15 && d[i+2]===22) keyline = true;
+              if (d[i]===122 && d[i+1]===47 && d[i+2]===42) fill = true;
+            }
+            ok('watch: hostiles carry a keyline and a glyph, not a bare square',
+               keyline && fill, 'keyline='+keyline+' fill='+fill);
+          } else ok('watch: hostiles carry a keyline and a glyph, not a bare square',
+                    true, 'no hostile on M01'); }
+
         G.cheats.god = god0; AIM_ASSIST = aa0; clearInput();
       }
 
@@ -5770,6 +6127,16 @@ function selfTest(runSim){
   fails.forEach(f => console.error('[agent360 self-test] FAIL '+f.name+' '+f.detail));
   return R;
 }
+/* Never leave a live sim behind the self-test report. pause() deliberately
+   refuses to open a watch over a corpse, so through the death beat this guard
+   used to do nothing at all: the mission ended UNDER the report and filed its
+   debrief a second time when the report closed. The beat is already decided —
+   file it now instead. */
+function f4Guard(){
+  if (G.state !== 'play') return;
+  if (P.alive) pause();
+  else endMission(false, G.deadWhy || 'AGENT DOWN');
+}
 function drawTestReport(){
   const R = G.tests; if (!R) return;
   const fails = R.filter(r => !r.pass).length;
@@ -5805,12 +6172,13 @@ const V1_CODES = ['M01','M02','M05'];
 const BEST = {};                  // 'M01:diff' -> { time, acc, rank, win }
 let campaignDone = false;
 let SCANOP = 50;                  // scanline slider 0..100; JS-side so it can be saved before the DOM syncs
+let SCAN_PREV = 50;               // the level P turns back ON to, so OFF is a stored 0 and not a shadow class
 function saveSettings(){
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       v:2, sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
       keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn,
-      scan:SCANOP, map:G.mapOn, best:BEST, campaignDone
+      scan:SCANOP, map:G.mapOn, diff:G.diff, rm:RM_OPT, best:BEST, campaignDone
     }));
   } catch(_){}
 }
@@ -5836,6 +6204,11 @@ function loadSettings(){
   A.musOn  = d.musOn !== false;
   SCANOP   = Math.round(num(d.scan, 0, 100, SCANOP));
   G.mapOn  = d.map !== false;
+  RM_OPT   = d.rm === true;
+  /* The clearance was the one choice a reload threw away — and since bests are
+     keyed CODE:diff, the select screen then listed somebody else's rung and the
+     player's own BEST line vanished with it. */
+  if (d.diff === 0 || d.diff === 1 || d.diff === 2) G.diff = d.diff;
   campaignDone = d.campaignDone === true;
   if (d.best && typeof d.best === 'object')
     for (const k in d.best){ const b = d.best[k];
@@ -5863,10 +6236,27 @@ const LOOK_BLURB = {
   free:    'mouse aims, push past the ticks to turn',
   drag:    'hold and drag to turn, tap to fire'
 };
+/* The title screen's how-to has to describe the scheme actually in force. It
+   was a fixed string describing DRAG while desktop ships CAPTURE, so following
+   it literally — click the view, drag — spent a round on the first wall. */
+const TITLE_HINT = {
+  capture: 'The mouse is captured when the mission starts — move to look, click to fire, Esc releases.',
+  free:    'Move the mouse to aim — push it past the ticks to turn — and click to fire.',
+  drag:    'Click the viewport, then drag to look and click to fire.'
+};
+function syncTitleHint(){
+  const el = document.getElementById('titlehint'); if (!el) return;
+  /* a frame that keeps refusing the lock plays as free look, whatever the
+     Options row still says the player asked for */
+  const mode = (LOOK === 'capture' && lockGivenUp()) ? 'free' : LOOK;
+  el.textContent = (isTouch ? 'Left pad moves, right pad looks. Tap the view or FIRE to shoot.'
+                            : TITLE_HINT[mode]) + ' Headphones recommended.';
+}
 function syncLookLabel(){
   const b = document.getElementById('o-look');
   if (b) b.textContent = isTouch ? 'TOUCH DRAG'
     : LOOK.toUpperCase() + (LOOK==='capture' && lockGivenUp() ? ' (BLOCKED HERE)' : '');
+  syncTitleHint();          // one hook covers boot, the saved-settings restore and cyclelook
 }
 function syncAimLabel(){
   const b = document.getElementById('o-aim');
@@ -5888,6 +6278,11 @@ function syncMusLabel(){
   const b = document.getElementById('o-muson');
   if (b){ b.textContent = A.musOn ? 'ON' : 'OFF'; b.setAttribute('aria-pressed', String(A.musOn)); }
 }
+function syncRMLabel(){
+  const b = document.getElementById('o-rm');
+  if (b){ b.textContent = RM_OPT ? 'ON' : 'OFF'; b.setAttribute('aria-pressed', String(RM_OPT)); }
+  document.body.classList.toggle('reduce', RM_OPT);   // the CSS .blink rule reads this
+}
 /* State drives the widgets, never the reverse: after loadSettings() the sliders
    and their value readouts must show the blob, not the HTML defaults. */
 function syncOptionsUI(){
@@ -5903,7 +6298,12 @@ function syncOptionsUI(){
   set('o-mus', mus, 'v-mus', mus+'%');
   set('o-scan', SCANOP, 'v-scan', SCANOP+'%');
   const sc = document.getElementById('scan'); if (sc) sc.style.opacity = SCANOP/100;
-  syncLookLabel(); syncKeysLabel(); syncAimLabel(); syncInvLabel(); syncRadarLabel(); syncMusLabel();
+  /* On touch the pads read M.tsens and this slider only scales a drag on the
+     view, so the row must not promise a mouse. */
+  const ls = document.getElementById('lab-sens');
+  if (ls) ls.textContent = isTouch ? 'View-drag sensitivity' : 'Mouse sensitivity';
+  syncLookLabel(); syncKeysLabel(); syncAimLabel(); syncInvLabel(); syncRadarLabel();
+  syncMusLabel(); syncRMLabel();
 }
 /* where BACK goes when the options screen was opened over something — set on
    every open, so it can never point at a screen the player has already left */
@@ -5923,6 +6323,7 @@ function act(a){
     case 'resume': resume(true); break;
     case 'restart': startMission(true); break;
     case 'abort': G.state='title'; show('s-title'); clearToasts(); break;
+    case 'facepick': { const fi = document.getElementById('o-face'); if (fi) fi.click(); break; }
     case 'facereset': drawDefaultFace(); bakeAllActors(); toast('DEFAULT FACE RESTORED','cyan'); break;
     case 'cyclelook': {
       /* Touch has exactly one look mode. Offering CAPTURE here put phones into
@@ -5947,6 +6348,10 @@ function act(a){
     case 'togglemap':
       G.mapOn = !G.mapOn; syncRadarLabel(); saveSettings();
       toast(G.mapOn ? 'RADAR ON' : 'RADAR OFF', 'cyan', 1500);
+      break;
+    case 'togglerm':
+      RM_OPT = !RM_OPT; syncRMLabel(); saveSettings();
+      toast(RM_OPT ? 'REDUCE MOTION: ON — SHAKE, WASH AND BLINK HELD DOWN' : 'REDUCE MOTION: OFF', 'cyan', 3400);
       break;
     case 'togglemus':                /* KeyM for touch players — same state, same blob */
       A.musOn = !A.musOn; syncMusLabel(); saveSettings();
@@ -6005,8 +6410,13 @@ document.addEventListener('click', e=>{
 })();
 function onKey(e){
   audioInit();
-  /* Only swallow Tab in-mission, or the menus become keyboard-inaccessible. */
-  if (e.code==='Tab' && (G.state==='play' || G.state==='pause')) e.preventDefault();
+  /* Only swallow Tab in-mission, or the menus become keyboard-inaccessible.
+     The watch is a menu too: while focus is still on the canvas Tab closes it,
+     as the field manual says, but once focus is INSIDE the panel Tab belongs to
+     the browser again — otherwise RESTART, OPTIONS and ABORT are mouse-only. */
+  const inWatch = !!(document.activeElement && document.activeElement.closest &&
+                     document.activeElement.closest('#s-pause'));
+  if (e.code==='Tab' && (G.state==='play' || (G.state==='pause' && !inWatch))) e.preventDefault();
   if (e.code==='F4'){
     e.preventDefault();
     if (G.state==='boot') bootDone();       // never capture the splash as the return screen
@@ -6015,9 +6425,10 @@ function onKey(e){
       if (G.testReturn){ G.state = G.testReturn.state; show(G.testReturn.screen); G.testReturn = null; }
       return;
     }
-    if (G.state === 'play') pause();         // never leave a live sim behind the report
-    /* The sim reloads a level, so only run it where nothing is in progress. */
+    /* The sim reloads a level, so only run it where nothing is in progress —
+       decided BEFORE the guard below can move us out of 'play'. */
     const sim = (G.state === 'title' || G.state === 'result');
+    f4Guard();
     const back = { state: G.state, screen: G.screenId };
     selfTest(sim);
     G.state = back.state; clearToasts();     // the sim leaves 'play' and a mission toast behind
@@ -6033,10 +6444,13 @@ function onKey(e){
   if (e.code==='KeyM'){ act('togglemus'); }   // shares the Options row's path so the label stays honest
   if (e.code==='KeyN'){ act('togglemap'); }
   if (e.code==='KeyP'){
-    /* P and the Options slider drive the same scanlines: turning them back on
-       with the slider parked at zero would otherwise LOOK like a dead key. */
-    const off = document.body.classList.toggle('noscan');
-    if (!off && SCANOP === 0){ SCANOP = 50; syncOptionsUI(); saveSettings(); }
+    /* P moves the stored SCANOP itself. A body class was a second source of
+       truth the slider, its readout and the save blob never saw: scanlines
+       turned off with the documented key came back on the next load, and from
+       a saved 0 the first press was spent hiding an already-invisible overlay. */
+    if (SCANOP > 0){ SCAN_PREV = SCANOP; SCANOP = 0; }
+    else SCANOP = SCAN_PREV || 50;
+    syncOptionsUI(); saveSettings();
   }
   if (G.state==='play'){
     if (e.code==='Escape' || e.code==='Tab'){ pause(); return; }
@@ -6048,13 +6462,17 @@ function onKey(e){
     if (n >= 0) pickWeapon(n);
     return;
   }
-  if (G.state==='pause' && (e.code==='Escape'||e.code==='Tab')){ resume(e.code==='Tab'); return; }   // Tab activates, Esc does not
+  if (G.state==='pause' && (e.code==='Escape' || (e.code==='Tab' && !inWatch))){ resume(e.code==='Tab'); return; }   // Tab activates, Esc does not
   if (e.code==='Enter' && !(e.target && e.target.tagName==='BUTTON')){   // a focused button clicks itself
     if (G.state==='title'){ act('missions'); }
     else if (G.state==='select'){ sfx('click'); gotoBrief(); }
     else if (G.state==='brief'){ sfx('click'); startMission(true); }
     else if (G.state==='result'){ act('abort'); }
   }
+  /* Esc pressed as you die is inert by design — the beat owns that second —
+     but it stayed inert on the debrief too, so the key was never acknowledged
+     at all. Enter has always left the debrief; Esc now leaves it the same way. */
+  if (e.code==='Escape' && G.state==='result'){ act('abort'); return; }
   if (e.code==='Escape' && (G.state==='select'||G.state==='controls'||G.state==='options'||G.state==='cheats')) act('back');
   if (e.code==='Escape' && G.state==='brief') act('back');
 }
@@ -6067,13 +6485,16 @@ document.getElementById('o-sfx').oninput  = e => { A.sfxVol = e.target.value/100
 document.getElementById('o-mus').oninput  = e => { A.musVol = e.target.value/100; if (A.mus) A.mus.gain.value = A.musVol; sv('v-mus', e.target.value+'%'); saveSettings(); };
 document.getElementById('o-scan').oninput = e => {
   SCANOP = Math.round(+e.target.value);
+  if (SCANOP > 0) SCAN_PREV = SCANOP;          // ...so P turns them back on where the slider left them
   document.getElementById('scan').style.opacity = SCANOP/100;
   sv('v-scan', SCANOP+'%'); saveSettings();
-  /* The slider always wins over a stale P toggle, or it drags a dead control. */
-  if (SCANOP > 0) document.body.classList.remove('noscan');
 };
 document.getElementById('o-face').onchange = e => {
-  const f = e.target.files && e.target.files[0]; if (!f) return;
+  /* Clear the input, or Blink fires no change event for a re-pick of the file
+     already selected — which is exactly the sequence after RESET TO DEFAULT or
+     a failed decode. Read the File out first: .value='' empties .files, but the
+     captured File stays readable. */
+  const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
   const fr = new FileReader();
   fr.onload = () => { const im = new Image();
     im.onload = () => { setFaceFromImage(im); bakeAllActors(); toast('FACE APPLIED TO ALL HOSTILES','gold',3000); };
@@ -6129,8 +6550,6 @@ function boot(){
   const bs = document.getElementById('bootskip');
   bs.textContent = isTouch ? 'TAP TO SKIP' : 'CLICK TO SKIP';
   setTimeout(()=>{ if (G.state==='boot') bs.hidden = false; }, 400);
-  if (isTouch) document.getElementById('titlehint').textContent =
-    'Left pad moves, right pad looks. Tap the view or FIRE to shoot. Headphones recommended.';
   bootT = setInterval(()=>{
     bl.textContent = BOOTLINES[bootI] || '';
     if (++bootI >= BOOTLINES.length + 1) bootDone();
@@ -6150,13 +6569,19 @@ function fault(where, err){
   }
 }
 function loop(t){
-  const dt = Math.min(.05, last ? (t-last)/1000 : .016);
+  /* Physics keeps its 0.05s clamp — a 300ms hitch must not walk the agent
+     through a wall — but the SCORED clock must not lose the rest of the frame
+     with it: below ~22fps G.time, the SLA verdict and the stored BEST all
+     under-counted the minutes the player actually spent. The 0.5s ceiling is
+     only there so one pathological stall cannot invent time. */
+  const raw = last ? (t-last)/1000 : .016;
+  const dt = Math.min(.05, raw);
   last = t; G.lastDt = dt;
   /* Separate try blocks: a throw inside step() used to skip entity reaping,
      interaction and the meltdown timer every frame while the game still looked
      alive, and the one-shot latch hid every repeat. */
   try {
-    if (G.state === 'play') step(dt * G.tscale);
+    if (G.state === 'play') step(dt * G.tscale, Math.min(.5, raw) * G.tscale);
     else {
       M.dx = 0; M.dy = 0;
       if (G.solid && G.state!=='pause' && G.state!=='result')

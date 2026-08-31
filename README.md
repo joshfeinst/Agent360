@@ -140,9 +140,25 @@ the aim assist stopped courting an invulnerable boss, and secret caches
 stopped advertising themselves on the radar. Ledger as always:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.22 · v1.23
+
+Ten player sessions, each handed the game cold and told to play it, then every
+anomaly they filed cross-examined by a paired skeptic: 39 reported, 29
+confirmed, 10 refuted. The phone half landed first — a reachable pause screen,
+menus that answer a finger with a thumb already on the glass, one owner per
+look drag, held keys that survive a pause, twin-pad tuning. The desk half
+followed: the title screen stopped teaching a control scheme it does not ship,
+MISSION SELECT stopped promising objective counts three of the five missions
+never had, your clearance survives a reload (and stops hiding your own best
+times), P actually turns the scanlines off for good, the menus gave up a
+blur that cost 38fps at 720p and showed nothing, the mission clock stopped
+under-counting on a slow device, and the radar and floor plan gave five
+different things five different shapes. Ledger:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## Development
 
-- **F4** runs the in-game self-test suite — **275 assertions**: level
+- **F4** runs the in-game self-test suite — **309 assertions**: level
   reachability audits, input model invariants (pointer-lock linearity,
   free-look symmetry, aim-assist never fighting the player's turn), movement
   and collision checks, touch-cluster behaviour, palette and zone rendering,
@@ -152,8 +168,10 @@ stopped advertising themselves on the radar. Ledger as always:
   length, so a new mission is soaked the day it lands —
   then does it all again in a phone context (844×390, touch events driving
   the real cluster) and once more stepping the sim at 144 Hz and 30 Hz to
-  prove frame-rate invariance. It also checks the `index.html`/`sw.js`
-  version lockstep: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
+  prove frame-rate invariance. It also reads the source for the things that
+  have to be right before a script runs — the `index.html`/`sw.js` version
+  lockstep, and the title screen's static how-to matching the look mode the
+  build ships: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
 - `tools/touch.js` is a phone-finger walkthrough: boot skipped, every menu
   visited, a mission started, walked, fired, paused and resumed by taps
   alone, with 44px tap-target and screen-utilization measurements. It also
