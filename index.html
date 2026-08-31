@@ -451,7 +451,7 @@ body.touch .no-touch{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.24';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.25';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -4046,7 +4046,15 @@ function bar(x,y,w,h,frac,col,bg){
   ctx.fillStyle = '#00000055';
   for (let i=1;i<8;i++) ctx.fillRect(x+Math.round(w*i/8),y,1,h);
 }
-function fmt(t){ const m=Math.floor(t/60), s=Math.floor(t%60); return m+':'+(s<10?'0':'')+s; }
+/* Total by construction. Everything it prints is a CLOCK, and there is no
+   clock reading for a missing, negative or absurd number — a stored -61 once
+   rendered "BEST -2:0-1" on the select screen, and 1e308 rendered
+   "BEST 1.66e+306:56". The store below rejects both, and this is the second
+   wall: a dash reads as "no time", which is what such a value means. */
+const FMT_MAX = 86400;            // a day. The longest par in the game is 180s.
+function fmt(t){
+  if (typeof t !== 'number' || !isFinite(t) || t < 0 || t > FMT_MAX) return '--:--';
+  const m=Math.floor(t/60), s=Math.floor(t%60); return m+':'+(s<10?'0':'')+s; }
 /* Centred text on a dark strip. In-world hints (the waypoint tag, the USE
    prompt) sit over live wall pixels and were unreadable naked on a lit wall. */
 function txtP(s,x,y,col,size,align){
@@ -6589,6 +6597,164 @@ function selfTestBody(runSim){
              drift.length === 0, drift.map(k => k+' '+cold[k]+' -> '+warm[k]).join(' | '));
           clearInput(); loadLevel(0,1); G.state = 'play'; }
 
+        /* The CONTROLS screen is a promise, and this game has already shipped a
+           screen that lied: the title how-to taught DRAG on a build that ships
+           CAPTURE. So read the desktop rows the screen ACTUALLY renders, turn
+           every key glyph in them into the code a browser would send, and press
+           it for real. The glyph table below is a fact about keyboards, not
+           about this game, so it cannot drift with the game — a row that starts
+           naming a new key is tested the moment it is written. */
+        if (!isTouch){
+          const GLYPH = { 'W':'KeyW','A':'KeyA','S':'KeyS','D':'KeyD','X':'KeyX',
+            'Z':'KeyZ','R':'KeyR','F':'KeyF','C':'KeyC','Q':'KeyQ','E':'KeyE',
+            'N':'KeyN','M':'KeyM','P':'KeyP',
+            '↑':'ArrowUp','↓':'ArrowDown','←':'ArrowLeft','→':'ArrowRight',
+            ',':'Comma','.':'Period','/':'Slash',"'":'Quote',';':'Semicolon',
+            '[':'BracketLeft',']':'BracketRight',
+            'Space':'Space','Shift':'ShiftLeft','Tab':'Tab','Esc':'Escape',
+            'Backspace':'Backspace','F2':'F2','F3':'F3','F4':'F4',
+            '1':'Digit1','2':'Digit2','3':'Digit3','4':'Digit4' };
+          /* the words a keys cell is allowed to say that are not keys. Anything
+             in a cell that is neither a glyph above nor prose here is a key
+             nobody taught this test to press, and it fails rather than being
+             skipped — otherwise the manual could grow a promise in silence. */
+          const PROSE = new Set(['Mouse','and','Click','Right','click','wheel','Hold',
+            'hold','Either','opens','resumes','Options','auto-aim,','GoldenEye','style','']);
+          const rows = [...document.querySelectorAll('#s-controls .grid2:not(.touch-only) .ctl')];
+          const want = new Map();                       // code -> the row that promised it
+          const unknown = [];
+          for (const r of rows){
+            const label = r.children[0].textContent.trim();
+            const keys = r.children[1].textContent;
+            /* '1-4' is a range the row writes as one token */
+            const toks = keys.replace(/1[–-]4/, '1 2 3 4').split(/[\s·]+/);
+            for (const t of toks){
+              if (GLYPH[t]){ if (!want.has(GLYPH[t])) want.set(GLYPH[t], label); }
+              else if (!PROSE.has(t)) unknown.push(label + ' → ' + JSON.stringify(t));
+            }
+          }
+          ok('controls: every token in the manual is a key this test can press',
+             unknown.length === 0, unknown.join(' | ') || 'no unrecognised tokens');
+          /* Arm the agent so each key has something to do: a full magazine
+             cannot reload, one weapon cannot cycle, and Backspace clears input
+             that has to be stuck first. A key that does nothing HERE is a key
+             the screen promised and the build does not answer. */
+          const fp = () => { const o = {};
+            for (const k in held) o['h.'+k] = String(held[k]);
+            for (const k of ['w','aim','crouch','pitch','ang','reload','useHold'])
+              o['P.'+k] = String(P[k]);
+            for (const k of ['state','mapOn','showTests']) o['G.'+k] = String(G[k]);
+            for (const k of ['fire','aim','wheel','diag','diag2','yawF']) o['M.'+k] = String(M[k]);
+            o.scan = String(SCANOP); o.mus = String(A.musOn); o.scr = String(G.screenId);
+            return o; };
+          const kd = c => dispatchEvent(new KeyboardEvent('keydown',{code:c,bubbles:true,cancelable:true}));
+          const ku = c => dispatchEvent(new KeyboardEvent('keyup',{code:c,bubbles:true}));
+          const st0 = G.state, sc0 = G.screenId, sel0 = selLevel, dif0 = G.diff;
+          const lay0 = KEYS_LAYOUT, show0 = G.showTests;
+          const mute = [];
+          for (const [code, label] of want){
+            selLevel = 0; G.diff = 1; startMission(false); clearInput();
+            G.cheats.god = true;
+            P.has = [true,true,true,true]; P.mag = [2,20,5,3];
+            P.ammo = { p9:42, smg:120, sh:20, pt:6 }; P.w = 0;
+            held.fwd = true; held.run = true;          // something for Backspace to clear
+            let moved = false;
+            /* two starting weapons as well as two layouts: '1' selects slot 0,
+               so from slot 0 it is correctly a no-op, and the row would read as
+               a broken promise on a key that works */
+            for (const lay of ['wasd','arrows']) for (const w0 of [0, 2]){
+              KEYS_LAYOUT = lay; applyLayout(); P.w = w0;
+              const b0 = fp(); kd(code); step(1/60); const a0 = fp(); ku(code);
+              if (Object.keys(b0).some(k => b0[k] !== a0[k])) moved = true;
+              if (G.showTests){ G.showTests = false; show(null); }
+              G.state = 'play'; show(null);
+            }
+            if (!moved) mute.push(label + ' → ' + code);
+            G.cheats.god = false;
+          }
+          KEYS_LAYOUT = lay0; applyLayout(); G.showTests = show0;
+          selLevel = sel0; G.diff = dif0; clearInput();
+          loadLevel(0,1); G.state = st0; show(sc0);
+          ok('controls: every key the field manual advertises actually answers',
+             mute.length === 0, mute.join(' | ') || want.size + ' keys, all live');
+          ok('controls: ...and the manual is being read, not an empty list',
+             want.size >= 18, want.size + ' keys parsed from ' + rows.length + ' rows');
+          G.state = 'play'; show(null);
+        } else ok('controls: every key the field manual advertises answers', true,
+                  'the touch manual names pads, not keys');
+
+        /* A character a mission author types that the loader does not answer
+           becomes FLOOR, silently: the flood-fill audit still passes (a hole
+           in a wall is still reachable), the roster tables still pass (they
+           count what spawned, not what was asked for), and the only symptom is
+           a medkit that is not there. Ask it behaviourally so there is no
+           table to drift from the switch: put each character used anywhere in
+           the campaign alone in a sealed room and require it to leave a mark. */
+        { const BLANK = new Set([' ', '.', 'P']);   // floor, floor, the spawn
+          const used = new Set();
+          for (const Lv of LEVELS) for (const row of Lv.map) for (const ch of row)
+            if (!BLANK.has(ch)) used.add(ch);
+          const proto = LEVELS[0];
+          const probe = { ...proto, code:'ZZZ', name:'PROBE', objectives:[],
+                          zones:null, agentSkip:null, map:null };
+          const inert = [];
+          LEVELS.push(probe);
+          const li = LEVELS.length - 1, sel0 = selLevel, d0 = G.diff;
+          try {
+            for (const ch of used){
+              probe.map = ['#####', '#   #', '#'+ch+'  #', '#P  #', '#####'];
+              /* di 2 — 'U' is a 00-only spawn and would read as inert below it */
+              loadLevel(li, 2);
+              const c = idx(1, 2);
+              const marked = !!G.solid[c] ||
+                G.ents.some(e => Math.abs(e.x - 1.5) < .6 && Math.abs(e.y - 2.5) < .6);
+              if (!marked) inert.push(JSON.stringify(ch));
+            }
+          } finally {
+            LEVELS.pop(); selLevel = sel0; G.diff = d0;
+            loadLevel(0, 1); G.state = 'play';
+          }
+          ok('maps: every character a mission uses leaves a mark on the level',
+             inert.length === 0,
+             inert.length ? 'silently ignored: ' + inert.join(' ')
+                          : used.size + ' characters, all answered'); }
+
+        /* Everything the select screen and the debrief print through fmt() is a
+           CLOCK, and the blob behind it is a text file the player can edit. Ask
+           the total question — is there ANY input fmt cannot say — rather than
+           the remembered one, which was "does a stored -61 print -2:0-1". The
+           floor was fixed when that was found; the ceiling was left open, and
+           1e308 printed BEST 1.66e+306:56 on MISSION SELECT. */
+        { const junk = [NaN, Infinity, -Infinity, -1, -0.001, null, undefined,
+                        '12', {}, [], 1e308, FMT_MAX + 1];
+          const said = junk.map(v => fmt(v));
+          const bad = said.filter(t => !/^(--:--|\d+:[0-5]\d)$/.test(t));
+          ok('fmt: there is no value it cannot say as a clock', bad.length === 0,
+             bad.join(' ') || said.join(' '));
+          /* and it still says the real ones */
+          ok('fmt: ...while a real time still reads as one',
+             fmt(0) === '0:00' && fmt(61) === '1:01' && fmt(FMT_MAX) === '1440:00',
+             fmt(0)+' '+fmt(61)+' '+fmt(FMT_MAX)); }
+
+        /* ...and the store never hands it one of those in the first place */
+        { const raw0 = localStorage.getItem(SAVE_KEY);
+          const kept = [];
+          for (const t of ['null', '"soon"', '-1', '1e308', String(FMT_MAX + 1),
+                           'null', '99.5']){
+            try { localStorage.setItem(SAVE_KEY, '{"v":2,"best":{"M01:1":{"time":' + t +
+                    ',"acc":50,"rank":"","win":true}}}'); } catch(_){}
+            for (const k in BEST) delete BEST[k];
+            loadSettings();
+            kept.push(t + '=>' + (BEST['M01:1'] ? BEST['M01:1'].time : 'rejected'));
+          }
+          ok('best: only a time a clock can say is kept',
+             kept.slice(0,6).every(x => /rejected$/.test(x)) && /99\.5$/.test(kept[6]),
+             kept.join(' '));
+          for (const k in BEST) delete BEST[k];
+          try { raw0 === null ? localStorage.removeItem(SAVE_KEY)
+                              : localStorage.setItem(SAVE_KEY, raw0); } catch(_){}
+          loadSettings(); }
+
         /* ...and the same question for the audio scratch state. A.stepI is the
            footstep phase index derived from P.bob; left behind when P.bob was
            reset, the first walking frame of a new mission played a step nobody
@@ -6921,9 +7087,12 @@ function loadSettings(){
         if (!m || !V1_CODES[+m[1]]) continue;
         bk = V1_CODES[+m[1]] + ':' + m[2];
       } else if (!/^M\d\d:[0-2]$/.test(k)) continue;   // junk diffs ('M01:9') used to persist forever
-      /* time >= 0 (a stored -61 rendered "BEST -2:0-1") and rank whitelisted
-         against the real names — it reaches the select screen as innerHTML */
-      if (b && typeof b.time === 'number' && isFinite(b.time) && b.time >= 0)
+      /* time inside what a clock can say (a stored -61 rendered "BEST -2:0-1";
+         1e308 rendered "BEST 1.66e+306:56" — the floor was fixed and the
+         ceiling left open) and rank whitelisted against the real names, since
+         it reaches the select screen as innerHTML */
+      if (b && typeof b.time === 'number' && isFinite(b.time) &&
+          b.time >= 0 && b.time <= FMT_MAX)
         BEST[bk] = { time:b.time, acc:num(b.acc,0,100,0),
                      rank:RANKS.includes(b.rank) ? b.rank : '', win:b.win === true };
     }
