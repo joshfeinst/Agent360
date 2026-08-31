@@ -26,15 +26,22 @@ async function launch() {
   }
 }
 
-/* ---- version discipline: the game and its service worker must agree ---- */
-function versionCheck() {
+/* ---- source discipline: things that must be right BEFORE any script runs ---- */
+function sourceCheck() {
   const html = fs.readFileSync(target, 'utf8');
   const sw = fs.readFileSync(path.join(path.dirname(target), 'sw.js'), 'utf8');
   const hv = (html.match(/const VERSION = '([^']+)'/) || [])[1];
   const sv = (sw.match(/const CACHE = 'agent360-v([^']+)'/) || [])[1];
-  const ok = hv && sv && hv === sv;
-  console.log('VERSION index.html v' + hv + ' / sw.js v' + sv + (ok ? ' — in step' : ' — MISMATCH'));
-  return ok;
+  const vOK = hv && sv && hv === sv;
+  console.log('VERSION index.html v' + hv + ' / sw.js v' + sv + (vOK ? ' — in step' : ' — MISMATCH'));
+  /* syncTitleHint() rewrites the title how-to the moment scripts run, but the
+     FIRST paint is the static string — and that string described DRAG while
+     desktop ships CAPTURE. The F4 suite can only see the rewritten one. */
+  const cap = (html.match(/const TITLE_HINT = \{\s*capture:\s*'([^']+)'/) || [])[1];
+  const stat = (html.match(/id="titlehint">([^<]+)</) || [])[1];
+  const hOK = !!cap && !!stat && stat.indexOf(cap) === 0;
+  console.log('TITLE HINT static default ' + (hOK ? 'matches the shipped look mode' : 'DRIFTED from TITLE_HINT.capture'));
+  return vOK && hOK;
 }
 
 async function wirePage(page, errors, resourceErrs) {
@@ -174,7 +181,7 @@ async function runTouchDrive(page) {
 
 (async () => {
   let bad = 0;
-  if (!versionCheck()) bad++;
+  if (!sourceCheck()) bad++;
 
   const browser = await launch();
 

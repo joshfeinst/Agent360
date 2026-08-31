@@ -62,9 +62,15 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
     return true;
   };
   /* hold-surfaces: a synthetic finger with an identity, at real client rects */
-  const finger = (page, type, sel, dx, dy) => page.evaluate(([type, sel, dx, dy]) => {
+  /* One identifier per CONTROL, not one for the whole harness: with every
+     synthetic finger sharing id 9 the two pads took the same owner slot, so
+     'both pads at once' passed without a second touch ever existing and one
+     lift silently zeroed the other pad. The checks could not fail. */
+  const FID = {};
+  let nextFid = 10;
+  const finger = (page, type, sel, dx, dy) => page.evaluate(([type, sel, dx, dy, id]) => {
     const el = document.querySelector(sel), r = el.getBoundingClientRect();
-    const t = new Touch({ identifier: 9, target: el,
+    const t = new Touch({ identifier: id, target: el,
       clientX: r.left + r.width/2 + (dx||0)*r.width/2,
       clientY: r.top + r.height/2 + (dy||0)*r.height/2 });
     /* always on the element: a real touchend fires on the touch's ORIGINAL
@@ -72,7 +78,7 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
        element, and a window-only dispatch never reaches them */
     el.dispatchEvent(new TouchEvent(type, {
       bubbles:true, cancelable:true, changedTouches:[t], touches: type==='touchend' ? [] : [t] }));
-  }, [type, sel, dx, dy]);
+  }, [type, sel, dx, dy, (FID[sel] = FID[sel] || ++nextFid)]);
 
   console.log('AGENT 360 ON A PHONE — 844x390 landscape, taps only, no keyboard\n');
 
@@ -165,6 +171,55 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
   const stopped = await page.evaluate(() => !held.tx && !held.ty && !held.run);
   step('...and stops when the finger lifts', stopped);
 
+  /* 6b. the RIGHT pad turns without a drag, and both thumbs work at once */
+  const a0 = await page.evaluate(() => P.ang);
+  await finger(page, 'touchstart', '#tlook', .99, 0);
+  await page.waitForTimeout(500);
+  const turned = await page.evaluate((a) => {
+    const d = (P.ang - a) % (Math.PI*2);
+    return { d: Math.abs(d > Math.PI ? d - Math.PI*2 : d), rx: P.rx };
+  }, a0);
+  step('the right pad turns the view', turned.d > .3, turned.d.toFixed(2) + ' rad in .5s');
+  step('...without shoving the reticle', turned.rx === 0);
+  /* the whole point of two pads: walk and look at the same time */
+  const both0 = await page.evaluate(() => ({ x: P.x, y: P.y, a: P.ang }));
+  await finger(page, 'touchstart', '#tstick', 0, -.99);
+  await page.waitForTimeout(400);
+  const both = await page.evaluate((b) => ({
+    moved: Math.hypot(P.x - b.x, P.y - b.y) > .3, turnedToo: Math.abs(P.ang - b.a) > .1 }), both0);
+  step('both pads drive at once — walk while turning', both.moved && both.turnedToo,
+       'moved=' + both.moved + ' turned=' + both.turnedToo);
+  await finger(page, 'touchend', '#tstick', 0, -.99);
+  await finger(page, 'touchend', '#tlook', .99, 0);
+  const padStop = await page.evaluate(() => !held.lx && !held.ly && !held.tx && !held.ty);
+  step('...and both stop on release', padStop);
+
+  /* 6c. nothing in the cluster lands on anything else, at any phone size */
+  for (const [w, h, label] of [[844,390,'844x390'], [667,375,'667x375']]){
+    await page.setViewportSize({ width:w, height:h });
+    await page.waitForTimeout(120);
+    const geo = await page.evaluate(() => {
+      const ids = ['tstick','tlook','tfire','tuse','taim','trel','tswap','tcrouch','tpause'];
+      const R = {}, bad = { over:[], small:[] };
+      for (const id of ids){
+        const r = document.getElementById(id).getBoundingClientRect();
+        R[id] = r;
+        if (r.width < 44 || r.height < 44) bad.small.push(id);
+      }
+      const k = Object.keys(R);
+      for (let i=0;i<k.length;i++) for (let j=i+1;j<k.length;j++){
+        const a = R[k[i]], b = R[k[j]];
+        if (Math.min(a.right,b.right) - Math.max(a.left,b.left) > 0 &&
+            Math.min(a.bottom,b.bottom) - Math.max(a.top,b.top) > 0) bad.over.push(k[i]+'/'+k[j]);
+      }
+      return bad;
+    });
+    step('cluster is collision-free at ' + label, geo.over.length === 0, geo.over.join(' '));
+    step('...every control still clears 44px at ' + label, geo.small.length === 0, geo.small.join(' '));
+  }
+  await page.setViewportSize({ width:844, height:390 });
+  await page.waitForTimeout(120);
+
   /* 7. FIRE fires, AIM latches */
   const shots0 = await page.evaluate(() => G.shots);
   await finger(page, 'touchstart', '#tfire', 0, 0);
@@ -172,6 +227,14 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
   await finger(page, 'touchend', '#tfire', 0, 0);
   step('FIRE fires the sidearm', await page.evaluate((s) => G.shots > s, shots0),
        'shots ' + shots0 + ' -> ' + await page.evaluate(() => G.shots));
+  /* ...and so does a tap on the world, which is how the off hand shoots while
+     the right thumb is busy holding a turn */
+  const shotsT = await page.evaluate(() => { P.fireCd = 0; return G.shots; });
+  await finger(page, 'touchstart', '#view', -.3, -.3);
+  await finger(page, 'touchend', '#view', -.3, -.3);
+  await page.waitForTimeout(120);
+  step('a tap on the view fires too', await page.evaluate((s) => G.shots > s, shotsT),
+       'shots ' + shotsT + ' -> ' + await page.evaluate(() => G.shots));
   await finger(page, 'touchstart', '#taim', 0, 0);
   await finger(page, 'touchend', '#taim', 0, 0);
   step('AIM latches without a held thumb', await page.evaluate(() =>
@@ -186,8 +249,42 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
   await page.waitForTimeout(300);
   step('the PAUSE button opens the field watch', await page.evaluate(() => G.state === 'pause') &&
        (await shown(page)) === 's-pause', await shown(page));
-  step('RESUME returns to play', await tapEl(page, '#s-pause [data-act="resume"]') &&
+  /* A paused game has to show a way out. The watch is taller than the frame on
+     every landscape phone, and show() switches the cluster off at the same
+     instant — taking the pause button with it — so an action row below the fold
+     leaves a paused player with nothing on screen to press and no scrollbar to
+     say the panel scrolls. Measured with no scrolling of any kind. */
+  const watch = await page.evaluate(() => {
+    const sc = document.getElementById('s-pause');
+    const rows = [...sc.querySelectorAll('.row button')].map(b => {
+      const r = b.getBoundingClientRect();
+      const mid = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+      return { t: (b.textContent||'').trim(), top: Math.round(r.top),
+               on: r.top >= 0 && r.bottom <= innerHeight, hit: !!mid && b.contains(mid) };
+    });
+    return { scrollTop: sc.scrollTop, rows, cluster: document.getElementById('touch').classList.contains('on') };
+  });
+  step('the watch shows its way out without scrolling',
+       watch.rows.length > 0 && watch.rows.every(r => r.on && r.hit) && watch.scrollTop === 0,
+       watch.rows.map(r => r.t + '@' + r.top + (r.on && r.hit ? '' : ' OFF')).join(', ') +
+       (watch.cluster ? '' : ' (cluster hidden)'));
+  /* ...and it must answer a finger while ANOTHER one rests on the glass: a tap
+     only becomes a click when it is the only touch point, so a thumb parked on
+     the frame used to make every menu control inert. */
+  const cdp = await ctx.newCDPSession(page);
+  const rb = await page.evaluate(() => {
+    const b = document.querySelector('#s-pause [data-act="resume"]'), r = b.getBoundingClientRect();
+    return { x: r.left + r.width/2, y: r.top + r.height/2 };
+  });
+  const rest = { x:120, y:200 };                 // a thumb parked on the panel, on no control
+  const touchEv = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints:pts });
+  await touchEv('touchStart', [{ ...rest, id:1 }]);
+  await touchEv('touchStart', [{ ...rest, id:1 }, { x:rb.x, y:rb.y, id:2 }]);
+  await touchEv('touchEnd',   [{ x:rb.x, y:rb.y, id:2 }]);
+  await page.waitForTimeout(300);
+  step('RESUME returns to play, with a second finger resting on the glass',
        await page.evaluate(() => G.state === 'play'), 'state ' + await page.evaluate(() => G.state));
+  await touchEv('touchEnd', [{ ...rest, id:1 }]);
 
   /* 9. control sizes, in the state that matters — mid-mission cluster */
   const small = await page.evaluate((min) => {

@@ -43,10 +43,12 @@ self-test **F4** · input diagnostics **F3 / F2**. Every action has a
 right-hand mirror for left-handed mouse users; the in-game CONTROLS screen has
 the full list.
 
-**On a phone it works out that it's a phone.** The left pad moves — push it to
-the rim and you sprint — dragging the view looks, and FIRE, AIM, RELOAD, GUN,
-USE, CROUCH and PAUSE sit where thumbs already are, every one of them at least
-44px. The pause screen's field watch stands in for Tab's floor plan. Landscape
+**On a phone it works out that it's a phone.** Two pads: the left one moves —
+push it to the rim and you sprint — and the right one looks, so you can walk
+and turn at once instead of choosing. Dragging the view still looks if you
+prefer it, a tap on the view shoots, and FIRE, AIM, RELOAD, GUN, USE, CROUCH
+and PAUSE cluster around whichever pad the thumb is already on, every one of
+them at least 44px. The pause screen's field watch stands in for Tab's floor plan. Landscape
 is the better way to hold it; installed from *Add to Home Screen*, it launches
 fullscreen. Settings and per-mission bests survive reloads, and cheated runs
 are never recorded.
@@ -138,9 +140,25 @@ the aim assist stopped courting an invulnerable boss, and secret caches
 stopped advertising themselves on the radar. Ledger as always:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.22 · v1.23
+
+Ten player sessions, each handed the game cold and told to play it, then every
+anomaly they filed cross-examined by a paired skeptic: 39 reported, 29
+confirmed, 10 refuted. The phone half landed first — a reachable pause screen,
+menus that answer a finger with a thumb already on the glass, one owner per
+look drag, held keys that survive a pause, twin-pad tuning. The desk half
+followed: the title screen stopped teaching a control scheme it does not ship,
+MISSION SELECT stopped promising objective counts three of the five missions
+never had, your clearance survives a reload (and stops hiding your own best
+times), P actually turns the scanlines off for good, the menus gave up a
+blur that cost 38fps at 720p and showed nothing, the mission clock stopped
+under-counting on a slow device, and the radar and floor plan gave five
+different things five different shapes. Ledger:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## Development
 
-- **F4** runs the in-game self-test suite — **243 assertions**: level
+- **F4** runs the in-game self-test suite — **316 assertions**: level
   reachability audits, input model invariants (pointer-lock linearity,
   free-look symmetry, aim-assist never fighting the player's turn), movement
   and collision checks, touch-cluster behaviour, palette and zone rendering,
@@ -150,11 +168,15 @@ stopped advertising themselves on the radar. Ledger as always:
   length, so a new mission is soaked the day it lands —
   then does it all again in a phone context (844×390, touch events driving
   the real cluster) and once more stepping the sim at 144 Hz and 30 Hz to
-  prove frame-rate invariance. It also checks the `index.html`/`sw.js`
-  version lockstep: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
+  prove frame-rate invariance. It also reads the source for the things that
+  have to be right before a script runs — the `index.html`/`sw.js` version
+  lockstep, and the title screen's static how-to matching the look mode the
+  build ships: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
 - `tools/touch.js` is a phone-finger walkthrough: boot skipped, every menu
   visited, a mission started, walked, fired, paused and resumed by taps
-  alone, with 44px tap-target and screen-utilization measurements.
+  alone, with 44px tap-target and screen-utilization measurements. It also
+  proves the paused watch shows its way out without scrolling, and that a menu
+  row still answers a finger while a second one rests on the glass.
 - `tools/visual.js` measures the rendered glyph boxes of every text element
   on every DOM overlay screen — zero-height, clipped or painted-over text
   fails the run — at desktop and phone viewports.
