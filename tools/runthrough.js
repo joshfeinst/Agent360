@@ -22,9 +22,19 @@ const fs = require('fs');
 const path = require('path');
 
 const target = process.argv[2];
-const LEVEL_ARG = process.argv[3] || 'all';
-const DIFF_ARG = process.argv[4] || 'all';
+/* positional args, flags removed first — `runthrough index.html --thumb` is the
+   form the docs describe, and reading argv[3] blind made it the level index,
+   loaded LEVELS[NaN] and crashed the harness. */
+const POS = process.argv.slice(3).filter(a => !a.startsWith('--'));
+const LEVEL_ARG = POS[0] || 'all';
+const DIFF_ARG = POS[1] || 'all';
 const TRACE = process.argv.includes('--trace');   // per-half-second bot telemetry, for par calibration
+/* --thumb plays the game the way a PHONE does: the right pad's rim rate
+   instead of a wrist flick, and a thumb's reaction time before it answers a
+   new threat. The desktop bot turns at 4.5 rad/s the instant it decides to;
+   a pad tops out at TPAD_TURN and a hand needs ~200ms to start. Difficulty
+   that only shows up here is difficulty the phone is carrying alone. */
+const THUMB = process.argv.includes('--thumb');
 const MAX_TRIES = 5;          // attempts per combo; deaths beyond these fail it
 const MAX_SEC = 420;          // sim-seconds per attempt — >2.3x the slowest par
 
@@ -50,7 +60,7 @@ async function launch() {
 
   const combos = await page.evaluate(() => ({ levels: LEVELS.map(L => L.code), diffs: DIFFS.map(d => d.name) }));
 
-  const run = (li, di, seed) => page.evaluate(({ li, di, seed, MAX_TRIES, MAX_SEC, TRACE }) => {
+  const run = (li, di, seed) => page.evaluate(({ li, di, seed, MAX_TRIES, MAX_SEC, TRACE, THUMB }) => {
     /* deterministic runs: a seeded RNG swapped in for the duration */
     const mulberry32 = a => () => {
       a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -148,6 +158,9 @@ async function launch() {
         startMission(false); clearInput();
         let t = 0, replan = 0, tgt = null, stuckT = 0, lx = P.x, ly = P.y;
         let strafe = 1, strafeT = 0, swapT = -9, exc = null;
+        /* thumb profile: the look pad's rim rate, and a hand's delay before it
+           answers. TPAD_TURN is the game's own constant, read live. */
+        const THUMB_TURN = (typeof TPAD_TURN === 'number' ? TPAD_TURN : 3.1);
         try {
           while (t < MAX_SEC && G.state === 'play') {
             t += dt; replan -= dt;
@@ -325,8 +338,23 @@ async function launch() {
               }
             } else { held.fwd = held.back = held.left = held.right = false; }
 
-            /* a human turn, not a teleport: bounded 4.5 rad/s toward the goal */
-            P.ang += clamp(angDiff(P.ang, wantAng), -4.5 * dt, 4.5 * dt);
+            /* a human turn, not a teleport: bounded toward the goal. On thumb
+               profile the bound is the look pad's own rim rate, and the goal
+               is one reaction-time stale, because that is what a phone can
+               actually deliver. */
+            if (THUMB){
+              /* A thumb turns at the pad's rim rate, and a phone player who is
+                 badly mis-aimed STOPS and turns rather than walking a wide arc
+                 — the desktop bot's 4.5 rad/s hides that entirely. Reaction
+                 lag belongs on answering a NEW threat, not on steering, or the
+                 bot cannot navigate at all (measured: 0 objectives in 420s). */
+              const err = Math.abs(angDiff(P.ang, wantAng));
+              if (err > .9){ held.fwd = false; held.run = false; }
+              else if (err > .45) held.run = false;
+              P.ang += clamp(angDiff(P.ang, wantAng), -THUMB_TURN * dt, THUMB_TURN * dt);
+            } else {
+              P.ang += clamp(angDiff(P.ang, wantAng), -4.5 * dt, 4.5 * dt);
+            }
 
             /* wedged against geometry (or waiting out a door): sidestep, and
                if that fails long enough, throw the plan away and re-path */
@@ -365,7 +393,7 @@ async function launch() {
       if (typeof show === 'function') show('s-title');
       return out;
     } finally { Math.random = saveRandom; A.sfxVol = sv0; }
-  }, { li, di, seed, MAX_TRIES, MAX_SEC, TRACE });
+  }, { li, di, seed, MAX_TRIES, MAX_SEC, TRACE, THUMB });
 
   const wantL = LEVEL_ARG === 'all' ? combos.levels.map((_, i) => i) : [+LEVEL_ARG];
   const wantD = DIFF_ARG === 'all' ? combos.diffs.map((_, i) => i) : [+DIFF_ARG];
