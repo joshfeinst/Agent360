@@ -35,10 +35,15 @@ self.addEventListener('install', e => {
   }).then(() => self.skipWaiting()));
 });
 
+/* Our own buckets only. A Cache Storage bucket is per-ORIGIN, not per-app, and
+   this game shares joshfeinst.github.io with its sibling project — so deleting
+   every key that was not ours threw away another app's offline cache on every
+   release of this one. Scope by prefix and leave the neighbours alone. */
+const MINE = k => k.startsWith('agent360-');
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(ks => Promise.all(ks.filter(k => MINE(k) && k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -51,7 +56,11 @@ self.addEventListener('fetch', e => {
     e.respondWith(
       fetch(e.request)
         .then(r => {
-          if (r.ok) caches.open(CACHE).then(c => c.put(e.request, r.clone()));
+          /* Clone SYNCHRONOUSLY, before the response is handed back: by the
+             time caches.open() resolved, the page had already begun reading
+             the body, so every runtime put threw 'body already used' and the
+             cache only ever held what install() precached. */
+          if (r.ok){ const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
           return r;
         })
         .catch(() =>
@@ -66,7 +75,7 @@ self.addEventListener('fetch', e => {
       caches.match(e.request).then(m => {
         const net = fetch(e.request)
           .then(r => {
-            if (r.ok) caches.open(CACHE).then(c => c.put(e.request, r.clone()));
+            if (r.ok){ const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
             return r;
           })
           .catch(() => m);

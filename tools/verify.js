@@ -32,6 +32,16 @@ function sourceCheck() {
   const sw = fs.readFileSync(path.join(path.dirname(target), 'sw.js'), 'utf8');
   const hv = (html.match(/const VERSION = '([^']+)'/) || [])[1];
   const sv = (sw.match(/const CACHE = 'agent360-v([^']+)'/) || [])[1];
+  /* A Cache Storage bucket is per-ORIGIN: this game shares its host with a
+     sibling project, so the service worker must only ever delete its OWN
+     buckets. Unscoped cleanup threw away the neighbour's offline cache on
+     every release of this one. */
+  const swScoped = /ks\.filter\(k => MINE\(k\)/.test(sw) && /startsWith\('agent360-'\)/.test(sw);
+  console.log('SW CACHE cleanup is scoped to agent360-* ' + (swScoped ? '— yes' : '— NO, IT DELETES THE ORIGIN'));
+  /* And a runtime put must clone BEFORE the response reaches the page, or the
+     body is already being read and every write throws. */
+  const swClone = !/c\.put\(e\.request, r\.clone\(\)\)/.test(sw);
+  console.log('SW runtime caching clones before handing off ' + (swClone ? '— yes' : '— NO, EVERY PUT THROWS'));
   const vOK = hv && sv && hv === sv;
   console.log('VERSION index.html v' + hv + ' / sw.js v' + sv + (vOK ? ' — in step' : ' — MISMATCH'));
   /* syncTitleHint() rewrites the title how-to the moment scripts run, but the
