@@ -130,9 +130,68 @@ One latent fault survived scrutiny.
 | **3 · Playing worse never ranks better** | An assertion over 240 combinations of time, accuracy, damage taken and clearance | The review is four thresholds and a clamp. Nothing checked that they point the same way. All four axes are monotonic, and both extremes of the ladder are reachable | Mutation-verified: swap the accuracy bands so `>= .5` scores less than `>= .28`, and it fails with `missing more ranks higher`. The SLA verdict is asserted at its own boundary too — exactly on par is MET, a hundredth over is not |
 | **What the evidence did not support** | Six reports, none of which became a fix | **Sprite pixels leak through walls** — 25 differing pixels on every mission, at x339-343 y35-39: the radar corner. With the radar off the frames are identical, so the depth buffer occludes exactly. **Cheated runs record bests** — the probe set `G.cheats.god` directly; driven through the actual cheat rows, all six set `G.tainted` at the toggle and record nothing. **The debrief never prints its promised asterisk** — it does, `SOLUTIONS ARCHITECT *Note* cheats were enabled`; a 160-character sample had cut it off. **Decals grow without bound** — they plateau at 48 over ten minutes of continuous fire, entities oscillating 53-82. **Web Audio leaks nodes** — `SFXLAST` plateaus at 11 keys, one per distinct sound played. **The campaign chain breaks** — all five missions file, `campaignDone` sets |
 
+---
+
+# Night log — the second player-session round
+
+Six personas, each handed the game cold on its own device profile and told to
+play: a first-timer on a laptop, a speedrunner chasing M03 on 00 AGENT, a
+commuter on a landscape phone, a player who rotates mid-mission, a settings
+tinkerer who barely plays, and a tablet with a keyboard folio. Every anomaly
+went to a paired skeptic to be reproduced independently.
+
+**The skeptics came back 46 filed, 46 confirmed, 0 refuted — and that ratio is
+itself a finding.** The previous round of this shape ran 39/29/10. A pass with
+no refutations means the cross-examination was agreeing rather than testing, so
+every claim below was reproduced a third time here before anything was changed;
+three did not survive that. What follows is what I could make happen myself.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · One denominator** | The HUD's objective line moved into `objLine()`, which counts what the briefing, the watch and the debrief count — the exit included — and says HEAD FOR THE EXIT rather than a number that is not true | Four personas filed this independently from four device profiles. `objsLeft()` filters `kind!=='exit'` and fed the HUD; `gotoBrief` and `endMission` count all of them. M01 on AGENT opens on a four-item briefing reading **"3 OBJ LEFT"**, and the moment the last chore clears it turns green on **"ALL OBJ DONE"** with the watch still listing the exit 74m away — then the debrief scores you "3 of 4" | Asserted as the agreement, not the arithmetic: 15 mission x clearance pairs, HUD against briefing, plus the exit-outstanding case. Mutation-verified — restore the old line and it fails naming every pair |
+| **2 · The letters you are given** | `loadLevel` re-letters objectives A, B, C… after the clearance filter; the authored tags stay in `LEVELS` as documentation | Tags are absolute in the level table, so filtering the 00-only audit objective left M01 briefing **A, B, C, E** and M05 briefing **A, B, D** — a player counting letters concludes they have missed one. Nine of the fifteen clearance pairs had a gap | Asserted over all fifteen; mutation-verified, and the failure prints the actual sequences |
+| **3 · The board shows the clock you were shown** | `BEST[k].time` floors to centiseconds instead of rounding | The debrief prints `fmt(G.time)`, which floors; the store rounded, so above `.995` it crossed a second. A run finishing at **59.996s reads 0:59 on the debrief and 1:00 on MISSION SELECT** — the board crediting a second nobody spent. Measured across five times either side of a boundary | Mutation-verified: `42.995: shown 0:42 stored 0:43`, `59.996: 0:59 / 1:00`, `119.999: 1:59 / 2:00` |
+| **4 · Half a remembered choice** | `selLevel` joins `diff` in the saved blob, validated 0..LEVELS.length | The clearance survived a reload and the mission did not, so the select screen reopened on M01 wearing the player's rung. The suite's own "persistence snapshot covers every saved field" guard caught the new field the moment it was added — which is what it was written for | Round-trip asserted beside the clearance's |
+| **5 · ENTER answers the screen** | On the debrief, ENTER clicks the screen's own primary button — whichever it currently is — instead of `act('abort')` | Every other screen's ENTER runs its primary action: title opens MISSION SELECT, select reads the briefing, the briefing starts the mission. The debrief was the one screen where the advertised gold button and the key did different things: it threw the player to the title. Two personas filed it | Asserted on both the win and the loss debrief, whose primary buttons differ (NEXT MISSION / RETRY), with Esc still leaving. Mutation-verified: `win debrief ENTER left to the title past "REPLAY"` |
+| **6 · Two hands, two sources** | `use`, `sprint` and `crouch` each get the two-source treatment FIRE and AIM always had: the touch half on `TIN`/`M`, the keyboard half on `held`, and nothing reads either alone | On a tablet these were one boolean each, so whichever device wrote last won. Measured: a keyboard **F** tap cancels a hack at `prog 0.474` with the thumb still on USE; a **Shift** tap drops a sprint the pad is still asking for (**speed 1.48 → 1.00**, and it stays there); a **C** tap leaves the CRCH lamp lit over a camera that has stood up, so the obvious fix — tapping CRCH — crouches you again | Asserted as the rule, not the three cases: neither device may cancel what the other is holding. Mutation-verified, all three named in one failure |
+| **7 · The reset that broke the stick** | A pad with no owner adopts a finger already on it; `clearInput` restores the four axes as numbers rather than the blanket `false` | **Backspace is sold on the CONTROLS screen as "Reset stuck input"** and it dropped the pad owners while the thumb was still on the glass: the stick stayed dead through four fresh deflections until the finger lifted and came back. The blanket clear also left `held.tx`/`ty` as `false` rather than `0`, working only because the movement code reads them as falsy | Mutation-verified: `ty=false` before, `ty=-1` after |
+| **8 · A swipe is not a navigation** | `overscroll-behavior:none` on the document and `touch-action:pan-y` on the surround | One horizontal drag on the black letterbox — **58% of a landscape phone's screen** — navigated the browser back to `about:blank` and the run was gone, unrecoverable by any in-game control. The document is not scrollable, so this costs nothing a player wanted; `.screen` keeps its own `pan-y` | Confirmed live: `page.url()` became `about:blank` with `typeof G` undefined. After: `overscrollBehaviorX: none`, `#stage touch-action: pan-y` |
+| **9 · The manual a phone cannot use** | The desktop key table takes `no-touch`, like the pointer-lock paragraph above it | A phone was served **19 rows of keyboard bindings** telling a thumb to press N, Tab and Backspace, pushing BACK 617px below the fold. Panel height on a landscape phone **941px → 558px** | The field-manual assertion still reads all 37 keys on desktop, where the panel renders |
+| **What did not survive a third look** | Three of the "confirmed" reports | **"The portrait debrief shows no button at all, 185px below the frame"** — measured at 390x844 the buttons sit at y739 and y791, on screen. The panel does overflow its own scrollport, which is a smaller and different complaint. **"Mission select in portrait shows none of the clearance buttons"** — the difflist's top is at y760 of 844, reachable. **"The BEST line reports a run one second slower"** — only when the fractional second is ≥ .995, about one run in two hundred, not the general case filed |
+
+### Still open, measured, not guessed at
+
+Reported and reproduced, but each needs a decision rather than a patch, so none
+was changed on a hunch:
+
+- **The input model is decided once, by a media query.** `isTouch` is a single
+  `hover:none and pointer:coarse` read at load, and it gates look, fire, the
+  touch cluster, and which Options rows exist. On a device that answers coarse
+  *and* has a pointer, the trackpad drives every menu and then goes dead for
+  look, fire and aim the instant the mission starts, while the cursor is still
+  a crosshair and CONTROLS still promises all three. Deciding per-event instead
+  risks reintroducing the letterbox-tap-fires-the-gun bug a previous round
+  fixed; this wants a real device, not an emulator.
+- **43% of a landscape phone is black.** `fit()` snaps to 1.5x at dpr 2, so
+  #frame is 576x324 in an 844x390 viewport and the cluster — positioned against
+  the frame — puts the move pad's outer edge 151px inboard of the screen edge
+  the thumb actually rests on.
+- **A 216px scrollport in portrait.** The pinned action row is 96px of it, 44%,
+  at every scroll offset; the pause panel is 1077px of content behind it.
+- **The waypoint plate covers the crosshair** for any bearing within ~15° of
+  straight ahead — the moment you are aiming at the thing it points to.
+- **The chevron points through a locked door**: on M03 with no keycard it aims
+  at the audit terminal sealed inside the loading bay rather than at the keycard
+  that would open it.
+- CONTROLS' BACK sits 177px below the fold at 1280x720 with no scroll
+  affordance; the clearance chips are 53px below the fold on a landscape phone;
+  Options toasts land on the rows they are confirming, and follow you back to
+  the watch; and the AGENT and SECRET AGENT blurbs promise a tasking difference
+  that M01 and M03 do not have.
+
 ## Standing numbers
 
-- **Self-tests:** 372 desktop / 373 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 382 desktop / 383 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -144,5 +203,5 @@ One latent fault survived scrutiny.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.26'` (index.html) ↔ `agent360-v1.26`
+- **Versions:** game `VERSION = '1.27'` (index.html) ↔ `agent360-v1.27`
   (sw.js CACHE), enforced by verify.js

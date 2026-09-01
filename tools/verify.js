@@ -226,9 +226,9 @@ async function runTouchDrive(page) {
     const [sx, sy, sb] = mid(stick);
     ok('stick has geometry', sb.width > 10, sb.width + 'px');
     tev('touchstart', stick, at(sx, sy - sb.height / 2 * .99));
-    ok('full stick deflection sprints', held.run === true && held.ty < -.9, 'ty=' + held.ty + ' run=' + held.run);
+    ok('full stick deflection sprints', runHeld() === true && held.ty < -.9, 'ty=' + held.ty + ' run=' + runHeld());
     tev('touchend', window, at(sx, sy - sb.height / 2 * .99));
-    ok('stick release stops movement', !held.tx && !held.ty && !held.run);
+    ok('stick release stops movement', !held.tx && !held.ty && !runHeld());
 
     /* FIRE holds, AIM latches, PAUSE pauses */
     const fire = document.getElementById('tfire'); const [fx, fy] = mid(fire);
