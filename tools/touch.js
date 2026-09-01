@@ -164,11 +164,11 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
   await finger(page, 'touchstart', '#tstick', 0, -.99);
   await page.waitForTimeout(700);
   const walked = await page.evaluate((p0) =>
-    ({ d: Math.hypot(P.x - p0.x, P.y - p0.y), run: held.run }), p0);
+    ({ d: Math.hypot(P.x - p0.x, P.y - p0.y), run: runHeld() }), p0);
   await finger(page, 'touchend', '#tstick', 0, -.99);
   step('the stick walks the agent', walked.d > .5, walked.d.toFixed(2) + ' units in .7s');
   step('...at a sprint on the rim', walked.run === true);
-  const stopped = await page.evaluate(() => !held.tx && !held.ty && !held.run);
+  const stopped = await page.evaluate(() => !held.tx && !held.ty && !runHeld());
   step('...and stops when the finger lifts', stopped);
 
   /* 6b. the RIGHT pad turns without a drag, and both thumbs work at once */

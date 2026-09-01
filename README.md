@@ -195,9 +195,28 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.27
+
+Six scripted players were handed the game cold — a first-timer on a laptop, a
+speedrunner chasing M03, a commuter on a landscape phone, someone who rotates
+mid-mission, a settings tinkerer who barely plays, and a tablet with a keyboard
+folio — and each anomaly they filed was cross-examined before it counted. The
+one four of them found independently: the HUD counted objectives differently
+from the briefing, the field watch and the debrief, so a four-item mission
+opened at "3 OBJ LEFT" and went green on "ALL OBJ DONE" with the exit still
+seventy metres away. Objective letters skipped the ones a lower clearance
+filters out (A, B, C, E). A best time could be filed a second slower than the
+debrief that scored it. ENTER on the debrief threw you to the title past the
+gold button it advertises. On a tablet, a keyboard tap cancelled a hack, a
+sprint or a crouch the thumb was still holding — and Backspace, the key the
+manual sells as "Reset stuck input", was what killed the stick. A swipe on the
+black surround navigated the browser away mid-run. Ledger, including what was
+reported and did not survive:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## Development
 
-- **F4** runs the in-game self-test suite — **372 assertions** (373 in a touch
+- **F4** runs the in-game self-test suite — **382 assertions** (383 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the

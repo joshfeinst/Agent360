@@ -25,13 +25,21 @@
 }
 *{box-sizing:border-box}
 html,body{height:100%}
+/* A horizontal drag anywhere on the black surround — 58% of a landscape phone's
+   screen — was an overscroll gesture, so the browser navigated back and the run
+   was gone with no in-game way to recover it. The document is not scrollable
+   (body is overflow:hidden), so this costs nothing a player wanted; the menus
+   scroll inside .screen, which keeps its own pan-y. */
+html{overscroll-behavior:none}
 body{
   margin:0; background:var(--void); color:var(--paper);
-  font-family:var(--tech); overflow:hidden;
+  font-family:var(--tech); overflow:hidden; overscroll-behavior:none;
   -webkit-user-select:none; user-select:none; touch-action:manipulation;
 }
 canvas#view,#touch,#touch *{touch-action:none}
-#stage{position:fixed; inset:0; display:grid; place-items:center; background:
+/* pan-y, not none: .screen sits inside #stage and needs vertical scrolling, and
+   touch-action intersects down the ancestor chain */
+#stage{position:fixed; inset:0; display:grid; place-items:center; touch-action:pan-y; background:
   radial-gradient(ellipse at 50% 45%, #0b1420 0%, #05070c 70%, #000 100%);}
 #frame{position:relative; line-height:0; box-shadow:0 0 0 1px #1e3a52, 0 0 60px -10px #35d0ff33, 0 30px 80px -20px #000;}
 canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:block; background:#000; cursor:crosshair;}
@@ -339,7 +347,10 @@ body.touch .no-touch{display:none}
         <div class="ctl"><span>Crouch</span><span>CRCH — tap on, tap off</span></div>
         <div class="ctl"><span>Pause / floor plan</span><span>❚❚ — top right</span></div>
       </div>
-      <div class="grid2 panel">
+      <!-- no-touch, like the pointer-lock paragraph and the right-hand-mirror
+           line above it: on a phone this table is 19 rows of bindings for
+           hardware that is not there, and it pushed BACK 617px below the fold -->
+      <div class="grid2 panel no-touch">
         <div class="ctl"><span>Move / strafe</span><span>W A S D</span></div>
         <div class="ctl"><span>Move / strafe (left-handed)</span><span>↑ ↓ ← →</span></div>
         <div class="ctl"><span>Turn</span><span>Mouse · , and . · ← →</span></div>
@@ -451,7 +462,7 @@ body.touch .no-touch{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.26';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.27';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -596,6 +607,18 @@ function applyLayout(){
 }
 applyLayout();
 const held = Object.create(null);
+/* Three inputs have two sources. FIRE and AIM were always read as the OR of a
+   touch flag and a keyboard flag (`M.fire || held.fire`); use, crouch and
+   sprint each shared ONE boolean, so whichever device wrote last won — a
+   keyboard F tap cancelled a hack the thumb was still holding, a Shift tap
+   dropped a sprint the pad was still asking for, and the CRCH lamp went on
+   claiming a crouch the camera had already stood up from. Same shape as FIRE
+   now: the touch half lives on TIN / M, the keyboard half on `held`, and
+   nothing reads either one alone. */
+let TIN = null;                                    // set by the touch IIFE below
+const useHeld    = () => !!(held.use    || (TIN && TIN.use));
+const runHeld    = () => !!(held.run    || (TIN && TIN.run));
+const crouchHeld = () => !!(held.crouch || M.crouch);
 addEventListener('keydown', e => {
   /* Only claim gameplay keys while actually playing, so Space and Tab still
      operate the menus and the Options screen stays keyboard-accessible. */
@@ -632,7 +655,8 @@ function clearInput(keepHeld){
   if (!keepHeld){
     for (const k in held) held[k] = false;
     keys.clear();
-    M.fire = false; M.aim = false;
+    M.fire = false; M.aim = false; M.crouch = false;
+    if (TIN){ TIN.use = false; TIN.run = false; }
   }
   M.dragging = false; M.tapDone = false; M.fireEdge = 0; M.fireBuf = 0; M.pressNew = false; M.tlook = false;
   M.dx = 0; M.dy = 0; M.moved = 0; M.lx = null; M.ly = null; M.wheel = 0;
@@ -640,7 +664,9 @@ function clearInput(keepHeld){
   /* the look pad is a held axis like the move stick: an in-window pause that
      keeps one and drops the other resumed with a dead turn under a thumb that
      was still pushing, and a nub that went on claiming the deflection */
-  if (!keepHeld){ held.lx = 0; held.ly = 0; }
+  /* the four axes are NUMBERS — the blanket `= false` above leaves them as a
+     boolean the movement code then reads as falsy by luck */
+  if (!keepHeld){ held.lx = 0; held.ly = 0; held.tx = 0; held.ty = 0; }
   /* Reticle state lives on the player object, which is declared in a later
      script block, so reach it through a hook rather than a bare reference. */
   if (typeof resetLookState === 'function') resetLookState();
@@ -862,11 +888,17 @@ function unlock(){
   const lpad  = document.getElementById('tlook'), lnub = document.getElementById('tlooknub');
   /* look owns the drag; tap holds a SECOND finger on the view, which the
      Controls screen promises can still shoot while the first one turns */
-  const T = { move:null, aimpad:null, look:null, tap:null };
+  /* T.use and T.run are the TOUCH half of two inputs the keyboard also drives.
+     FIRE and AIM already worked this way — step() reads `M.fire || held.fire`
+     — while use, crouch and sprint shared one boolean each, so whichever device
+     wrote last won: a keyboard F tap cancelled a hack the thumb was still
+     holding, and a Shift tap dropped a sprint the thumb was still asking for. */
+  const T = { move:null, aimpad:null, look:null, tap:null, use:false, run:false };
+  TIN = T;                       // step() reads the OR of this and the keyboard
   /* Sprint lives on the stick rim with hysteresis: past .92 engages, and only
      easing back under .85 releases, so finger jitter at full deflection does
      not flutter run on and off every frame. */
-  const runGate = m => { if (m > .92) held.run = true; else if (m < .85) held.run = false; };
+  const runGate = m => { if (m > .92) T.run = true; else if (m < .85) T.run = false; };
   function padVec(t, el, nubEl, sprint){
     const r = el.getBoundingClientRect();
     /* A screen over the mission — the ❚❚ watch, the only pause a phone has —
@@ -898,6 +930,14 @@ function unlock(){
   padStart(lpad,  lnub, 'aimpad', v => { held.lx = v[0]; held.ly = v[1]; }, false);
   addEventListener('touchmove', e=>{
     for (const t of e.changedTouches){
+      /* A pad with no owner adopts a finger that is already on it. clearInput()
+         drops the owners — and Backspace, the key the field manual sells as
+         "Reset stuck input", calls it — so the one control advertised as the
+         fix for a stuck stick was what killed it: the thumb stayed down, the
+         pad stayed unbound, and no amount of pushing moved the agent until the
+         player lifted and replaced the finger. */
+      if (T.move === null && t.target && stick.contains(t.target)) T.move = t.identifier;
+      else if (T.aimpad === null && t.target && lpad.contains(t.target)) T.aimpad = t.identifier;
       if (t.identifier === T.move){ const v = padVec(t,stick,nub,true); if (v){ held.tx=v[0]; held.ty=v[1]; } }
       else if (t.identifier === T.aimpad){ const v = padVec(t,lpad,lnub,false); if (v){ held.lx=v[0]; held.ly=v[1]; } }
       else if (T.look && t.identifier === T.look.id){
@@ -938,7 +978,7 @@ function unlock(){
         Array.prototype.find.call(e.touches, x => x.identifier !== t.identifier && x.target && pad.contains(x.target));
       if (t.identifier===T.move){ const h = heirOn(stick);
         if (h){ T.move=h.identifier; const v=padVec(h,stick,nub,true); if (v){ held.tx=v[0]; held.ty=v[1]; } }
-        else { T.move=null; held.tx=held.ty=0; held.run=false; nub.style.transform=''; } }
+        else { T.move=null; held.tx=held.ty=0; T.run=false; nub.style.transform=''; } }
       if (t.identifier===T.aimpad){ const h = heirOn(lpad);
         if (h){ T.aimpad=h.identifier; const v=padVec(h,lpad,lnub,false); if (v){ held.lx=v[0]; held.ly=v[1]; } }
         else { T.aimpad=null; held.lx=held.ly=0; lnub.style.transform=''; } }
@@ -1002,7 +1042,7 @@ function unlock(){
        terminals hacked themselves by line of sight alone. */
     el.addEventListener('touchcancel',release); };
   bind('tfire',()=>{ M.fire=true; M.fireEdge=performance.now(); M.pressNew=true; },()=>M.fire=false);
-  bind('tuse',()=>held.use=true,()=>held.use=false);
+  bind('tuse',()=>T.use=true,()=>T.use=false);
   bind('tswap',()=>{ M.wheel += 1; });
   bind('trel',()=>startReload());
   bind('tpause',()=>pause());
@@ -1012,7 +1052,7 @@ function unlock(){
   const setTog = (el,on) => { el.classList.toggle('on', on); el.setAttribute('aria-pressed', String(on)); };
   const taim = document.getElementById('taim'), tcr = document.getElementById('tcrouch');
   bind('taim',   ()=>setTog(taim, M.aim = !M.aim));
-  bind('tcrouch',()=>setTog(tcr, held.crouch = !held.crouch));
+  bind('tcrouch',()=>setTog(tcr, M.crouch = !M.crouch));
   /* keep: an in-window pause. The thumbs are still on the glass, so the AIM /
      CROUCH latches and any held button survive it and the buttons keep saying
      so; only the view's drag ends, since the watch is drawn over the canvas
@@ -1021,7 +1061,7 @@ function unlock(){
      finger stayed dead until that same finger came back. */
   window.resetTouchUI = keep => {
     T.look = null; T.tap = null;
-    if (keep){ setTog(taim, !!M.aim); setTog(tcr, !!held.crouch); return; }
+    if (keep){ setTog(taim, !!M.aim); setTog(tcr, !!M.crouch); return; }
     setTog(taim,false); setTog(tcr,false);
     T.move = T.aimpad = null;
     nub.style.transform = ''; lnub.style.transform = '';
@@ -2316,7 +2356,13 @@ function loadLevel(li, di){
   { let on=false; for (const k in G.cheats) if (G.cheats[k]) on=true;
     if (!on) G.tainted=false; }
 
-  G.objs = L.objectives.filter(o => o.diff <= di).map(o => ({...o, have:0, done:false}));
+  /* Re-letter after the clearance filter. The tags in LEVELS are absolute, so
+     dropping the 00-only audit objective left M01 briefing A, B, C, E and M05
+     briefing A, B, D — a player counting letters concludes they have missed
+     one. The authored tag stays in the level table as documentation; what the
+     player is shown is its position in the list actually given to them. */
+  G.objs = L.objectives.filter(o => o.diff <= di)
+    .map((o,i) => ({...o, tag: String.fromCharCode(65+i), have:0, done:false}));
   if (G.objs.some(o=>o.kind==='console')) G.shieldDown = false;
 
   for (let y=0;y<G.H;y++) for (let x=0;x<G.W;x++){
@@ -2607,6 +2653,21 @@ function bump(kind, n=1){
   }
 }
 const objsLeft = () => G.objs.filter(o => !o.done && o.kind!=='exit');
+/* The HUD's objective line, as a value so it can be asserted rather than read
+   back off a canvas. It counts what the briefing, the watch and the debrief
+   count — all of them include the exit, and this line used to leave it out: a
+   four-item briefing opened reading "3 OBJ LEFT", and the moment the last chore
+   cleared it turned green and said "ALL OBJ DONE" while the watch still listed
+   the exit seventy metres away. `clear` keeps the green state — it means the
+   building is done with you — without a count that is not true. */
+function objLine(){
+  const out = G.objs.filter(o => !o.done);
+  const chores = out.filter(o => o.kind !== 'exit').length;
+  return { text: !out.length ? 'ALL OBJ DONE'
+                : !chores    ? 'HEAD FOR THE EXIT'
+                             : out.length + ' OBJ LEFT',
+           clear: chores === 0, left: out.length };
+}
 
 /* --------------------------------- damage ------------------------------- */
 function hurtPlayer(dmg, sx, sy){
@@ -3201,11 +3262,11 @@ function step(dt, scored){
   /* aim / crouch */
   const wantAim = (M.aim || held.aim) ? 1 : 0;
   P.aim = lerp(P.aim, wantAim, Math.min(1, dt*9));
-  P.crouch = lerp(P.crouch, held.crouch?1:0, Math.min(1,dt*10));
+  P.crouch = lerp(P.crouch, crouchHeld()?1:0, Math.min(1,dt*10));
   P.camZ = .5 - P.crouch*.17;
 
   /* move */
-  const run = held.run && !held.crouch ? 1.48 : 1;
+  const run = runHeld() && !crouchHeld() ? 1.48 : 1;
   const base = 2.35 * run * (1 - P.crouch*.42) * (1 - P.aim*.45);
   let mf = (held.fwd?1:0) - (held.back?1:0);
   let ms = (held.right?1:0) - (held.left?1:0);
@@ -3223,7 +3284,7 @@ function step(dt, scored){
     /* footsteps ride the same bob cycle the camera does — one stride per half
        period, quiet enough to sit under any gunfire, silent when creeping */
     const bi = (P.bob/Math.PI)|0;
-    if (bi !== A.stepI){ A.stepI = bi; if (!held.crouch && P.speed > .3) sfx('stepP'); }
+    if (bi !== A.stepI){ A.stepI = bi; if (!crouchHeld() && P.speed > .3) sfx('stepP'); }
   } else P.bob += dt*1.1;
   unstick(P);
 
@@ -3360,7 +3421,7 @@ function step(dt, scored){
      was already seconds deep. Within touching distance, contact beats bearing. */
   if (!P.useTarget && wasTarget && P.useHold > 0 && !wasTarget.hacked && !wasTarget.rescued &&
       dist2(P.x,P.y,wasTarget.x,wasTarget.y) < .64) P.useTarget = wasTarget;
-  if (P.useTarget && (held.use)){
+  if (P.useTarget && useHeld()){
     P.useHold += dt;
     if (P.useHold % .28 < dt) sfx('hack');
     P.useTarget.prog = clamp(P.useHold/1.9, 0, 1);
@@ -3382,7 +3443,7 @@ function step(dt, scored){
     }
   }
   if (!P.shootTarget) P.useDenied = null;
-  else if (held.use && P.useDenied !== P.shootTarget){ P.useDenied = P.shootTarget; sfx('denied'); }
+  else if (useHeld() && P.useDenied !== P.shootTarget){ P.useDenied = P.shootTarget; sfx('denied'); }
 
   /* meltdown */
   if (G.meltdown > 0){
@@ -4149,10 +4210,10 @@ function drawHUD(horizon){
      it. It still yields to the unfocused banner, which shares its spot. */
   if (G.mapOn) drawMinimap();
   if (document.hasFocus()) drawWaypoint();
-  const left = objsLeft().length;
   const cy2 = P.keys>0 ? 52 : 42;
+  const ol = objLine();
   txtP(fmt(G.time), 10, cy2, '#8fa8c0', 7, 'left');
-  txtP(left ? left+' OBJ LEFT' : 'ALL OBJ DONE', 10, cy2+11, left?'#8fa8c0':'#4ade80', 6, 'left');
+  txtP(ol.text, 10, cy2+11, ol.clear ? '#4ade80' : '#8fa8c0', 6, 'left');
 
   /* meltdown */
   if (G.meltdown > 0){
@@ -4590,7 +4651,11 @@ function endMission(win, why){
   if (!G.tainted && !G.ckptRun){
     const bk = G.L.code + ':' + G.diff, prev = BEST[bk];
     if (!prev || (win && !prev.win) || (win && prev.win && G.time < prev.time))
-      BEST[bk] = { time: Math.round(G.time*100)/100, acc, rank: win ? rankName() : '', win: !!win };
+      /* FLOOR, not round: the debrief prints fmt(G.time), which floors to the
+         second, while a rounded store crossed the boundary above .995 — a run
+         finishing at 59.996s read 0:59 on the debrief and 1:00 on MISSION
+         SELECT, so the board showed the player a second they never spent. */
+      BEST[bk] = { time: Math.floor(G.time*100)/100, acc, rank: win ? rankName() : '', win: !!win };
   }
   /* The cheat menu promises "the mission still counts" — completion does, with
      its asterisk. Only the BEST table stays honest-only; a checkpoint duel is
@@ -4903,7 +4968,7 @@ function selfTestBody(runSim){
       const s0 = { sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
                    keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn, scan:SCANOP,
                    map:G.mapOn, campaignDone:campaignDone, god:G.cheats.god, taint:G.tainted,
-                   diff:G.diff, rm:RM_OPT, best:JSON.stringify(BEST) };
+                   diff:G.diff, level:selLevel, rm:RM_OPT, best:JSON.stringify(BEST) };
       M.sens = 1.23; M.tsens = .77; INVERT_Y = true; AIM_ASSIST = 0; KEYS_LAYOUT = 'arrows';
       A.sfxVol = .12; A.musVol = .21; A.musOn = false; SCANOP = 15; G.mapOn = false;
       G.diff = 2;
@@ -4939,6 +5004,14 @@ function selfTestBody(runSim){
       /* the clearance is the rung the BEST lines are keyed by, so losing it
          across a reload took the player's own best times off the list */
       ok('clearance roundtrip: the chosen rung survives a reload', G.diff === 2, 'diff='+G.diff);
+      /* ...and so does the mission beside it. Half a remembered choice — the
+         rung back but the mission reset to M01 — reads as a bug either way. */
+      { const l0 = selLevel;
+        selLevel = LEVELS.length - 1; saveSettings();
+        selLevel = 0; loadSettings();
+        ok('mission roundtrip: the chosen mission survives it too',
+           selLevel === LEVELS.length - 1, 'selLevel='+selLevel);
+        selLevel = l0; }
       { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v:2, diff:7 })); } catch(_){}
         G.diff = 1; loadSettings();
         ok('clearance: a rung outside 0-2 never reaches loadLevel', G.diff === 1, 'diff='+G.diff); }
@@ -5004,7 +5077,7 @@ function selfTestBody(runSim){
       M.sens = s0.sens; M.tsens = s0.tsens; INVERT_Y = s0.inv; AIM_ASSIST = s0.aim;
       KEYS_LAYOUT = s0.keys; A.sfxVol = s0.sfx; A.musVol = s0.mus; A.musOn = s0.musOn;
       SCANOP = s0.scan; G.mapOn = s0.map; campaignDone = s0.campaignDone; G.diff = s0.diff;
-      G.cheats.god = s0.god; G.tainted = s0.taint; RM_OPT = s0.rm;
+      G.cheats.god = s0.god; G.tainted = s0.taint; RM_OPT = s0.rm; selLevel = s0.level;
       if (!isTouch) LOOK = s0.look;
       for (const k in BEST) delete BEST[k];
       Object.assign(BEST, JSON.parse(s0.best));
@@ -5613,7 +5686,7 @@ function selfTestBody(runSim){
       ok('touch: second AIM tap drops it', M.aim === false && P.aim < .25, 'aim='+P.aim.toFixed(2));
 
       tap(document.getElementById('tcrouch'));
-      ok('touch: CROUCH toggle latches', held.crouch === true);
+      ok('touch: CROUCH toggle latches', crouchHeld() === true);
       tap(document.getElementById('tcrouch'));
       ok('touch: second CROUCH tap stands up', !held.crouch);
 
@@ -5627,13 +5700,13 @@ function selfTestBody(runSim){
         const cx = r.left + r.width/2, cy = r.top + r.height/2;
         const at = (x,y) => [{ identifier:72, clientX:x, clientY:y }];
         tev('touchstart', document.getElementById('tstick'), at(cx, cy - r.height/2*.99));
-        ok('touch: full stick deflection sprints', held.run === true);
+        ok('touch: full stick deflection sprints', runHeld() === true);
         tev('touchmove', null, at(cx, cy - r.height/2*.88));
-        ok('touch: rim jitter keeps the sprint', held.run === true);
+        ok('touch: rim jitter keeps the sprint', runHeld() === true);
         tev('touchmove', null, at(cx, cy - r.height/2*.5));
-        ok('touch: easing off the rim stops sprinting', held.run === false);
+        ok('touch: easing off the rim stops sprinting', runHeld() === false);
         tev('touchend', null, at(cx, cy));
-        ok('touch: releasing the stick stops walking', !held.tx && !held.ty && !held.run);
+        ok('touch: releasing the stick stops walking', !held.tx && !held.ty && !runHeld());
       }
       if (!hadTouch) document.body.classList.remove('touch');
       if (!hadOn) tdiv.classList.remove('on');
@@ -5689,11 +5762,11 @@ function selfTestBody(runSim){
           ok('touch: releasing the pad stops the turn',
              Math.abs(angDiff(a1, P.ang)) < 1e-9 && held.lx === 0);
           /* vertical rim pitches, and the pad never sprints (that is the left pad) */
-          held.run = false;
+          if (TIN) TIN.run = false; held.run = false;
           tev('touchstart', document.getElementById('tlook'), lat(lcx, lcy - lr.height/2*.99));
           for (let i=0;i<20;i++) step(0.016);
           ok('touch: the right pad pitches the view', P.pitch > 2, 'pitch='+P.pitch.toFixed(1));
-          ok('touch: the look pad never triggers sprint', held.run === false);
+          ok('touch: the look pad never triggers sprint', runHeld() === false);
           tev('touchend', null, lat(lcx, lcy));
         }
         /* a quick still touch on the world is a shot; a drag is a look */
@@ -6601,6 +6674,201 @@ function selfTestBody(runSim){
              drift.length === 0, drift.map(k => k+' '+cold[k]+' -> '+warm[k]).join(' | '));
           clearInput(); loadLevel(0,1); G.state = 'play'; }
 
+        /* A tablet with a folio is both devices at once, and three inputs had
+           one boolean each instead of the two FIRE and AIM always had. Assert
+           the RULE — neither device may cancel what the other is still asking
+           for — over every shared input, so the next one added is covered. */
+        if (typeof Touch === 'function' && typeof TouchEvent === 'function'){
+          const body = document.body, tEl = document.getElementById('touch');
+          const hadT = body.classList.contains('touch'), hadOn = tEl.classList.contains('on');
+          body.classList.add('touch'); tEl.classList.add('on');
+          const st0 = G.state, sel0 = selLevel, d0 = G.diff;
+          const ev = (t,tp) => new TouchEvent(t,{changedTouches:[tp],bubbles:true,cancelable:true});
+          const at = (el,id,fx,fy) => { const r = el.getBoundingClientRect();
+            return new Touch({identifier:id, target:el,
+              clientX:r.left+r.width*fx, clientY:r.top+r.height*fy}); };
+          const kd = c => dispatchEvent(new KeyboardEvent('keydown',{code:c,bubbles:true,cancelable:true}));
+          const ku = c => dispatchEvent(new KeyboardEvent('keyup',{code:c,bubbles:true}));
+          const arm = () => { loadLevel(0,0); G.state='play'; clearInput(); G.cheats.god = true; };
+          const stick = document.getElementById('tstick');
+          const clobber = [];
+
+          /* USE: a thumb holding the button, a keyboard tap on F */
+          arm();
+          { const ub = document.getElementById('tuse');
+            ub.dispatchEvent(ev('touchstart', at(ub,140,.5,.5)));
+            for (let i=0;i<15;i++) step(1/60);
+            const before = useHeld();
+            kd('KeyF'); ku('KeyF');
+            for (let i=0;i<10;i++) step(1/60);
+            if (!(before && useHeld())) clobber.push('a keyboard USE tap cancelled a held touch USE');
+            ub.dispatchEvent(ev('touchend', at(ub,140,.5,.5))); }
+
+          /* SPRINT: a thumb on the pad rim, a keyboard tap on Shift */
+          arm();
+          { stick.dispatchEvent(ev('touchstart', at(stick,141,.5,0)));
+            for (let i=0;i<15;i++) step(1/60);
+            const before = runHeld();
+            kd('ShiftLeft'); ku('ShiftLeft');
+            for (let i=0;i<15;i++) step(1/60);
+            if (!(before && runHeld())) clobber.push('a keyboard Shift tap cancelled the pad sprint');
+            dispatchEvent(ev('touchend', at(stick,141,.5,0))); }
+
+          /* CROUCH: the touch latch and the keyboard hold must never leave the
+             lamp saying one thing and the camera doing another */
+          arm();
+          { const cb = document.getElementById('tcrouch');
+            cb.dispatchEvent(ev('touchstart', at(cb,142,.5,.5)));
+            cb.dispatchEvent(ev('touchend', at(cb,142,.5,.5)));
+            for (let i=0;i<40;i++) step(1/60);
+            kd('KeyC'); ku('KeyC');
+            for (let i=0;i<40;i++) step(1/60);
+            const lit = cb.getAttribute('aria-pressed') === 'true';
+            if (lit !== (P.crouch > .5))
+              clobber.push('the CRCH lamp says ' + lit + ' with crouch ' + P.crouch.toFixed(2));
+            cb.dispatchEvent(ev('touchstart', at(cb,143,.5,.5)));
+            cb.dispatchEvent(ev('touchend', at(cb,143,.5,.5))); }
+
+          ok('two-handed input: neither device cancels what the other is holding',
+             clobber.length === 0, clobber.join(' | ') || 'use, sprint and crouch all survive');
+
+          /* Backspace is sold on the CONTROLS screen as "Reset stuck input", and
+             it dropped the pad's owner while the thumb was still on the glass —
+             the one control advertised as the fix was what killed the stick */
+          arm();
+          stick.dispatchEvent(ev('touchstart', at(stick,144,.5,0)));
+          for (let i=0;i<10;i++) step(1/60);
+          kd('Backspace'); ku('Backspace');
+          for (let i=0;i<5;i++) step(1/60);
+          dispatchEvent(ev('touchmove', at(stick,144,.5,.05)));   // the SAME finger, never lifted
+          dispatchEvent(ev('touchmove', at(stick,144,.5,0)));
+          for (let i=0;i<15;i++) step(1/60);
+          ok('two-handed input: a reset does not strand a thumb already on the pad',
+             held.ty < -.2, 'ty=' + held.ty);
+          dispatchEvent(ev('touchend', at(stick,144,.5,0)));
+
+          /* ...and a clear leaves the axes as NUMBERS, not the blanket false */
+          held.tx = .5; held.ty = -.5; held.lx = .3; held.ly = .2;
+          clearInput();
+          ok('two-handed input: a clear leaves the axes numeric',
+             [held.tx,held.ty,held.lx,held.ly].every(v => typeof v === 'number' && v === 0),
+             JSON.stringify([held.tx,held.ty,held.lx,held.ly]));
+
+          G.cheats.god = false; clearInput();
+          if (!hadT) body.classList.remove('touch');
+          if (!hadOn) tEl.classList.remove('on');
+          selLevel = sel0; loadLevel(0, d0); G.state = st0 === 'result' ? 'play' : st0;
+        } else ok('two-handed input: neither device cancels the other', true, 'no Touch ctor here');
+
+        /* ENTER runs the screen's own primary action everywhere — title opens
+           MISSION SELECT, select reads the briefing, the briefing starts the
+           mission. On the debrief it ran 'abort' and threw the player out to
+           the title: the one screen where the big gold button and the key it
+           advertises did different things. Assert the RULE across every screen
+           that has a primary button, not the one case that was reported. */
+        { const st0 = G.state, sc0 = G.screenId, sel0 = selLevel, d0 = G.diff;
+          const key = code => onKey({ code, preventDefault(){}, target:null });
+          const wrong = [];
+          const enterFrom = (setup, screen) => {
+            setup();
+            const btn = document.querySelector('#' + screen + ' .row button, #' + screen + ' .menu button');
+            const before = G.screenId;
+            key('Enter');
+            return { label: btn && btn.textContent.trim(), from: before, to: G.screenId, state: G.state };
+          };
+          /* the debrief, won and lost — its primary button differs and ENTER
+             must follow whichever one the screen is currently offering */
+          for (const win of [true, false]){
+            loadLevel(0,1); G.state = 'play'; G.time = 30; G.shots = 10; G.hits = 5;
+            const tt = G.tainted; G.tainted = true;         // file no best from a scripted run
+            for (const o of G.objs){ o.have = o.need || 1; o.done = win; }
+            endMission(win, 'AGENT DOWN');
+            G.tainted = tt;
+            const btn = document.querySelector('#s-result .row button');
+            const label = btn && btn.textContent.trim();
+            key('Enter');
+            if (G.state === 'title')
+              wrong.push((win ? 'win' : 'loss') + ' debrief ENTER left to the title past "' + label + '"');
+            G.state = 'title'; show('s-title'); clearInput();
+          }
+          ok('ENTER: the debrief answers with its own gold button, not the exit',
+             wrong.length === 0, wrong.join(' | ') || 'win and loss both advance');
+          /* ...and Esc still leaves, which is the acknowledgement the death
+             beat could not give */
+          loadLevel(0,1); G.state = 'result'; show('s-result');
+          key('Escape');
+          ok('ENTER: ...while Esc still leaves the debrief', G.state === 'title', 'state '+G.state);
+          selLevel = sel0; loadLevel(0, d0); G.state = 'play'; show(null);
+          clearToasts(); G.state = st0 === 'result' ? 'play' : st0; show(sc0); }
+
+        /* Six scripted player sessions filed the same complaint from four
+           different device profiles: the numbers on screen disagree with each
+           other. The briefing, the field watch and the debrief all count the
+           exit as an objective; the HUD line did not, so a four-item briefing
+           opened at "3 OBJ LEFT" and went green on "ALL OBJ DONE" with the exit
+           still seventy metres away. Assert the agreement, not the arithmetic —
+           one denominator across every surface that shows one. */
+        { const st0 = G.state, sel0 = selLevel, d0 = G.diff;
+          const wrong = [], lied = [];
+          for (let li=0; li<LEVELS.length; li++) for (let di=0; di<DIFFS.length; di++){
+            loadLevel(li, di);
+            const briefed = LEVELS[li].objectives.filter(o => o.diff <= di).length;
+            const l0 = objLine();
+            if (l0.left !== briefed)
+              wrong.push(LEVELS[li].code+'/'+di+' briefing '+briefed+' HUD '+l0.left);
+            /* ...and with every chore done but the exit outstanding, it must not
+               claim the mission is finished */
+            for (const o of G.objs) if (o.kind !== 'exit') o.done = true;
+            const l1 = objLine();
+            const exitLeft = G.objs.some(o => !o.done && o.kind === 'exit');
+            if (exitLeft && l1.text === 'ALL OBJ DONE')
+              lied.push(LEVELS[li].code+'/'+di);
+            if (exitLeft && l1.left !== 1)
+              wrong.push(LEVELS[li].code+'/'+di+' exit-only shows '+l1.left);
+          }
+          ok('HUD: the objective count is the one the briefing gave',
+             wrong.length === 0, wrong.join(' | ') || '15 mission/clearance pairs');
+          ok('HUD: ...and never says the job is done with one outstanding',
+             lied.length === 0, lied.join(' ') || 'the exit is still an objective');
+
+          /* the letters the player counts have to be the letters they are given:
+             the tags in LEVELS are absolute, so filtering a 00-only objective out
+             left M01 briefing A, B, C, E and M05 briefing A, B, D */
+          const gaps = [];
+          for (let li=0; li<LEVELS.length; li++) for (let di=0; di<DIFFS.length; di++){
+            loadLevel(li, di);
+            const tags = G.objs.map(o => o.tag).join('');
+            const want = G.objs.map((_,i) => String.fromCharCode(65+i)).join('');
+            if (tags !== want) gaps.push(LEVELS[li].code+'/'+di+' '+tags);
+          }
+          ok('objectives: the letters run A, B, C with no gap at any clearance',
+             gaps.length === 0, gaps.join(' ') || 'no clearance skips a letter');
+          selLevel = sel0; loadLevel(0, d0); G.state = st0 === 'result' ? 'play' : st0; }
+
+        /* A best time is the number the player was just shown. The store rounded
+           to centiseconds while the debrief floors to the second, so a run
+           finishing at 59.996s read 0:59 on the debrief and 1:00 on MISSION
+           SELECT — the board crediting a second nobody spent. */
+        { const st0 = G.state, t0 = G.time, s0 = G.shots, h0 = G.hits, dm0 = G.dmgTaken;
+          const bk = 'M01:1', had = BEST[bk];
+          const off = [];
+          for (const t of [42.4, 42.995, 59.996, 119.999, 179.9999]){
+            delete BEST[bk];
+            loadLevel(0,1); G.state = 'play';
+            G.time = t; G.shots = 10; G.hits = 5; G.dmgTaken = 0;
+            const tt = G.tainted, cr = G.ckptRun; G.tainted = false; G.ckptRun = false;
+            for (const o of G.objs){ o.have = o.need || 1; o.done = true; }
+            endMission(true, '');
+            G.tainted = tt; G.ckptRun = cr;
+            const shown = fmt(t), stored = BEST[bk] ? fmt(BEST[bk].time) : 'none';
+            if (shown !== stored) off.push(t + ': shown ' + shown + ' stored ' + stored);
+          }
+          delete BEST[bk]; if (had) BEST[bk] = had;
+          ok('best: the board shows the clock the debrief showed',
+             off.length === 0, off.join(' | ') || 'five times across a second boundary');
+          G.time = t0; G.shots = s0; G.hits = h0; G.dmgTaken = dm0;
+          loadLevel(0,1); G.state = st0 === 'result' ? 'play' : st0; }
+
         /* Score tables are where a typo hides from a soak: every frame still
            runs, nothing throws, and the only symptom is that the middle
            clearance is harder than the top one, or that missing more shots
@@ -7149,7 +7417,8 @@ function saveSettings(){
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       v:2, sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
       keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn,
-      scan:SCANOP, map:G.mapOn, diff:G.diff, rm:RM_OPT, best:BEST, campaignDone
+      scan:SCANOP, map:G.mapOn, diff:G.diff, level:selLevel, rm:RM_OPT,
+      best:BEST, campaignDone
     }));
   } catch(_){}
 }
@@ -7180,6 +7449,10 @@ function loadSettings(){
      keyed CODE:diff, the select screen then listed somebody else's rung and the
      player's own BEST line vanished with it. */
   if ((d.diff|0) === d.diff && d.diff >= 0 && d.diff < DIFFS.length) G.diff = d.diff;
+  /* ...and the mission beside it. The clearance came back across a reload and
+     the mission did not, so the select screen reopened on M01 with the player's
+     rung — half of the choice remembered, which reads as a bug either way. */
+  if ((d.level|0) === d.level && d.level >= 0 && d.level < LEVELS.length) selLevel = d.level;
   campaignDone = d.campaignDone === true;
   if (d.best && typeof d.best === 'object')
     for (const k in d.best){ const b = d.best[k];
@@ -7455,7 +7728,17 @@ function onKey(e){
     if (G.state==='title'){ act('missions'); }
     else if (G.state==='select'){ sfx('click'); gotoBrief(); }
     else if (G.state==='brief'){ sfx('click'); startMission(true); }
-    else if (G.state==='result'){ act('abort'); }
+    /* Every other screen's ENTER runs that screen's PRIMARY action — title
+       opens MISSION SELECT, select reads the briefing, the briefing starts the
+       mission. On the debrief it ran 'abort', which throws the player out to
+       the title: the one screen where the advertised big gold button and the
+       key did different things. Press the button the screen is actually
+       offering, whatever it currently is; Esc still leaves, which is the
+       acknowledgement the death beat could not give. */
+    else if (G.state==='result'){
+      const go = document.querySelector('#s-result .row button');
+      if (go){ sfx('click'); go.click(); } else act('abort');
+    }
   }
   /* Esc pressed as you die is inert by design — the beat owns that second —
      but it stayed inert on the debrief too, so the key was never acknowledged
