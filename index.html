@@ -451,7 +451,7 @@ body.touch .no-touch{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.25';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.26';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -4544,7 +4544,11 @@ function rankName(){
   if (acc >= .5) s+=2; else if (acc >= .28) s+=1;
   if (G.dmgTaken <= 45) s+=2; else if (G.dmgTaken <= 130) s+=1;
   if (G.diff===2) s+=1; if (G.diff===0) s-=1;
-  return RANKS[clamp(s+1,0,7)];
+  /* The ceiling is the ladder's own length, not a literal: the last two rungs
+     are the same name deliberately, so that the top score band has somewhere to
+     land, and a hardcoded 7 would silently pin every player to the top rung the
+     day a rung is added — or return undefined the day one is removed. */
+  return RANKS[clamp(s+1, 0, RANKS.length - 1)];
 }
 /* The debrief ticket number, derived from the mission CODE so it survives
    insertion — keying it off G.level once renamed the finale's ticket the day
@@ -6596,6 +6600,106 @@ function selfTestBody(runSim){
           ok('loadLevel: no field of the player survives into the next mission',
              drift.length === 0, drift.map(k => k+' '+cold[k]+' -> '+warm[k]).join(' | '));
           clearInput(); loadLevel(0,1); G.state = 'play'; }
+
+        /* Score tables are where a typo hides from a soak: every frame still
+           runs, nothing throws, and the only symptom is that the middle
+           clearance is harder than the top one, or that missing more shots
+           earns a better review. Ask the shape of the table rather than any
+           one number in it. */
+        { const knobs = Object.keys(DIFFS[0]).filter(k => typeof DIFFS[0][k] === 'number');
+          const slack = [];
+          for (const k of knobs) for (let i=1;i<DIFFS.length;i++)
+            if (!(DIFFS[i][k] >= DIFFS[i-1][k]))
+              slack.push(k + ' ' + DIFFS[i-1].name + '=' + DIFFS[i-1][k] +
+                         ' > ' + DIFFS[i].name + '=' + DIFFS[i][k]);
+          ok('clearance: no rung is softer than the one below it',
+             knobs.length >= 3 && slack.length === 0,
+             slack.join(' | ') || knobs.join(',') + ' all rising');
+          /* ...and the same for what the mission puts in front of the player */
+          const shrink = [];
+          const sel0 = selLevel, d0 = G.diff;
+          for (let li=0; li<LEVELS.length; li++){
+            let pf = -1, po = -1;
+            for (let di=0; di<DIFFS.length; di++){
+              loadLevel(li, di);
+              const foes = G.ents.filter(e => e.kind === 'enemy').length, objs = G.objs.length;
+              if (foes < pf) shrink.push(LEVELS[li].code + ' foes ' + pf + '→' + foes);
+              if (objs < po) shrink.push(LEVELS[li].code + ' objs ' + po + '→' + objs);
+              pf = foes; po = objs;
+            }
+          }
+          selLevel = sel0; loadLevel(0, d0); G.state = 'play';
+          ok('clearance: the roster and the task list never shrink as it rises',
+             shrink.length === 0, shrink.join(' | ') || 'five missions, three rungs'); }
+
+        /* The performance review is four thresholds and a clamp, and the clamp's
+           ceiling has to be the ladder's own length — a literal 7 pins everyone
+           to the top rung the day a rung is added, and returns undefined the day
+           one is removed. Assert the whole ladder instead of one worked example:
+           playing WORSE on any axis must never earn a better review. */
+        { const st0 = G.state, sel0 = selLevel, d0 = G.diff;
+          const t0 = G.time, s0 = G.shots, h0 = G.hits, dt0 = G.dmgTaken;
+          loadLevel(0, 1); G.state = 'play';
+          const par = G.L.par;
+          const rk = (time, acc, dmg, diff) => {
+            G.time = time; G.shots = 100; G.hits = Math.round(acc*100);
+            G.dmgTaken = dmg; G.diff = diff;
+            const n = rankName();
+            return { i: RANKS.lastIndexOf(n), n };
+          };
+          const TIMES = [par*.2, par, par*1.45, par*2, par*9];
+          const ACCS  = [0, .28, .5, 1];
+          const DMGS  = [0, 45, 130, 400];
+          const worse = [];
+          let undef = null;
+          const all = [];
+          for (const t of TIMES) for (const a of ACCS) for (const d of DMGS)
+            for (let q=0; q<DIFFS.length; q++){
+              const r = rk(t,a,d,q);
+              if (r.n === undefined) undef = 't'+t+' acc'+a+' dmg'+d+' diff'+q;
+              all.push(r.i);
+            }
+          const cmp = (A, B, why) => { if (A.i > B.i) worse.push(why); };
+          for (const a of ACCS) for (const d of DMGS) for (let q=0;q<DIFFS.length;q++)
+            for (let i=1;i<TIMES.length;i++) cmp(rk(TIMES[i],a,d,q), rk(TIMES[i-1],a,d,q), 'slower ranks higher');
+          for (const t of TIMES) for (const d of DMGS) for (let q=0;q<DIFFS.length;q++)
+            for (let i=1;i<ACCS.length;i++) cmp(rk(t,ACCS[i-1],d,q), rk(t,ACCS[i],d,q), 'missing more ranks higher');
+          for (const t of TIMES) for (const a of ACCS) for (let q=0;q<DIFFS.length;q++)
+            for (let i=1;i<DMGS.length;i++) cmp(rk(t,a,DMGS[i],q), rk(t,a,DMGS[i-1],q), 'taking more fire ranks higher');
+          for (const t of TIMES) for (const a of ACCS) for (const d of DMGS)
+            for (let q=1;q<DIFFS.length;q++)
+              if (rk(t,a,d,q).i < rk(t,a,d,q-1).i) worse.push('a harder clearance ranks lower');
+          ok('review: playing worse never earns a better one',
+             worse.length === 0, [...new Set(worse)].join(' | ') || all.length + ' combinations');
+          ok('review: every reachable score has a rung to land on',
+             undef === null, undef);
+          /* The clamp's ceiling has to BE the ladder. Reading it back through
+             the rank NAME cannot see this — the last two rungs share a name on
+             purpose, so a name-to-index lookup maps the top band onto whichever
+             slot it likes and a wrong ceiling passes. Number the rungs for the
+             length of this check and ask which slot the extremes actually
+             select. */
+          { const save = RANKS.slice();
+            let top = null, bottom = null;
+            try {
+              for (let i=0;i<RANKS.length;i++) RANKS[i] = 'RUNG' + i;
+              G.time = 0; G.shots = 100; G.hits = 100; G.dmgTaken = 0;
+              G.diff = DIFFS.length - 1;                       // the best run there is
+              top = rankName();
+              G.time = 1e6; G.hits = 0; G.dmgTaken = 1e6; G.diff = 0;   // the worst
+              bottom = rankName();
+            } finally { for (let i=0;i<save.length;i++) RANKS[i] = save[i]; }
+            ok('review: the best run there is lands on the ladder\'s last rung',
+               top === 'RUNG' + (RANKS.length - 1),
+               top + ' of ' + RANKS.length + ' rungs');
+            ok('review: ...and the worst lands on its first', bottom === 'RUNG0', bottom); }
+          /* the SLA verdict is inclusive at par, where a photo finish lands */
+          G.time = par; const met = G.time <= G.L.par;
+          G.time = par + .01; const missed = G.time <= G.L.par;
+          ok('SLA: finishing exactly on par is MET, a hundredth over is not',
+             met === true && missed === false, 'at par ' + met + ', over ' + missed);
+          G.time = t0; G.shots = s0; G.hits = h0; G.dmgTaken = dt0;
+          selLevel = sel0; loadLevel(0, d0); G.state = 'play'; }
 
         /* The CONTROLS screen is a promise, and this game has already shipped a
            screen that lied: the title how-to taught DRAG on a build that ships
