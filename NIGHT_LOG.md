@@ -109,9 +109,30 @@ reviews.
 | **4 · A sound name has to exist** | A `verify.js` source check: every name the code hands to `sfx`/`sfxAt` must be a key in the `SFX` table, reading the first argument only and taking ternary results (four sounds — `hurt`, `tick`, `tick2`, `tink` — are only ever reached that way) | `sfx(name)` returns quietly when the table has no such key. A rename is not an error, it is silence. **31 names** are played across the source; the existing self-test checked eleven of them against a hand-kept list | Mutation-verified by renaming `SFX.stepBoss` and leaving the call sites: `SILENT: stepBoss`. The scanner's first draft flagged `drone` — a comparison operand inside `sfxAt(e.sub==='drone' ? 'smg' : 'pistol', ...)`, not a sound — which is why it now reads only the result side of a ternary |
 | **What the evidence did not support** | Five reported anomalies, all refuted before they could become fixes | **Pause does not freeze the world** — the probe called `step()` directly; `loop()` only steps in `play`. **A corpse keeps shooting** — alone with one corpse the agent took 0 damage and saw 0 projectiles; the 75.7 came from the eight live hostiles the probe left standing. **Accuracy can exceed 100%** — the probe set `G.hits` by hand; `playerFire` clamps a trigger pull to one hit and `hitscan` returns on the first. **RESET TO DEFAULT is dead** — it resets the face photo, and no-ops correctly when there is none. **Diagonal movement is 11% faster** — the cardinal runs were clipping geometry; re-measured in open space it is 1.0000 |
 
+---
+
+# Night log — the tables round
+
+Two rounds of asking generic questions had found their bugs in behaviour. This
+one went after the places where behaviour is *correct* and the numbers behind
+it are not: score tables, difficulty knobs, rank thresholds. A typo there
+breaks nothing a soak can see — every frame runs, nothing throws — and the only
+symptom is that the game is quietly unfair.
+
+The honest headline is that the tables were right. Six reports were chased and
+six were refuted, several of them my own probe being wrong rather than the game.
+One latent fault survived scrutiny.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · The ladder's ceiling is the ladder** | `rankName()` returns `RANKS[clamp(s+1, 0, RANKS.length - 1)]` instead of `clamp(s+1, 0, 7)` | `RANKS` has eight slots and seven names — the last two are `PRINCIPAL ARCHITECT` twice, deliberately, so the top score band has somewhere to land. The `7` beside it is a literal that must equal `RANKS.length - 1` and nothing said so. Add a rung and every player is silently pinned to the old top; remove one and the review prints `undefined` | The obvious check — read the rank back and look up its index — **cannot see this**, because the duplicated top rungs make a name-to-index lookup land wherever it likes. A first version of the assertion passed the mutation. The one that works numbers the rungs for the length of the check and asks which slot the extremes actually select. Mutation-verified: restore the literal, add a ninth rung, and it fails with `RUNG7 of 9 rungs` |
+| **2 · No rung softer than the one below** | Assertions over the whole `DIFFS` table and over what each mission actually builds | `dmg` .55/.8/1.6, `hp` .75/1/1.4, `acc` .55/.7/.93, rosters 6/9/9 and 4/7/7, task lists 4/4/5 through 3/4/4 — all monotonic, and nothing checked them. The comment beside SECRET's row records that this rung has already been retuned once for being a measured cliff | Mutation-verified: SECRET's `dmg` .8 → 1.9 and the guard fails with `dmg SECRET AGENT=1.9 > 00 AGENT=1.6` |
+| **3 · Playing worse never ranks better** | An assertion over 240 combinations of time, accuracy, damage taken and clearance | The review is four thresholds and a clamp. Nothing checked that they point the same way. All four axes are monotonic, and both extremes of the ladder are reachable | Mutation-verified: swap the accuracy bands so `>= .5` scores less than `>= .28`, and it fails with `missing more ranks higher`. The SLA verdict is asserted at its own boundary too — exactly on par is MET, a hundredth over is not |
+| **What the evidence did not support** | Six reports, none of which became a fix | **Sprite pixels leak through walls** — 25 differing pixels on every mission, at x339-343 y35-39: the radar corner. With the radar off the frames are identical, so the depth buffer occludes exactly. **Cheated runs record bests** — the probe set `G.cheats.god` directly; driven through the actual cheat rows, all six set `G.tainted` at the toggle and record nothing. **The debrief never prints its promised asterisk** — it does, `SOLUTIONS ARCHITECT *Note* cheats were enabled`; a 160-character sample had cut it off. **Decals grow without bound** — they plateau at 48 over ten minutes of continuous fire, entities oscillating 53-82. **Web Audio leaks nodes** — `SFXLAST` plateaus at 11 keys, one per distinct sound played. **The campaign chain breaks** — all five missions file, `campaignDone` sets |
+
 ## Standing numbers
 
-- **Self-tests:** 365 desktop / 366 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 372 desktop / 373 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -123,5 +144,5 @@ reviews.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.25'` (index.html) ↔ `agent360-v1.25`
+- **Versions:** game `VERSION = '1.26'` (index.html) ↔ `agent360-v1.26`
   (sw.js CACHE), enforced by verify.js

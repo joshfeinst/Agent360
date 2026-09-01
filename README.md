@@ -181,9 +181,23 @@ best time was checked for a floor but not a ceiling, so a corrupted save could
 put `BEST 1.66e+306:56` on MISSION SELECT. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.26
+
+Score tables are where a typo hides from a soak: every frame still runs,
+nothing throws, and the only symptom is that the middle clearance punishes
+harder than the top one, or that missing more shots earns a better review. So
+this round asked the *shape* of each table rather than any number in it — no
+rung softer than the one below, the roster and task list never shrinking as
+clearance rises, and playing worse on any axis never earning a better
+performance review, over 240 combinations. That found one latent fault: the
+rank ladder's ceiling was the literal `7` rather than the ladder's own length,
+so adding a rung would have silently pinned every player to the old top. Six
+other reports were chased and refuted. Ledger:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## Development
 
-- **F4** runs the in-game self-test suite — **365 assertions** (366 in a touch
+- **F4** runs the in-game self-test suite — **372 assertions** (373 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the
