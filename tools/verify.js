@@ -321,6 +321,41 @@ async function runTouchDrive(page) {
   bad += await runSoak(mpage, Math.min(SOAK_FRAMES, 600), 'mobile 60Hz', [1 / 60]);
   await mctx.close();
 
+  /* ---------------- storage-denied pass ---------------- */
+  /* A browser that blocks site data: the localStorage getter itself throws in
+     one shape, only writes throw in the other. Play worked in both; F4 did
+     not — the suite's own unguarded read threw, the report never came, and
+     the sim's mission was left live under the title. */
+  for (const shape of ['getter', 'setItem']){
+    const dctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await dctx.addInitScript(sh => {
+      if (sh === 'getter') Object.defineProperty(window, 'localStorage', { get(){ throw new DOMException('Access is denied', 'SecurityError'); }, configurable: true });
+      else Storage.prototype.setItem = function(){ throw new DOMException('QuotaExceededError', 'QuotaExceededError'); };
+    }, shape);
+    const dpage = await dctx.newPage();
+    const derrs = [];
+    dpage.on('pageerror', e => derrs.push(e.message));
+    await dpage.goto('file://' + target);
+    await dpage.waitForFunction(() => typeof G !== 'undefined' && typeof selfTest === 'function', { timeout: 15000 });
+    await dpage.waitForTimeout(600);
+    const r = await dpage.evaluate(() => {
+      bootDone();
+      const warned = document.getElementById('toasts').textContent;
+      const f4 = () => dispatchEvent(new KeyboardEvent('keydown', { code: 'F4', key: 'F4', bubbles: true, cancelable: true }));
+      f4();
+      const report = G.showTests === true, tests = (G.tests || []).length, fails = (G.tests || []).filter(t => !t.pass).map(t => t.name);
+      f4();
+      return { report, tests, fails, state: G.state, warned };
+    });
+    const warned = /STORAGE IS BLOCKED/.test(r.warned);
+    const ok = r.report && r.tests > 300 && r.fails.length === 0 && r.state === 'title' && derrs.length === 0 && warned;
+    console.log('STORAGE DENIED (' + shape + ') F4 report ' + (r.report ? 'shown' : 'MISSING') + ' · ' + r.tests + ' tests, ' +
+                r.fails.length + ' failed' + (r.fails.length ? ' [' + r.fails.slice(0, 3).join(' | ') + ']' : '') +
+                ' · back on ' + r.state + ' · page errors ' + derrs.length + ' · warned ' + (warned ? 'yes' : 'NO') + (ok ? '' : ' — FAILED'));
+    if (!ok) bad++;
+    await dctx.close();
+  }
+
   /* ---------------- portrait pass ---------------- */
   /* The F4 suite runs landscape. Portrait is where the toast type read the
      phone's tall axis (9.7px lines four deep across a 216px picture) and the
