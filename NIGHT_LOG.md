@@ -241,9 +241,34 @@ anything moved. Twelve survived; two were the harness, not the game.
 
 ---
 
+# Night log — the fourth player-session round
+
+Six more scripted players, chosen to cover ground the first twelve had not: a
+returning player over http with the service worker live and a months-old
+save, an Android Chrome phone whose browser bar comes and goes, a 1024x600
+netbook and a trackpad MacBook, a headphone player with the audio graph
+hooked, a cautious low-skill player who dies a lot, and a 00 AGENT speedrunner.
+Every anomaly came with a script, every script was re-run here first. Fourteen
+survived. Two players filed nothing that did — one refuted itself.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · Two tabs no longer erase each other** | `saveSettings()` reads the key first and, if another writer touched it since this tab last wrote (a stamp), folds the disk's better bests and campaign flag in; a `storage` event folds the other tab's win in as it lands; `bestsOf()`/`betterBest()` hold the one validation and the one preference rule | Every save wrote this tab's whole memory over the key. Tab B wins M01; tab A clicks Invert Y; **the win is gone from disk** — `blob.best=[]`. The other order loses the settings instead | Asserted as the rule over four pairs — their win we lack, our faster win, their loss under our win, our loss they lack — plus the campaign flag. Mutation-verified: `M02:0` missing, `campaignDone false` |
+| **2 · F4 survives a denied store** | The suite's one unguarded `localStorage.getItem` is wrapped; the write half of one assertion is skipped when writes are blocked; the F4 path catches a suite that throws and still hands the screen back | With the `localStorage` getter itself throwing (a browser that blocks site data), F4 on the title **threw out of the suite, showed no report, and left the sim's mission live under the title** (`state: "play"`). With only writes blocked, one assertion printed red for a feature that works | `verify.js` gained a storage-denied pass in both shapes: F4 reports, 0 failed, back on the title, no page errors, and the boot warning shown |
+| **3 · A save that cannot be kept is said so** | A corrupt blob is announced once at the title and stashed under `.bad` instead of being replaced by the next save; a store that refuses writes is announced once | A truncated blob loaded defaults in silence and the next clearance click overwrote it for good; a blocked store toasted INVERT Y: ON and forgot it on reload with nothing said | Mutation-verified: `warn null stash null` |
+| **4 · BACK holds the run** | A live mission pushes one history entry; `popstate` in play opens the watch and re-arms, on the watch or the debrief goes to the title, and the BACK after that leaves | The phone's BACK gesture — the most-used control on the platform — left the page mid-mission: `location = about:blank`, `typeof G === 'undefined'`, the run gone. The same loss the surround's overscroll swipe used to cause | Mutation-verified: `watch false … then play` |
+| **5 · A re-fitted frame lets go of the thumbs** | `fit()` records the frame width; a frame that changed size with a pad owned releases the pad owners and zeroes the axes | The browser bar taking 52px mid-sprint moved the stick 68px; the thumb did not move, and the next 1px twitch re-read it against the new centre: **forward `ty -0.95` became hard-left `tx -1.00`** while sprinting | Mutation-verified with a stale `FIT_W`: `move=73 ty=-0.76` |
+| **6 · A pinch is not a look** | Two fingers on the view both travelling in one `touchmove` (or the second having travelled) suspend the look deltas | A two-finger pinch on the canvas turned the agent **0.516 rad (30°)** — the first finger owned the look and its half of the pinch was a drag | Asserted both ways: a pinch moves the view 0px, a one-finger drag still moves it 96. Mutation-verified: `pinch dx=-96` |
+| **7 · Every hardware notch is a step** | `wheelNotch()`: line/page delta modes, ≥100px, or a legacy `wheelDeltaY` that is a multiple of 120 — the shape a notched mouse keeps on every engine that has the property and a trackpad never does; ctrl+wheel (a trackpad pinch) is left to the browser; a wheel on the black surround scrolls the menu that is up | Chrome on a Mac sends OS-accelerated 4–60px per notch, Firefox three lines: the sub-100px shape fell into the trackpad gate, and **four 53px notches inside 150ms were one weapon step**. A trackpad pinch over the picture was swallowed AND stepped the gun. On a 1024x600 netbook the menus are boxed to the frame — 54% of the window — and the wheel was dead on the other 46% while CONTROLS needed three screens of scroll | Mutation-verified: `mac 1 pad 1`, `steps -1 prevented true`, `scrollTop 0` |
+| **8 · The boss weight waits for the boss** | `musMood()` reads `bossSeen` — the growl stinger's own flag — not the spawn flag | M05 opened in boss-fight music from the first bar: **8 lead notes and the heavy pulse in 4s at the spawn**, nobody alerted, boss unseen; M01 at its spawn: 0 and 0 | Mutation-verified: `at spawn boss true combat true` |
+| **9 · F4 is green with the cheat menu on** | The suite runs on an honest agent — every cheat off and the time scale at 1 for its duration — and hands them all back | It pinned INVULNERABLE and nothing else, so INFINITE AMMUNITION left on turned **eight magazine-count assertions red** for a player who then read a broken game | `verify.js` runs the suite with ammo, slow-mo and big-head on and requires green and the cheats handed back. Mutation-verified: 8 fails |
+| **What did not survive** | Reported, re-run, not changed | **Hits from a hostile you cannot see** — the cautious player's own replay of 49 no-line-of-sight hits found none with the attacker in view and a pellet path open: PASS. **Stepping out of range resets a hack** — the hold rule, by design. **Sprint measured at 2.81 u/s against 3.48** — the speedrunner's probe returned NaN on four of its nine rows; the movement assertions from the method round still measure 3.478. **The debrief ignores a click for half a second** — the arm from the round before, doing its job. **The trackpad pinch and the surround wheel** were plausibly deliberate; both changed because a player measured the cost |
+
+---
+
 ## Standing numbers
 
-- **Self-tests:** 408 desktop / 406 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 418 desktop / 416 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -251,10 +276,11 @@ anything moved. Twelve survived; two were the harness, not the game.
   how-to, the service worker's cache scoping, its clone timing and its precache freshness, and every sound name
   the code plays existing in the sound table — plus end-to-end checks that
   running F4 leaves the player's saved blob untouched and hands a debrief back,
-  and a portrait pass at 390x844 measuring the rotate chip and the toast type against the real frame) · `tools/touch.js` (phone-finger walkthrough, landscape +
+  a portrait pass at 390x844 measuring the rotate chip and the toast type against the real frame,
+  a storage-denied pass in both shapes, and the suite run with the cheat menu on) · `tools/touch.js` (phone-finger walkthrough, landscape +
   portrait) · `tools/visual.js` (glyph-box audit of all overlay screens,
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.29'` (index.html) ↔ `agent360-v1.29`
+- **Versions:** game `VERSION = '1.30'` (index.html) ↔ `agent360-v1.30`
   (sw.js CACHE), enforced by verify.js

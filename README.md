@@ -195,6 +195,21 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.30
+
+Six more players on ground the first twelve had not covered: a returning
+player over http with the service worker live, an Android phone whose browser
+bar comes and goes, a netbook and a trackpad, a headphone player with the
+audio graph hooked, a cautious player who dies a lot, and a speedrunner. The
+one that mattered: two tabs erased each other's save wholesale, so a settings
+click in one tab wiped a mission win from the other. Also: the phone's BACK
+gesture left the page mid-mission; a browser bar showing mid-sprint turned
+forward into a hard-left strafe; a pinch on the canvas turned the view 30°;
+a Mac mouse's small notches collapsed into one weapon step; F4 threw out of
+its own suite when site data was blocked, and went red with infinite ammo on;
+the finale opened in boss-fight music with the boss unmet. Ledger, including
+what was reported and did not survive: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.29
 
 Six more scripted players, told to play rather than probe: an explorer in an
@@ -246,7 +261,7 @@ reported and did not survive:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **408 assertions** (406 in a touch
+- **F4** runs the in-game self-test suite — **418 assertions** (416 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the
@@ -264,7 +279,8 @@ reported and did not survive:
   ships, the service worker's cache scoping, clone timing and precache
   freshness, every sound name the code plays existing in the sound table, and
   F4 on a debrief handing that debrief back — then a portrait pass at 390×844
-  measuring the rotate chip and the toast type against the real frame: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
+  measuring the rotate chip and the toast type against the real frame, a
+  storage-denied pass, and the suite run with the cheat menu's toggles on: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
 - `tools/touch.js` is a phone-finger walkthrough: boot skipped, every menu
   visited, a mission started, walked, fired, paused and resumed by taps
   alone, with 44px tap-target and screen-utilization measurements. It also
