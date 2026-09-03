@@ -1271,7 +1271,10 @@ const LEAD2 = [B3,0,0,0, D4,0,B3,0, 0,0,0,0, A3,0,Fs3,0,
    G/A state so F4 can assert every branch without an AudioContext. */
 function musMood(){
   const menu = typeof G === 'undefined' || G.state !== 'play';
-  const bossFight = !menu && G.bossAlive;
+  /* the boss weight arrives when the boss is MET (the growl stinger's own
+     flag), not when the level spawns him — M05 used to open in boss-fight
+     music at the spawn, lead and pulse and all, with nobody alerted */
+  const bossFight = !menu && G.bossAlive && G.bossSeen;
   const escape = !menu && G.meltdown > 0;
   return { menu, bossFight, escape,
            combat: bossFight || escape || (!menu && G.heat > 0.4),
@@ -4914,7 +4917,7 @@ function selfTest(runSim){
   const live = { sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
                  keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn,
                  scan:SCANOP, map:G.mapOn, rm:RM_OPT, diff:G.diff, level:selLevel,
-                 taint:G.tainted, cheats:Object.assign({}, G.cheats) };
+                 taint:G.tainted, cheats:Object.assign({}, G.cheats), tscale:G.tscale };
   SAVE_KEY = SAVE_KEY_TEST; SAVE_KEY_V1 = SAVE_KEY_V1_TEST;
   try { return selfTestBody(runSim); }
   finally {
@@ -4925,7 +4928,7 @@ function selfTest(runSim){
     KEYS_LAYOUT = live.keys; A.sfxVol = live.sfx; A.musVol = live.mus; A.musOn = live.musOn;
     SCANOP = live.scan; G.mapOn = live.map; RM_OPT = live.rm; G.diff = live.diff;
     selLevel = live.level; G.tainted = live.taint;
-    Object.assign(G.cheats, live.cheats);
+    Object.assign(G.cheats, live.cheats); G.tscale = live.tscale;
     if (!isTouch) LOOK = live.look;
     try { applyLayout(); resolveLook(); syncOptionsUI(); syncRMLabel(); } catch(_){}
   }
@@ -4949,6 +4952,12 @@ function selfTestBody(runSim){
      phone the touch-ghost guard would eat them all. Tests that check the
      guard itself flip this back off locally. */
   SIMGHOSTS = true;
+  /* The suite runs on an honest agent. It pinned the god cheat and nothing
+     else, so INFINITE AMMUNITION left on from the cheat menu turned eight
+     magazine-count assertions red for a player who read a broken game. The
+     finally above puts the player's cheats and time scale back. */
+  for (const k in G.cheats) G.cheats[k] = false;
+  G.tscale = 1;
 
   /* the one hidden cache per mission, by cell — the flood-fill tests below
      prove each is sealed by its 'H' door and open through it. Keyed by mission
@@ -5055,6 +5064,16 @@ function selfTestBody(runSim){
        (PROP.gunH.w!==PROP.ammoH.w || sum(PROP.gunH)!==sum(PROP.ammoH)) &&
        (PROP.gunP.w!==PROP.ammoP.w || sum(PROP.gunP)!==sum(PROP.ammoP)));
   }
+
+  /* ---- the finale's music meets the boss when the player does ---- */
+  { const st0 = G.state, sel0 = selLevel;
+    loadLevel(LEVELS.findIndex(L => L.finale) , 1); G.state = 'play'; G.heat = 0;
+    const spawn = musMood();
+    G.bossSeen = true; const met = musMood();
+    ok('music: the boss weight waits for the boss to be met',
+       G.bossAlive === true && spawn.bossFight === false && spawn.combat === false && met.bossFight === true,
+       'at spawn boss '+spawn.bossFight+' combat '+spawn.combat+' · met '+met.bossFight);
+    selLevel = sel0; loadLevel(0, 1); G.state = st0; }
 
   /* ---- a pickup toast names what was gained, not the item's face value ---- */
   { const hp0 = P.hp, ar0 = P.armor;
@@ -5334,9 +5353,10 @@ function selfTestBody(runSim){
        BASS2.join() !== BASS.join() && LEAD2.join() !== LEAD.join());
     {
       const s0 = { st:G.state, boss:G.bossAlive, melt:G.meltdown, heat:G.heat, step:A.step };
-      G.state = 'play'; G.bossAlive = true; G.meltdown = -1; G.heat = 0;
+      const seen0 = G.bossSeen;
+      G.state = 'play'; G.bossAlive = true; G.bossSeen = true; G.meltdown = -1; G.heat = 0;
       const mBoss = musMood();
-      G.bossAlive = false; G.meltdown = 12;
+      G.bossSeen = seen0; G.bossAlive = false; G.meltdown = 12;
       const mEsc = musMood();
       G.state = 'title'; G.heat = 1; G.meltdown = -1;
       const mMenu = musMood();

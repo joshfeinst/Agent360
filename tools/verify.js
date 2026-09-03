@@ -170,6 +170,21 @@ async function runSelfTest(page, label) {
                                           nextOk: f4Debrief.nextOk, before: f4Debrief.before.slice(0, 80), after: f4Debrief.after.slice(0, 80) })));
   const f4Bad = (!f4Safe.blobHeld || f4Safe.moved.length || !f4Safe.scratchGone || !f4DebriefOK) ? 1 : 0;
 
+  /* ...and it has to stay green with the cheat menu's toggles left on: it
+     pinned INVULNERABLE and nothing else, so INFINITE AMMUNITION turned eight
+     magazine-count assertions red for a player who then read a broken game */
+  const cheated = await page.evaluate(() => {
+    G.cheats.ammo = true; G.cheats.slow = true; G.tscale = .55; G.cheats.bighead = true;
+    const R = selfTest(true);
+    const back = { ammo: G.cheats.ammo, slow: G.cheats.slow, tscale: G.tscale };
+    G.cheats.ammo = G.cheats.slow = G.cheats.bighead = false; G.tscale = 1; G.tainted = false;
+    G.state = 'title'; if (typeof show === 'function') show('s-title');
+    return { fails: R.filter(r => !r.pass).map(r => r.name), back };
+  });
+  const cheatOK = cheated.fails.length === 0 && cheated.back.ammo === true && cheated.back.slow === true && cheated.back.tscale === .55;
+  console.log('F4 CHEATS ON suite ' + (cheated.fails.length ? 'FAILED ' + cheated.fails.length + ' [' + cheated.fails.slice(0, 3).join(' | ') + ']' : 'green') +
+              ' · cheats handed back ' + (cheatOK ? 'yes' : 'NO'));
+  if (!cheatOK) return 1;
   const tests = await page.evaluate(() => {
     const R = selfTest(true);
     G.state = 'title';               // selfTest via console leaves state 'play'; F4 path restores it itself
