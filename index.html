@@ -465,7 +465,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.28';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.29';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -864,6 +864,11 @@ function lockFailed(err){
   if (cooldown){ toast('CLICK THE VIEW TO RE-CAPTURE THE MOUSE', 'cyan', 1800); return; }
   M.lockFails++;
   if (lockGivenUp()){
+    /* the Options row says (BLOCKED HERE) and the title how-to teaches free
+       look — but only when re-synced, which used to happen at boot, on a
+       restore and on cyclelook: a player who aborted to the menu after the
+       third refusal was taught mouse capture again by the screen in front */
+    syncLookLabel();
     if (!M.lockNagged){
       M.lockNagged = true;
       toast('MOUSE CAPTURE IS BLOCKED IN THIS FRAME — FREE LOOK ACTIVE. ' +
@@ -3550,8 +3555,10 @@ function pickup(e){
       }
       if (!got) return; toast('AMMUNITION','cyan',1400); break;
     }
-    case 'med': if (P.hp>=100) return; P.hp=Math.min(100,P.hp+35); toast('FIELD KIT +35','cyan',1400); break;
-    case 'vest': if (P.armor>=100) return; P.armor=Math.min(100,P.armor+60); toast('BODY ARMOUR +60','cyan',1600); break;
+    /* the toast names what was GAINED: the second vest of a mission took
+       armour 60 to the 100 cap and still promised +60 */
+    case 'med': { if (P.hp>=100) return; const g = Math.min(100,P.hp+35) - P.hp; P.hp += g; toast('FIELD KIT +'+Math.round(g),'cyan',1400); break; }
+    case 'vest': { if (P.armor>=100) return; const g = Math.min(100,P.armor+60) - P.armor; P.armor += g; toast('BODY ARMOUR +'+Math.round(g),'cyan',1600); break; }
     /* cause first, consequence second — the newest toast lands at the BOTTOM */
     case 'key': P.keys++; sfx('key'); toast('DOOR KEYCARD ACQUIRED','gold',2400); bump('key'); e.dead2=true; return;
     case 'case': toast('CREDENTIAL CASE SECURED','gold',2400); sfx('pickup'); bump('case'); e.dead2=true; return;
@@ -4997,6 +5004,16 @@ function selfTestBody(runSim){
        (PROP.gunP.w!==PROP.ammoP.w || sum(PROP.gunP)!==sum(PROP.ammoP)));
   }
 
+  /* ---- a pickup toast names what was gained, not the item's face value ---- */
+  { const hp0 = P.hp, ar0 = P.armor;
+    clearToasts(); P.armor = 60; pickup({ kind:'item', sub:'vest', x:P.x, y:P.y, dead2:false });
+    const vest = document.getElementById('toasts').lastChild ? document.getElementById('toasts').lastChild.textContent : '';
+    clearToasts(); P.hp = 80; pickup({ kind:'item', sub:'med', x:P.x, y:P.y, dead2:false });
+    const med = document.getElementById('toasts').lastChild ? document.getElementById('toasts').lastChild.textContent : '';
+    clearToasts(); P.hp = hp0; P.armor = ar0;
+    ok('pickup: a capped vest or kit toasts the gain it made', vest === 'BODY ARMOUR +40' && med === 'FIELD KIT +20',
+       'vest "'+vest+'" kit "'+med+'"'); }
+
   /* ---- toasts are sized by the picture: 1.15vh read the phone's tall axis in
      portrait and stacked 31px lines across a 216px frame ---- */
   { const want = [[216,6],[360,6],[648,8.29],[2000,10]];
@@ -5461,6 +5478,28 @@ function selfTestBody(runSim){
     M.lockPending = true; M.lockPromise = true;
     lockFailed({ name:'SecurityError', message:'simulated refusal' });
     ok('lock: one refusal does not give up', !lockGivenUp() && M.lockFails === 1);
+    /* the third refusal re-labels the Options row and the title how-to at
+       once — a player who aborts to the menu is not taught capture again */
+    if (!isTouch){ const f0 = M.lockFails, n0 = M.lockNagged, u0 = M.unlockAt; M.unlockAt = 0; M.lockNagged = true;
+      M.lockFails = LOCK_STRIKES - 1; M.lockPending = true; lockFailed({ message:'probe' });
+      const label = document.getElementById('o-look').textContent, hint = document.getElementById('titlehint').textContent;
+      ok('lock: the third refusal re-labels Options and the title how-to',
+         lockGivenUp() && /BLOCKED HERE/.test(label) && hint.indexOf(TITLE_HINT.free) === 0,
+         'label "'+label+'" hint "'+hint.slice(0,40)+'"');
+      M.lockFails = f0; M.lockNagged = n0; M.unlockAt = u0; M.lockPending = false; syncLookLabel(); }
+    /* free look has one crosshair: the OS cursor hides while a free-look
+       mission is live, and comes back for menus and for a capture still
+       being asked for */
+    if (!isTouch){ const lm0 = LOOKMODE, lk0 = M.locked, f0 = M.lockFails, st0 = G.state;
+      const cur = () => getComputedStyle(view).cursor;
+      G.state = 'play'; M.locked = false; LOOKMODE = 'free'; syncCursor(); const free = cur();
+      G.state = 'pause'; syncCursor(); const paused = cur();
+      G.state = 'play'; LOOKMODE = 'capture'; M.lockFails = 0; syncCursor(); const asking = cur();
+      M.lockFails = LOCK_STRIKES; syncCursor(); const givenUp = cur();
+      ok('free look: one crosshair — the OS cursor hides while free look is live',
+         free === 'none' && givenUp === 'none' && paused !== 'none' && asking !== 'none',
+         'free '+free+' / refused-capture '+givenUp+' / paused '+paused+' / asking '+asking);
+      LOOKMODE = lm0; M.locked = lk0; M.lockFails = f0; G.state = st0; syncCursor(); }
     /* a mouseless player who resumed with Esc needs a KEY that captures: the
        band names Enter, so Enter has to ask */
     if (!isTouch){ const l0 = M.locked, f0 = M.lockFails, p0 = M.lockPending, a0 = M.lockAt, u0 = M.unlockAt;
@@ -8213,7 +8252,19 @@ function fault(where, err){
     try { toast('FAULT IN '+where.toUpperCase()+' — SEE CONSOLE', 'red', 5000); } catch(_){}
   }
 }
+/* Free look has one crosshair — the game's. The OS cursor moved on the same
+   deltas but never eased back, so after one push right it sat 250px from the
+   reticle the shot actually follows. Hidden while a free-look mission is live;
+   a capture that is wanted but not yet held keeps it, since the player has to
+   click the view with it. */
+function syncCursor(){
+  const freeLive = G.state==='play' && !M.locked && !isTouch &&
+                   (LOOKMODE==='free' || (LOOKMODE==='capture' && lockGivenUp()));
+  const want = freeLive ? 'none' : '';
+  if (view.style.cursor !== want) view.style.cursor = want;
+}
 function loop(t){
+  syncCursor();
   /* Physics keeps its 0.05s clamp — a 300ms hitch must not walk the agent
      through a wall — but the SCORED clock must not lose the rest of the frame
      with it: below ~22fps G.time, the SLA verdict and the stored BEST all

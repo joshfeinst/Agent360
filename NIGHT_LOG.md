@@ -214,19 +214,47 @@ is the game keeping fewer of its small promises than it thought.
 
 ---
 
+# Night log — the third player-session round
+
+Six scripted players, each on its own device profile and told to play, not to
+probe: an explorer in a sandboxed iframe that refuses pointer lock, a commuter
+holding the phone in portrait, a keyboard-only player with no mouse at all, a
+left-hander on the mirror bindings in DRAG look, a laptop player whose life
+keeps interrupting the game, and a completionist chasing every rung. Every
+anomaly they filed came with a script, and every script was re-run here before
+anything moved. Twelve survived; two were the harness, not the game.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · Tab walks the watch** | On the watch, Tab and Shift+Tab cycle RESUME, RESTART, OPTIONS, ABORT and wrap; Tab never resumes | Once focus was inside the panel Tab belonged to the browser, which walked it OFF the panel onto the canvas underneath — and the next Tab read as "close the watch". Shift+Tab from RESUME, or one Tab past ABORT, **resumed the mission with the clock running**: `pause → play`, `G.time 0.43 → 0.93`. The two most common ways to explore a panel by keyboard | Asserted as the walk: every button visited, the wrap lands on the first, state still `pause`; Shift+Tab from RESUME lands on ABORT. Mutation-verified: `RESUME > RESUME > RESUME` |
+| **2 · Focus opens on the screen** | `show()` seeds focus on the screen itself; the canvas is `tabindex=-1`; the title menu is a `group`, not a `role=menu` with no arrow handling | Every screen opened with focus on the body, so the first Tab went to the canvas **under** the overlay — a focus ring painted behind the menu, and two dead Tabs before anything visible. A screen reader announced "menu, use arrow keys" and the arrows did nothing | Mutation-verified: `s-title:CANVAS s-select:CANVAS …` and `tabIndex 0` |
+| **3 · Enter takes the capture** | In play, Enter asks for the lock; the band reads CLICK THE VIEW OR PRESS ENTER | A mouseless player who resumed with Esc had `M.locked=false`, `lockFails=0`, and the band — deliberately not timed out — on screen at 16.6s and forever, naming a click they could not make | Mutation-verified: `pending false locked false` |
+| **4 · A right-click mid-drag keeps the drag a drag** | `M.moved` and `M.downT` are reset by the left button only | `mousedown` zeroed the drag's travel for **every** button, so a right-click for aim in the middle of a 240px drag-look left `M.moved=0`, and the left release read as a tap: **one stray shot per aim**, in both release orders; a control drag with no right-click fired none | Mutation-verified: `moved 240 then 0, shots +1` |
+| **5 · The manual follows the layout** | The CONTROLS arrow rows show what the live layout does | One static table said ← → turned (the Turn row) **and** strafed (the left-handed row), whichever was true; pressed for real in ARROWS, ← strafed 0.98u and turned 0.000 rad. The existing manual assertion presses each key under both layouts and accepts any change, so it could not see this | An assertion reads the text a reader SEES — text nodes plus the spans the layout shows — under both layouts. Mutation-verified with the static Turn row back |
+| **6 · Toasts are sized by the picture** | `toastPx(h)` from the frame height, set by `fit()` as `--toastpx`; the rotate chip sits top-left, clear of PAUSE and the toast column, and times out after six seconds | `clamp(6px,1.15vh,10px)` read the phone's TALL axis in portrait: 9.7px type, 31px lines, a four-deep stack at y37–177 of a **216px** frame with the crosshair at 108 — during the fight. The rotate chip at 14% overprinted every toast's first line and sat 29x18 under the ❚❚ button, for the whole mission of a player who would not rotate | Two suite assertions for the formula and the live toast, one for the chip's geometry; and because the suite runs landscape, `verify.js` gained a **portrait pass** at 390x844 that measures the real chip, the real PAUSE button and a real toast: `6px type, 25px of a 216px frame`. Mutation-verified: the centred chip fails at `chip 340,65,503,83 … toasts top 76` |
+| **7 · The debrief is armed** | Esc, Enter and the action buttons are inert for the debrief's first half second | Esc and Enter are inert through the death beat by design, so a key mashed as you die landed the instant the debrief filed: Esc to the title, Enter straight into RETRY — **the ticket, the rank and the checkpoint offer never seen** (`debrief first seen at null ms`). The half second is the same idea as the boot skip's 350ms swallow | Mutation-verified: `after Esc select, after Enter select`. The explorer's bot then filed "MISSION SELECT does not answer a click" — it clicked ~300ms after the debrief appeared, inside the arm, and the same click a moment later worked: the harness, not the game |
+| **8 · The watch names the fuse** | A THERMAL SHUTDOWN m:ss row on the watch while the meltdown runs | `pause()` wipes the toast that announced the countdown, and the watch listed elapsed, par, health and "Evacuate — 40m SE" with no number for the one thing that mattered | Mutation-verified |
+| **9 · A refusal re-labels at once** | The third refusal calls `syncLookLabel()` — Options says CAPTURE (BLOCKED HERE), the title how-to teaches free look | The re-sync ran at boot, on a restore and on cyclelook only, so a player who aborted to the menu after the frame's third refusal was **taught mouse capture again** by the screen in front of them, and Options said plain CAPTURE | Mutation-verified: `label "CAPTURE" hint "The mouse is captured…"` |
+| **10 · One crosshair** | The OS cursor hides over the canvas while a free-look mission is live; it stays for menus and for a capture still being asked for | In free look the cursor moved on the same deltas as the reticle but never eased back: one push right and a moment still left a crosshair cursor **250px** from the reticle the shot follows (`P.rx=0`, `P.aimU=0`) | Mutation-verified across the four states |
+| **11 · A pickup toasts its gain** | FIELD KIT and BODY ARMOUR toast the amount actually added | The second vest of a mission took armour 60 → 100 and said **+60**; a kit at 80 said +35 | Mutation-verified: `vest "BODY ARMOUR +60"` |
+| **What did not survive** | Reported, re-run, not changed | **Alerted hostiles park behind the racks and never attack** — the completionist's own script printed PASS (hp 76 → 59 in the minute); filed as an observation. **Tab, Tab, Space restarts without confirmation** — that is Tab reaching RESTART and Space pressing it, which is what buttons do. **The wheel under 100px, macOS ⌘** — still unverifiable here |
+
+---
+
 ## Standing numbers
 
-- **Self-tests:** 394 desktop / 395 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 408 desktop / 406 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
   source checks: index.html/sw.js version lockstep, the title screen's static
   how-to, the service worker's cache scoping, its clone timing and its precache freshness, and every sound name
   the code plays existing in the sound table — plus end-to-end checks that
-  running F4 leaves the player's saved blob untouched and hands a debrief back) · `tools/touch.js` (phone-finger walkthrough, landscape +
+  running F4 leaves the player's saved blob untouched and hands a debrief back,
+  and a portrait pass at 390x844 measuring the rotate chip and the toast type against the real frame) · `tools/touch.js` (phone-finger walkthrough, landscape +
   portrait) · `tools/visual.js` (glyph-box audit of all overlay screens,
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.28'` (index.html) ↔ `agent360-v1.28`
+- **Versions:** game `VERSION = '1.29'` (index.html) ↔ `agent360-v1.29`
   (sw.js CACHE), enforced by verify.js
