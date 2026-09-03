@@ -207,7 +207,8 @@ gesture left the page mid-mission; a browser bar showing mid-sprint turned
 forward into a hard-left strafe; a pinch on the canvas turned the view 30°;
 a Mac mouse's small notches collapsed into one weapon step; F4 threw out of
 its own suite when site data was blocked, and went red with infinite ammo on;
-the finale opened in boss-fight music with the boss unmet. Ledger, including
+the finale opened in boss-fight music with the boss unmet; Shift held through
+RESTART walked instead of sprinting. Ledger, including
 what was reported and did not survive: [NIGHT_LOG.md](NIGHT_LOG.md).
 
 ## v1.29
@@ -261,7 +262,7 @@ reported and did not survive:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **418 assertions** (416 in a touch
+- **F4** runs the in-game self-test suite — **420 assertions** (418 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the

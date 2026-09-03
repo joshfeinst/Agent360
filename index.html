@@ -4644,11 +4644,23 @@ addEventListener('popstate', () => {
   if (G.state === 'play'){ pause(); armBack(); }
   else if (G.state === 'pause' || G.state === 'result') act('abort');
 });
+/* A mission starts with the hands the player already has on the keys, the way
+   resume() does. clearInput() alone dropped them, and the repeat-keydown
+   re-claim only saves keys that auto-repeat: Shift does not on macOS or X11,
+   so W+Shift held through RESTART walked at 1.00 until Shift was let go and
+   pressed again — a runner 30% slower after every restart, silently. FIRE is
+   the one key not carried over: a mission never opens with a shot the player
+   did not aim, and the Space that pressed START is still down. */
+function reclaimKeys(){
+  const down = [...keys];
+  clearInput();
+  for (const c of down){ keys.add(c); const a = KEYMAP[c]; if (a && a !== 'fire') held[a] = true; }
+}
 function startMission(gesture){
   clearToasts();
   loadLevel(selLevel, G.diff);
   G.state='play'; show(null); armBack();
-  audioInit(); clearInput(); view.focus(); resolveLook();
+  audioInit(); reclaimKeys(); view.focus(); resolveLook();
   /* The click or keypress that started the mission is a user gesture, which is
      all pointer lock needs — so take the mouse right away rather than making the
      player click the viewport a second time. Never from the self-test, which
@@ -6687,6 +6699,17 @@ function selfTestBody(runSim){
           ku('KeyW');
           ok('keyboard: ...and letting it go still stops the agent', !held.fwd && !keys.has('KeyW'));
           clearInput();
+          /* ...and a key that never repeats — Shift on a Mac — is carried into
+             the mission from the briefing by being physically down; Space,
+             which pressed START, is not carried in as a shot */
+          { const sel1 = selLevel; G.state = 'brief';
+            kd('ShiftLeft'); kd('KeyW'); kd('Space');
+            startMission(false);
+            ok('keyboard: Shift and W held through START are sprinting on the first frame, Space is not firing',
+               held.run === true && held.fwd === true && !held.fire, 'run='+held.run+' fwd='+held.fwd+' fire='+held.fire);
+            ku('ShiftLeft'); ku('KeyW'); ku('Space');
+            ok('keyboard: ...and letting them go stops it', !held.run && !held.fwd);
+            selLevel = sel1; loadLevel(0,1); G.state = 'play'; show(null); clearInput(); }
         }
 
         /* ---- the review round's own regressions, each one guarded ---- */

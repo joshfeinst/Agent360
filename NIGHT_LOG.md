@@ -248,8 +248,8 @@ returning player over http with the service worker live and a months-old
 save, an Android Chrome phone whose browser bar comes and goes, a 1024x600
 netbook and a trackpad MacBook, a headphone player with the audio graph
 hooked, a cautious low-skill player who dies a lot, and a 00 AGENT speedrunner.
-Every anomaly came with a script, every script was re-run here first. Fourteen
-survived. Two players filed nothing that did — one refuted itself.
+Every anomaly came with a script, every script was re-run here first. Fifteen
+survived. One player filed nothing that did — it refuted itself.
 
 | Round | What changed | Why the numbers said so | How it was verified |
 |---|---|---|---|
@@ -262,13 +262,14 @@ survived. Two players filed nothing that did — one refuted itself.
 | **7 · Every hardware notch is a step** | `wheelNotch()`: line/page delta modes, ≥100px, or a legacy `wheelDeltaY` that is a multiple of 120 — the shape a notched mouse keeps on every engine that has the property and a trackpad never does; ctrl+wheel (a trackpad pinch) is left to the browser; a wheel on the black surround scrolls the menu that is up | Chrome on a Mac sends OS-accelerated 4–60px per notch, Firefox three lines: the sub-100px shape fell into the trackpad gate, and **four 53px notches inside 150ms were one weapon step**. A trackpad pinch over the picture was swallowed AND stepped the gun. On a 1024x600 netbook the menus are boxed to the frame — 54% of the window — and the wheel was dead on the other 46% while CONTROLS needed three screens of scroll | Mutation-verified: `mac 1 pad 1`, `steps -1 prevented true`, `scrollTop 0` |
 | **8 · The boss weight waits for the boss** | `musMood()` reads `bossSeen` — the growl stinger's own flag — not the spawn flag | M05 opened in boss-fight music from the first bar: **8 lead notes and the heavy pulse in 4s at the spawn**, nobody alerted, boss unseen; M01 at its spawn: 0 and 0 | Mutation-verified: `at spawn boss true combat true` |
 | **9 · F4 is green with the cheat menu on** | The suite runs on an honest agent — every cheat off and the time scale at 1 for its duration — and hands them all back | It pinned INVULNERABLE and nothing else, so INFINITE AMMUNITION left on turned **eight magazine-count assertions red** for a player who then read a broken game | `verify.js` runs the suite with ammo, slow-mo and big-head on and requires green and the cheats handed back. Mutation-verified: 8 fails |
+| **10 · A mission starts with the hands already on the keys** | `reclaimKeys()` at mission start re-derives held actions from the keys physically down, as `resume()` does — every key but FIRE | The speedrunner's finding: `startMission`'s `clearInput()` dropped every key, and the repeat-keydown re-claim only saves keys that auto-repeat. **Shift does not, on macOS or X11**, so W+Shift held through RESTART walked at 1.00 until Shift was let go and pressed again — a runner 30% slower after every restart-mash, silently | Asserted from the briefing with Shift, W and the Space that pressed START all down: sprinting on the first frame, not firing. Mutation-verified: `run=false fwd=false` |
 | **What did not survive** | Reported, re-run, not changed | **Hits from a hostile you cannot see** — the cautious player's own replay of 49 no-line-of-sight hits found none with the attacker in view and a pellet path open: PASS. **Stepping out of range resets a hack** — the hold rule, by design. **Sprint measured at 2.81 u/s against 3.48** — the speedrunner's probe returned NaN on four of its nine rows; the movement assertions from the method round still measure 3.478. **The debrief ignores a click for half a second** — the arm from the round before, doing its job. **The trackpad pinch and the surround wheel** were plausibly deliberate; both changed because a player measured the cost |
 
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 418 desktop / 416 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 420 desktop / 418 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
