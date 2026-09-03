@@ -218,7 +218,7 @@ body.touch #touch.on{display:block}
 }
 #tpause{right:calc(23% + env(safe-area-inset-right,0px)); top:calc(6px + env(safe-area-inset-top,0px));
   width:13vmin; height:13vmin; min-width:48px; min-height:48px; border-radius:10px}
-#rothint{position:absolute; left:50%; top:14%; transform:translateX(-50%); pointer-events:none;
+#rothint{position:absolute; left:8px; top:8px; pointer-events:none;
   font-family:var(--pix); font-size:9px; letter-spacing:.06em; color:var(--cyan); white-space:nowrap;
   background:rgba(7,13,22,.9); border:1px solid var(--cyan); padding:8px 12px}
 #rothint[hidden]{display:none}
@@ -227,13 +227,15 @@ body.touch #touch.on{display:block}
 .touch-only{display:none}
 body.touch .touch-only{display:grid}
 body.touch .no-touch{display:none}
+body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
+.screen:focus{outline:none}
 @media (pointer:coarse){ .mi,.btn{min-height:44px} }
 .toastwrap{position:absolute; left:0; right:0; top:17%; display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none}
 </style>
 
 <div id="stage">
   <div id="frame">
-    <canvas id="view" width="384" height="216" tabindex="0" aria-label="Agent 360 game viewport"></canvas>
+    <canvas id="view" width="384" height="216" tabindex="-1" aria-label="Agent 360 game viewport"></canvas>
     <div id="scan"></div><div id="vig"></div>
 
     <!-- BOOT -->
@@ -248,7 +250,7 @@ body.touch .no-touch{display:none}
     <div class="screen" id="s-title" hidden>
       <div class="eyebrow">a managed services thriller</div>
       <h1 class="logo">AGENT&nbsp;360<small id="logosub">GOLDENSHARE</small></h1>
-      <div class="menu" role="menu" id="titlemenu">
+      <div class="menu" role="group" aria-label="Main menu" id="titlemenu">
         <button class="mi" data-act="missions">SELECT MISSION <span class="k">▶</span></button>
         <button class="mi" data-act="controls">CONTROLS <span class="k">▶</span></button>
         <button class="mi" data-act="options">OPTIONS &amp; FACE UPLOAD <span class="k">▶</span></button>
@@ -351,9 +353,10 @@ body.touch .no-touch{display:none}
            line above it: on a phone this table is 19 rows of bindings for
            hardware that is not there, and it pushed BACK 617px below the fold -->
       <div class="grid2 panel no-touch">
-        <div class="ctl"><span>Move / strafe</span><span>W A S D</span></div>
-        <div class="ctl"><span>Move / strafe (left-handed)</span><span>↑ ↓ ← →</span></div>
-        <div class="ctl"><span>Turn</span><span>Mouse · , and . · ← →</span></div>
+        <!-- the arrow rows follow the live layout (body.keys-arrows): one static
+             table promised that ← → both turned AND strafed, whichever was true -->
+        <div class="ctl"><span>Move / strafe</span><span><span class="kb-wasd">W A S D · ↑ ↓</span> <span class="kb-arrows">↑ ↓ ← →</span></span></div>
+        <div class="ctl"><span>Turn</span><span>Mouse · , and . <span class="kb-wasd">· ← →</span></span></div>
         <div class="ctl"><span>Fire</span><span>Click · Space · X</span></div>
         <div class="ctl"><span>Aim mode (zoom)</span><span>Right click · Z</span></div>
         <div class="ctl"><span>Aim assist</span><span>Options · auto-aim, GoldenEye style</span></div>
@@ -608,6 +611,7 @@ function applyLayout(){
     KEYMAP.ArrowUp='fwd'; KEYMAP.ArrowDown='back';
     KEYMAP.ArrowLeft='turnL'; KEYMAP.ArrowRight='turnR';    // turn
   }
+  if (document.body) document.body.classList.toggle('keys-arrows', KEYS_LAYOUT === 'arrows');
 }
 applyLayout();
 const held = Object.create(null);
@@ -715,9 +719,14 @@ document.addEventListener('mousedown', e => {
   if (typeof G === 'undefined' || G.state !== 'play') return;
   if (touchGhost(e)) return;
   e.preventDefault(); view.focus();
-  M.moved = 0; M.downT = performance.now(); M.lx = e.clientX; M.ly = e.clientY;
+  M.lx = e.clientX; M.ly = e.clientY;
   if (e.button === 2){ M.aim = true; return; }
   if (e.button !== 0) return;
+  /* The tap-or-drag record belongs to the LEFT button. It used to be reset by
+     every button, so a right-click for aim in the middle of a drag zeroed the
+     drag's travel and the left release read as a tap: a stray shot each time
+     a drag-look player aimed mid-turn. */
+  M.moved = 0; M.downT = performance.now();
   if (!M.locked && wantsLock()){
     if (!lockGivenUp()){ tryLock(); return; }      // this click captures; it does not shoot
     /* The frame keeps refusing: play on in free look, but quietly ask again
@@ -4355,7 +4364,7 @@ function drawHUD(horizon){
     /* Capture wanted but not held: say exactly what to do, for as long as it
        applies — not just for the first fifteen seconds. */
     ctx.fillStyle = 'rgba(5,8,14,.70)'; ctx.fillRect(0, RH-80, RW, 16);
-    txt('CLICK THE VIEW TO CAPTURE THE MOUSE', RW>>1, RH-69, '#ffb02e', 6, 'center');
+    txt('CLICK THE VIEW OR PRESS ENTER TO CAPTURE THE MOUSE', RW>>1, RH-69, '#ffb02e', 6, 'center');
   } else if (G.time < 15){
     txtP(M.locked ? 'MOUSE CAPTURED · ESC TO RELEASE'
        : LOOKMODE==='touch' ? 'LEFT PAD MOVES · RIGHT PAD LOOKS · TAP TO SHOOT'
@@ -4435,7 +4444,7 @@ function toast(text, kind, ms){
   const c = TOASTC[kind] || TOASTC.gold;
   const d = document.createElement('div');
   d.textContent = text;
-  d.style.cssText = 'font-family:var(--pix);font-size:clamp(6px,1.15vh,10px);letter-spacing:.05em;'+
+  d.style.cssText = 'font-family:var(--pix);font-size:var(--toastpx,8px);letter-spacing:.05em;'+
     'padding:7px 11px;background:rgba(7,13,22,.92);border:1px solid '+c+';color:'+c+
     ';box-shadow:0 6px 20px rgba(0,0,0,.6);max-width:80%;text-align:center;line-height:1.5';
   wrap.appendChild(d);
@@ -4457,6 +4466,13 @@ function show(id){
      the first objectives already off the top. */
   for (const s of SCREENS){ const el=document.getElementById(s);
     if (el){ el.hidden = (s!==id); if (s===id) el.scrollTop = 0; } }
+  /* Seed focus on the screen itself, so the first Tab lands on its first
+     control. Every screen used to open with focus on the body, and the first
+     Tab went to the canvas UNDER the overlay — a focus ring painted behind the
+     menu, and two dead Tabs before anything visible was reached. The watch
+     seeds RESUME itself, after this. */
+  if (id && id !== 's-pause'){ const el = document.getElementById(id);
+    if (el){ el.tabIndex = -1; el.focus({ preventScroll:true }); } }
   /* the persisted campaign flag earns the title screen a permanent gold line */
   if (id === 's-title'){
     const sub = document.getElementById('logosub');
@@ -4476,10 +4492,17 @@ function show(id){
    so, mid-mission only, without ever blocking input — the hint is pointer-
    events:none and clears itself the moment the device turns. */
 const portMQ = matchMedia('(orientation: portrait)');
+let rotHintT = 0;
 function syncRotHint(){
-  const el = document.getElementById('rothint');
-  if (el) el.hidden = !(isTouch && G.state==='play' && portMQ.matches);
+  const el = document.getElementById('rothint'); if (!el) return;
+  const want = isTouch && G.state==='play' && portMQ.matches;
+  /* Say it once, briefly. Centred at 14% it sat across the toast column and
+     under the PAUSE button, and it stayed up for the whole mission of a player
+     who would not rotate — so every objective toast lost its first line. */
+  if (want && el.hidden){ clearTimeout(rotHintT); rotHintT = setTimeout(() => { el.hidden = true; }, ROT_HINT_MS); }
+  el.hidden = !want;
 }
+const ROT_HINT_MS = 6000;
 try { portMQ.addEventListener('change', syncRotHint); }
 catch(_){ if (portMQ.addListener) portMQ.addListener(syncRotHint); }   // pre-2019 WebKit
 let selLevel = 0;
@@ -4961,6 +4984,21 @@ function selfTestBody(runSim){
        (PROP.gunP.w!==PROP.ammoP.w || sum(PROP.gunP)!==sum(PROP.ammoP)));
   }
 
+  /* ---- toasts are sized by the picture: 1.15vh read the phone's tall axis in
+     portrait and stacked 31px lines across a 216px frame ---- */
+  { const want = [[216,6],[360,6],[648,8.29],[2000,10]];
+    const off = want.filter(([h,px]) => Math.abs(toastPx(h) - px) > .02).map(([h,px]) => h+'->'+toastPx(h).toFixed(2)+' want '+px);
+    const fh = view.getBoundingClientRect().height;
+    const varPx = parseFloat(getComputedStyle(document.getElementById('frame')).getPropertyValue('--toastpx'));
+    toast('SIZE PROBE', 'cyan', 50);
+    const t = document.getElementById('toasts').lastChild;
+    const live = t ? parseFloat(getComputedStyle(t).fontSize) : NaN;
+    clearToasts();
+    ok('toasts: type size follows the frame height', off.length === 0, off.join(' ') || '216/360/648/2000 → 6/6/8.29/10');
+    ok('toasts: ...and the live toast wears it',
+       Math.abs(varPx - toastPx(fh)) < .05 && Math.abs(live - toastPx(fh)) < .05,
+       'frame '+fh.toFixed(0)+'px var '+varPx+' toast '+live); }
+
   /* ---- the frame: a pinch must never shrink the game permanently ---- */
   {
     ok('fit: an unpinched frame measures itself', fitClamp(844, 844, 844, 1) === 844);
@@ -5410,6 +5448,14 @@ function selfTestBody(runSim){
     M.lockPending = true; M.lockPromise = true;
     lockFailed({ name:'SecurityError', message:'simulated refusal' });
     ok('lock: one refusal does not give up', !lockGivenUp() && M.lockFails === 1);
+    /* a mouseless player who resumed with Esc needs a KEY that captures: the
+       band names Enter, so Enter has to ask */
+    if (!isTouch){ const l0 = M.locked, f0 = M.lockFails, p0 = M.lockPending, a0 = M.lockAt, u0 = M.unlockAt;
+      M.locked = false; M.lockFails = 0; M.lockPending = false; M.lockAt = 0; M.unlockAt = 0; G.state = 'play';
+      dispatchEvent(new KeyboardEvent('keydown', { code:'Enter', key:'Enter', bubbles:true, cancelable:true }));
+      ok('lock: Enter asks for the capture in play', M.lockPending || M.locked, 'pending '+M.lockPending+' locked '+M.locked);
+      clearTimeout(M.lockTimer); try { document.exitPointerLock(); } catch(_){}
+      M.locked = l0; M.lockFails = f0; M.lockPending = p0; M.lockAt = a0; M.unlockAt = u0; }
     /* ...and a refusal inside the Esc cooldown is not even a strike */
     M.unlockAt = performance.now(); M.lockPending = true;
     lockFailed({ name:'SecurityError', message:'The user has exited the lock before this request was completed.' });
@@ -5443,6 +5489,22 @@ function selfTestBody(runSim){
     dispatchEvent(new PointerEvent('pointerup',{button:0,buttons:0,bubbles:true}));
     dispatchEvent(new MouseEvent('mouseup',{button:0,buttons:0,bubbles:true}));
     ok('drag mode can fire', G.shots > shotsBefore);
+    /* a right-click for aim in the middle of a drag must not turn the drag's
+       release into a tap: the travel record belongs to the left button */
+    { clearInput(); P.fireCd = 0; M.moved = 0; const s0 = G.shots;
+      view.dispatchEvent(new MouseEvent('mousedown',{button:0,buttons:1,clientX:400,clientY:300,bubbles:true}));
+      for (let x = 410; x <= 640; x += 10)
+        dispatchEvent(new MouseEvent('mousemove',{buttons:1,clientX:x,clientY:300,bubbles:true}));
+      const travelled = M.moved;
+      view.dispatchEvent(new MouseEvent('mousedown',{button:2,buttons:3,clientX:640,clientY:300,bubbles:true}));
+      const aimed = M.aim, kept = M.moved;
+      dispatchEvent(new MouseEvent('mouseup',{button:2,buttons:1,bubbles:true}));
+      dispatchEvent(new PointerEvent('pointerup',{button:0,buttons:0,bubbles:true}));
+      dispatchEvent(new MouseEvent('mouseup',{button:0,buttons:0,bubbles:true}));
+      ok('drag: a right-click mid-drag keeps the drag a drag — the release does not fire',
+         travelled >= 200 && aimed && kept === travelled && G.shots === s0,
+         'moved '+travelled+' then '+kept+', shots +'+(G.shots-s0));
+      clearInput(); }
 
     /* aim assist: a hostile just off the reticle is locked and hit; one well
        outside the cone is left alone; OFF means off; the pull never fights
@@ -5857,6 +5919,16 @@ function selfTestBody(runSim){
           ok('touch: the look pad never triggers sprint', runHeld() === false);
           tev('touchend', null, lat(lcx, lcy));
         }
+        /* the rotate chip must never sit on the PAUSE button or across the
+           toast column — it did both, for a whole mission, in portrait */
+        if (isTouch){ const chip = document.getElementById('rothint'), pb = document.getElementById('tpause'), tw = document.getElementById('toasts');
+          const h0 = chip.hidden; chip.hidden = false;
+          const c = chip.getBoundingClientRect(), p = pb.getBoundingClientRect(), t = tw.getBoundingClientRect();
+          chip.hidden = h0;
+          const hit = !(c.right <= p.left || c.left >= p.right || c.bottom <= p.top || c.top >= p.bottom);
+          ok('touch: the rotate chip is clear of PAUSE and above the toast column',
+             c.width > 0 && !hit && c.bottom <= t.top,
+             'chip '+[c.left,c.top,c.right,c.bottom].map(v=>v|0)+' pause '+[p.left,p.top,p.right,p.bottom].map(v=>v|0)+' toasts top '+(t.top|0)); }
         /* a quick still touch on the world is a shot; a drag is a look */
         clearInput(); P.w = 0; P.mag[0] = 7; P.fireCd = 0; P.alive = true;
         const vr = view.getBoundingClientRect();
@@ -6479,6 +6551,40 @@ function selfTestBody(runSim){
           ok('options: opened anywhere else, BACK still goes to the title', G.state === 'title');
           G.state = 'play'; show(null); clearInput();
         }
+
+        /* Tab on the watch walks the watch and never leaves it: the browser
+           used to walk focus off the panel onto the canvas, and the next Tab
+           read as "close the watch" — the mission resumed with the clock
+           running, from Shift+Tab or one Tab past ABORT */
+        { G.state = 'play'; pause();
+          const tab = shift => dispatchEvent(new KeyboardEvent('keydown', { code:'Tab', key:'Tab', shiftKey:!!shift, bubbles:true, cancelable:true }));
+          const btns = [...document.querySelectorAll('#s-pause button')].filter(b => b.offsetParent !== null);
+          const seen = [];
+          for (let i = 0; i < btns.length + 1; i++){ tab(false); seen.push(document.activeElement); }
+          const wrapped = new Set(seen).size === btns.length && seen[btns.length] === seen[0] &&
+                          seen.every(el => btns.includes(el));
+          const stillPaused = G.state === 'pause';
+          const rb = document.querySelector('#s-pause [data-act="resume"]');
+          rb.focus({ preventScroll:true }); tab(true);
+          const back = document.activeElement === btns[btns.length - 1] && G.state === 'pause';
+          ok('watch: Tab walks the watch\'s buttons and wraps, and never resumes',
+             btns.length >= 3 && wrapped && stillPaused,
+             'visited '+seen.map(e => (e.textContent||e.tagName).trim().slice(0,7)).join(' > ')+' state '+G.state);
+          ok('watch: ...and Shift+Tab from RESUME lands on the last button, still paused', back,
+             'focus '+(document.activeElement.textContent||document.activeElement.tagName).trim().slice(0,8)+' state '+G.state);
+          resume(false); clearInput(); }
+
+        /* every screen seeds focus on itself, so the first Tab reaches its
+           first control; the canvas is out of the tab order so it can never
+           be the thing under the ring behind a menu */
+        { const bad = [];
+          for (const id of ['s-title','s-select','s-brief','s-controls','s-options','s-cheats','s-result']){
+            show(id);
+            if (document.activeElement !== document.getElementById(id)) bad.push(id+':'+(document.activeElement && document.activeElement.tagName));
+          }
+          ok('screens: focus opens on the screen, ready for the first Tab', bad.length === 0, bad.join(' ') || '7 screens');
+          ok('screens: the canvas is not a tab stop', view.tabIndex === -1, 'tabIndex '+view.tabIndex);
+          G.state = 'play'; show(null); clearInput(); }
 
         /* the corpse keeps its grip: no reload, no watch during the death beat */
         loadLevel(0,1); G.state = 'play'; P.alive = false; G.deadT = .5;
@@ -7234,6 +7340,22 @@ function selfTestBody(runSim){
              mute.length === 0, mute.join(' | ') || want.size + ' keys, all live');
           ok('controls: ...and the manual is being read, not an empty list',
              want.size >= 18, want.size + ' keys parsed from ' + rows.length + ' rows');
+          /* ...and what it SHOWS about the arrows follows the live layout: one
+             static table said ← → both turned and strafed, whichever was true */
+          { const lay1 = KEYS_LAYOUT;
+            /* the text a reader sees: text nodes, plus spans the layout shows */
+            const visText = el => [...el.childNodes].map(n => n.nodeType === 3 ? n.textContent
+              : (getComputedStyle(n).display === 'none' ? '' : visText(n))).join('').replace(/\s+/g, ' ').trim();
+            const shown = () => rows.map(r => visText(r.children[1]));
+            const rowOf = name => rows.findIndex(r => r.children[0].textContent.trim() === name);
+            KEYS_LAYOUT = 'wasd'; applyLayout();
+            const w = shown(), wTurn = w[rowOf('Turn')], wMove = w[rowOf('Move / strafe')];
+            KEYS_LAYOUT = 'arrows'; applyLayout();
+            const a = shown(), aTurn = a[rowOf('Turn')], aMove = a[rowOf('Move / strafe')];
+            KEYS_LAYOUT = lay1; applyLayout();
+            ok('controls: the arrow rows say what the live layout does',
+               /←/.test(wTurn) && !/←/.test(wMove) && !/←/.test(aTurn) && /←/.test(aMove),
+               'WASD turn "'+wTurn+'" move "'+wMove+'" · ARROWS turn "'+aTurn+'" move "'+aMove+'"'); }
           G.state = 'play'; show(null);
         } else ok('controls: every key the field manual advertises answers', true,
                   'the touch manual names pads, not keys');
@@ -7862,12 +7984,23 @@ let TAP_ACT = false;
 function onKey(e){
   audioInit();
   /* Only swallow Tab in-mission, or the menus become keyboard-inaccessible.
-     The watch is a menu too: while focus is still on the canvas Tab closes it,
-     as the field manual says, but once focus is INSIDE the panel Tab belongs to
-     the browser again — otherwise RESTART, OPTIONS and ABORT are mouse-only. */
-  const inWatch = !!(document.activeElement && document.activeElement.closest &&
-                     document.activeElement.closest('#s-pause'));
-  if (e.code==='Tab' && (G.state==='play' || (G.state==='pause' && !inWatch))) e.preventDefault();
+     On the watch, Tab walks the watch: RESUME, RESTART, OPTIONS, ABORT and
+     round again, Shift+Tab the other way. It used to belong to the browser
+     once focus was inside the panel, and the browser walked it OFF the panel
+     — onto the canvas underneath, where the next Tab read as "close the
+     watch" and quietly resumed the mission with the clock running. Esc and
+     RESUME are the ways out, as the field manual says. */
+  if (e.code==='Tab' && G.state==='pause'){
+    e.preventDefault();
+    const fs = [...document.querySelectorAll('#s-pause button')].filter(b => !b.disabled && b.offsetParent !== null);
+    if (fs.length){
+      const i = fs.indexOf(document.activeElement);
+      const n = i < 0 ? (e.shiftKey ? fs.length - 1 : 0) : (i + (e.shiftKey ? -1 : 1) + fs.length) % fs.length;
+      fs[n].focus({ preventScroll:true });
+    }
+    return;
+  }
+  if (e.code==='Tab' && G.state==='play') e.preventDefault();
   if (e.code==='F4'){
     e.preventDefault();
     if (G.state==='boot') bootDone();       // never capture the splash as the return screen
@@ -7915,6 +8048,10 @@ function onKey(e){
   }
   if (G.state==='play'){
     if (e.code==='Escape' || e.code==='Tab'){ pause(); return; }
+    /* A mouseless player who resumed with Esc played under a permanent
+       CLICK THE VIEW band with nothing to click with. Enter is an activating
+       key, so it can take the lock — and the band now names it. */
+    if (e.code==='Enter' && !M.locked && wantsLock() && !lockGivenUp()){ tryLock(); return; }
     if (!P.alive) return;              // the corpse keeps its grip on the gun
     if (e.code==='KeyR' || e.code==='Slash') startReload();
     if (e.code==='KeyQ' || e.code==='BracketLeft') switchWeapon(-1);
@@ -7923,7 +8060,7 @@ function onKey(e){
     if (n >= 0) pickWeapon(n);
     return;
   }
-  if (G.state==='pause' && (e.code==='Escape' || (e.code==='Tab' && !inWatch))){ resume(e.code==='Tab'); return; }   // Tab activates, Esc does not
+  if (G.state==='pause' && e.code==='Escape'){ resume(false); return; }   // Esc is not an activating key
   if (e.code==='Enter' && !(e.target && e.target.tagName==='BUTTON')){   // a focused button clicks itself
     if (G.state==='title'){ act('missions'); }
     else if (G.state==='select'){ sfx('click'); gotoBrief(); }
@@ -8083,6 +8220,9 @@ function loop(t){
    Multiplying the zoom back out keeps the clamp honest while making the
    measurement zoom-invariant, so the stuck state cannot form. vv.scale is 1 in
    an embedded frame, so the case this clamp was written for is untouched. */
+/* toast type for a picture h CSS-px tall: the desktop size at 648px, the 6px
+   floor from a landscape phone up, never past 10 */
+function toastPx(h){ return Math.max(6, Math.min(10, h * .0128)); }
 function fitClamp(win, cli, vv, scale){
   return Math.min(win || 1e9, cli || 1e9, (vv ? vv * (scale || 1) : 0) || 1e9);
 }
@@ -8104,6 +8244,10 @@ function fit(){
   if (s * dpr >= 2) s = Math.floor(s * dpr) / dpr;
   view.style.width = (RW*s)+'px';
   view.style.height = (RH*s)+'px';
+  /* Toasts scale with the PICTURE. 1.15vh read the phone's tall axis in
+     portrait — 9.7px type in a 216px-tall frame, four toasts deep across the
+     crosshair while the guards were still up. */
+  document.getElementById('frame').style.setProperty('--toastpx', toastPx(RH*s).toFixed(2)+'px');
   /* One scanline per game-pixel row, and never a fractional device-pixel
      period (it beats against the pixel grid). Under 2x a per-row stripe is
      half the display — keep the classic 3px look there. */
