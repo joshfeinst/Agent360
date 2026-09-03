@@ -46,8 +46,8 @@ the full list.
 **On a phone it works out that it's a phone.** Two pads: the left one moves —
 push it to the rim and you sprint — and the right one looks, so you can walk
 and turn at once instead of choosing. Dragging the view still looks if you
-prefer it, a tap on the view shoots, and FIRE, AIM, RELOAD, GUN, USE, CROUCH
-and PAUSE cluster around whichever pad the thumb is already on, every one of
+prefer it, a tap on the view shoots, and FIRE, AIM, RLD, GUN, USE, CRCH and
+❚❚ (pause) cluster around whichever pad the thumb is already on, every one of
 them at least 44px. The pause screen's field watch stands in for Tab's floor plan. Landscape
 is the better way to hold it; installed from *Add to Home Screen*, it launches
 fullscreen. Settings and per-mission bests survive reloads, and cheated runs
@@ -195,6 +195,22 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.31
+
+Two reviewers on ground nobody had audited — the self-test suite itself and
+what the HUD draws, pixel by pixel — and four players: a touchscreen laptop
+that swaps between finger and mouse, a forty-minute marathon, a throttled
+office PC, and a copy reader. The suite had eight one-line regressions that
+passed the whole battery and, on a phone, could leave a fabricated best in
+memory for the next honest save to write; F4 from the pause watch handed back
+a fresh M01. A touchscreen laptop with the keyboard folded away could not
+move or pause — the input model was one media query at load; the first
+finger on the view now opens the cluster beside the mouse. The waypoint
+label covered the crosshair the moment you aimed at its target, and the
+chevron pointed through locked doors. The clearance blurbs promised a
+tasking difference three missions do not have. Ledger:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.30
 
 Six more players on ground the first twelve had not covered: a returning
@@ -262,7 +278,7 @@ reported and did not survive:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **420 assertions** (418 in a touch
+- **F4** runs the in-game self-test suite — **439 assertions** (431 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the
@@ -281,7 +297,8 @@ reported and did not survive:
   freshness, every sound name the code plays existing in the sound table, and
   F4 on a debrief handing that debrief back — then a portrait pass at 390×844
   measuring the rotate chip and the toast type against the real frame, a
-  storage-denied pass, and the suite run with the cheat menu's toggles on: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
+  storage-denied pass, the suite run with the cheat menu's toggles on, F4 from
+  the watch keeping its mission, and a seeded soak that prints its seed: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
 - `tools/touch.js` is a phone-finger walkthrough: boot skipped, every menu
   visited, a mission started, walked, fired, paused and resumed by taps
   alone, with 44px tap-target and screen-utilization measurements. It also

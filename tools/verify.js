@@ -126,17 +126,23 @@ async function runSelfTest(page, label) {
     SCANOP = distinct.scan; G.mapOn = distinct.map; RM_OPT = distinct.rm;
     G.diff = distinct.diff; if (!isTouch) LOOK = distinct.look;
     saveSettings();
-    const before = localStorage.getItem('a360.v2');
+    const before = localStorage.getItem(SAVE_KEY_REAL);
+    const board0 = JSON.stringify(BEST), cd0 = campaignDone;
     selfTest(true);
-    const after = localStorage.getItem('a360.v2');
+    const after = localStorage.getItem(SAVE_KEY_REAL);
+    /* ...and the BOARD in memory: a scripted win the suite filed to its
+       scratch blob used to come back into BEST and reach disk on the next
+       honest save */
+    const boardMoved = JSON.stringify(BEST) !== board0 || campaignDone !== cd0;
     const live = { sens:M.sens, tsens:M.tsens, inv:INVERT_Y, aim:AIM_ASSIST,
                    sfx:A.sfxVol, mus:A.musVol, scan:SCANOP, map:G.mapOn,
                    rm:RM_OPT, diff:G.diff, look:LOOK };
     const moved = Object.keys(distinct).filter(k =>
       (k === 'look' && isTouch) ? false : live[k] !== distinct[k]);
+    if (boardMoved) moved.push('BEST/campaignDone');
     G.state = 'title'; if (typeof show === 'function') show('s-title');
     return { blobHeld: before === after, moved,
-             scratchGone: localStorage.getItem('a360.selftest.v2') === null };
+             scratchGone: localStorage.getItem(SAVE_KEY_TEST) === null };
   });
   console.log('F4 SAFETY blob held ' + (f4Safe.blobHeld ? 'yes' : 'NO') +
               ' · settings moved: ' + (f4Safe.moved.length ? f4Safe.moved.join(',') : 'none') +
@@ -163,12 +169,30 @@ async function runSelfTest(page, label) {
     G.tainted = false; G.state = 'title'; if (typeof show === 'function') show('s-title');
     return { report, held: before === after, state, screen, nextOk, before, after };
   });
+  /* F4 from the WATCH: the mission behind the report has to be the same one,
+     same clock, same objectives — assertions that load levels used to run
+     here too, and handed back a fresh M01 under a watch titled M05 */
+  const f4Watch = await page.evaluate(() => {
+    selLevel = LEVELS.length - 1; G.diff = 0; startMission(false);
+    for (let i = 0; i < 120; i++) step(1/60);
+    pause();
+    const snap = () => ({ code: G.L.code, time: +G.time.toFixed(2), objs: G.objs.length, ents: G.ents.length, x: +P.x.toFixed(2), y: +P.y.toFixed(2) });
+    const before = snap();
+    const f4 = () => dispatchEvent(new KeyboardEvent('keydown', { code: 'F4', key: 'F4', bubbles: true, cancelable: true }));
+    f4(); const report = G.showTests === true; f4();
+    const after = snap(), state = G.state;
+    resume(false); clearInput(); G.state = 'title'; if (typeof show === 'function') show('s-title');
+    return { report, same: JSON.stringify(before) === JSON.stringify(after), state, before, after };
+  });
+  const f4WatchOK = f4Watch.report && f4Watch.same && f4Watch.state === 'pause';
+  console.log('F4 WATCH the paused mission survives the report ' + (f4WatchOK ? '— yes' :
+              '— NO: ' + JSON.stringify({ report: f4Watch.report, state: f4Watch.state, before: f4Watch.before, after: f4Watch.after })));
   const f4DebriefOK = f4Debrief.report && f4Debrief.held && f4Debrief.state === 'result' &&
                       f4Debrief.screen === 's-result' && f4Debrief.nextOk;
   console.log('F4 DEBRIEF the player\'s debrief survives the report ' + (f4DebriefOK ? '— yes' :
               '— NO: ' + JSON.stringify({ report: f4Debrief.report, held: f4Debrief.held, state: f4Debrief.state,
                                           nextOk: f4Debrief.nextOk, before: f4Debrief.before.slice(0, 80), after: f4Debrief.after.slice(0, 80) })));
-  const f4Bad = (!f4Safe.blobHeld || f4Safe.moved.length || !f4Safe.scratchGone || !f4DebriefOK) ? 1 : 0;
+  const f4Bad = (!f4Safe.blobHeld || f4Safe.moved.length || !f4Safe.scratchGone || !f4DebriefOK || !f4WatchOK) ? 1 : 0;
 
   /* ...and it has to stay green with the cheat menu's toggles left on: it
      pinned INVULNERABLE and nothing else, so INFINITE AMMUNITION turned eight
@@ -192,7 +216,14 @@ async function runSelfTest(page, label) {
     return R.map(r => ({ name: r.name, pass: r.pass, detail: r.detail }));
   });
   const fails = tests.filter(t => !t.pass);
-  console.log('SELFTEST[' + label + '] ' + (tests.length - fails.length) + '/' + tests.length + ' passed');
+  /* a guard branch that passes with "(no X to test on)" is a test that did
+     not run; the phone context has every geometry, so none may skip there,
+     and on desktop only the look pad (a phone-only control) may */
+  const skipped = tests.filter(t => t.pass && /\(no .* to test on\)/.test(t.name + ' ' + t.detail)).map(t => t.name);
+  const badSkips = skipped.filter(n => label !== 'desktop' || !/look pad/.test(n));
+  console.log('SELFTEST[' + label + '] ' + (tests.length - fails.length) + '/' + tests.length + ' passed' +
+              (skipped.length ? ' · skipped: ' + skipped.join(' | ') + (badSkips.length ? ' — SKIPS NOT EXPECTED HERE' : '') : ''));
+  if (badSkips.length) fails.push({ name: 'skipped assertions', detail: badSkips.join(' | ') });
   fails.forEach(f => console.log('  FAIL ' + f.name + '  ' + f.detail));
   return fails.length + f4Bad;
 }
@@ -203,12 +234,18 @@ async function runSelfTest(page, label) {
    for exactly two — the loop's own cap is .05 so nothing here can exceed what a
    real frame can. */
 async function runSoak(page, frames, label, dts) {
-  const soak = await page.evaluate(({ FRAMES, DTS }) => {
+  /* seeded per combo, so a faulting frame can be replayed: raw rnd()
+     made every soak failure a one-off */
+  const SEED = +(process.env.SOAK_SEED || (Date.now() % 100000));
+  const soak = await page.evaluate(({ FRAMES, DTS, SEED }) => {
     const out = [];
     const savedGod = G.cheats.god;
     for (let li = 0; li < LEVELS.length; li++) for (let di = 0; di < DIFFS.length; di++) {
       let exc = null, frames = 0;
       const f0 = G.faults || 0;
+      let a = (SEED + li * 31 + di * 7) | 0;
+      const rnd = () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
       try {
         selLevel = li; G.diff = di;
         startMission(false);
@@ -216,17 +253,17 @@ async function runSoak(page, frames, label, dts) {
         for (let f = 0; f < FRAMES; f++) {
           if (f % 7 === 0) {
             for (const k of ['fwd','back','left','right','run','crouch','use','fire','aim','reload'])
-              held[k] = Math.random() < .3;
+              held[k] = rnd() < .3;
             /* on a touch context the stick axes are the movement input */
             if (document.body.classList.contains('touch')) {
-              held.tx = Math.random() * 2 - 1; held.ty = Math.random() * 2 - 1;
+              held.tx = rnd() * 2 - 1; held.ty = rnd() * 2 - 1;
             }
           }
-          M.dx += (Math.random() - .5) * 90;
-          M.dy += (Math.random() - .5) * 30;
+          M.dx += (rnd() - .5) * 90;
+          M.dy += (rnd() - .5) * 30;
           M.lastMove = performance.now();
-          if (Math.random() < .02) M.wheel += Math.random() < .5 ? 1 : -1;
-          if (Math.random() < .05) { M.fire = Math.random() < .5; M.fireEdge = performance.now(); M.pressNew = true; }
+          if (rnd() < .02) M.wheel += rnd() < .5 ? 1 : -1;
+          if (rnd() < .05) { M.fire = rnd() < .5; M.fireEdge = performance.now(); M.pressNew = true; }
           if (G.state !== 'play') break;
           const dt = DTS.length === 2 ? DTS[f < FRAMES / 2 ? 0 : 1] : DTS[0];
           step(dt);
@@ -240,14 +277,16 @@ async function runSoak(page, frames, label, dts) {
     clearInput(); G.state = 'title';
     if (typeof show === 'function') show('s-title');
     return out;
-  }, { FRAMES: frames, DTS: dts });
+  }, { FRAMES: frames, DTS: dts, SEED });
 
   let totalFrames = 0, totalFaults = 0, excs = 0;
   for (const s of soak) {
     totalFrames += s.frames; totalFaults += s.faults; if (s.exc) excs++;
-    if (s.exc || s.faults) console.log('  SOAK ' + s.code + ' diff ' + s.di + ': faults=' + s.faults + ' exc=' + (s.exc || 'none'));
+    /* a run that left play with god on ended in something other than a win */
+    if (s.endState !== 'play' && s.endState !== 'result') { s.faults++; totalFaults++; s.exc = s.exc || ('ended in state ' + s.endState); }
+    if (s.exc || s.faults) console.log('  SOAK ' + s.code + ' diff ' + s.di + ': faults=' + s.faults + ' exc=' + (s.exc || 'none') + ' (SOAK_SEED=' + SEED + ' replays it)');
   }
-  console.log('SOAK[' + label + '] ' + totalFrames + ' frames across ' + soak.length + ' combos, faults=' + totalFaults + ', exceptions=' + excs);
+  console.log('SOAK[' + label + '] ' + totalFrames + ' frames across ' + soak.length + ' combos, faults=' + totalFaults + ', exceptions=' + excs + (totalFaults + excs ? '' : ' · seed ' + SEED));
   return totalFaults + excs;
 }
 
