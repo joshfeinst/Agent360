@@ -469,7 +469,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.30';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.31';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -5186,6 +5186,10 @@ function selfTestBody(runSim){
        (PROP.gunP.w!==PROP.ammoP.w || sum(PROP.gunP)!==sum(PROP.ammoP)));
   }
 
+  /* Everything below loads levels, so it runs only where nothing is in
+     progress: F4 from the WATCH used to hand the player back a fresh M01
+     with the clock at zero under a watch still titled M05. */
+  if (runSim){
   /* ---- a hit lands the way the tables say: armour, rungs, and the god cheat ---- */
   { const hp0 = P.hp, ar0 = P.armor, d0 = G.diff, g0 = G.cheats.god, dm0 = G.dmgTaken, al0 = P.alive;
     P.alive = true; G.cheats.god = false;
@@ -5324,6 +5328,8 @@ function selfTestBody(runSim){
        G.bossAlive === true && spawn.bossFight === false && spawn.combat === false && met.bossFight === true,
        'at spawn boss '+spawn.bossFight+' combat '+spawn.combat+' · met '+met.bossFight);
     selLevel = sel0; loadLevel(0, 1); G.state = st0; }
+
+  }
 
   /* ---- a pickup toast names what was gained, not the item's face value ---- */
   { const hp0 = P.hp, ar0 = P.armor;

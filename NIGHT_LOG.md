@@ -267,9 +267,31 @@ survived. One player filed nothing that did — it refuted itself.
 
 ---
 
+# Night log — the suite, the pixels, and the copy
+
+A different mix: two reviewers on ground nobody had audited — the self-test
+suite itself, and what the HUD actually draws, pixel by pixel — and four
+players: a touchscreen laptop that swaps between finger and mouse, a
+forty-minute marathon on one page, a CPU-throttled office PC, and a copy
+reader holding every string the game shows to what the game does.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · F4 from the watch keeps the mission** | Every assertion that loads a level sits inside the sim-only guard | The marathon's finding, and this ledger's own doing: assertions added since v1.28 loaded levels outside `if (runSim)`, so F4 from the pause watch handed the player back **a fresh M01 with the clock at zero under a watch still titled M05** | `verify.js` gained an F4 WATCH pass: pause M05 two seconds in, F4 twice, and require the same mission, clock, objectives and position |
+| **2 · F4 never fabricates a best** | `selfTest`'s finally restores the board, the campaign flag, the ghost guard, the look mode, held input and the BACK entry; the "only a time a clock can say" probe restores the board from a snapshot instead of reloading the scratch blob | On a phone the suite filed scripted M01 wins to its scratch blob, a later probe's `loadSettings()` reloaded them into the live `BEST`, and **the next honest save wrote a fabricated best to disk**; the F4 SAFETY check compared only the blob across the suite, so it said "held yes". A suite that threw left the ghost guard off — the next compat mousedown from a finger fired the gun — and a phone in DRAG look | The check now compares the in-memory board and flag too; the storage-denied runs cover the throw |
+| **3 · Eight regressions that passed 420/420** | Assertions that fail by name for: SLA at par asked of the debrief itself (the old one computed `<=` in the test), the debrief's own clock line, a slower win displacing a faster, armour absorbing, the rung scale, the god cheat, a locked door without and with the key, the keycard counting | The audit mutated each into a scratch copy and ran the battery: **all eight green, the god cheat's removal VERIFY OK, exit 0** | Each mutation-verified here: `at par BREACHED`, `after 60s 60`, `absorbed 0.00`, `took 80`, `without 0 with 0` |
+| **4 · The soak is replayable; a skip is named** | `runSoak` seeds a PRNG per combo and prints the seed on any fault; a combo that leaves play in any state but a win counts as a fault; guard branches that pass with "(no X to test on)" are listed, and fail where the geometry exists | Raw `Math.random()` made every soak failure a one-off; the desktop run silently recorded five right-pad assertions as passes it could not run | Seeds print on every run now |
+| **5 · HYBRID input** | On a mouse profile the first real finger on the view opens the cluster and the touch rows beside the mouse's; a finger's travel has its own lane and is direct look in every mode; a finger tap takes the capture the band asks for | `isTouch` was one media query at load, and a touchscreen laptop answers "mouse": with the keyboard folded away **the agent moved 0.00 units and 10 of 10 pause attempts failed**. A finger swipe in FREE look went through the mouse's lane, pinned the reticle at the edge and spun the view **170° for one 300px swipe**. A finger tap under CLICK THE VIEW fired a shot and left the band up | Mutation-verified: `cluster false->false`, `turned 0.000 rx 0.339`, `pending false mag 6`. The "two fingers fire twice" report could not be reproduced in the sim at the pistol's cooldown and is not in the code |
+| **6 · The copy says what the game does** | AGENT: "Three hostiles stay home, and hits land at half strength"; SECRET: "Full roster, real damage, they aim"; 00: "Full roster, the hardest hits, and they rarely miss"; a hack is prompted as HACK TERMINAL; the phone's manual points at ❚❚, not N and Tab; the cheat asterisk is "that run's"; the keycard toast names the card; the watch legend names the case and the endpoint; "Headphones recommended" only with sound on; SLA window, OPTIONS and the finale eyebrow agree with their neighbours | "A shorter task list" and "deeper tasking" were **false on M01, M03 and M04** under a select note counting the same objectives for both rungs; the roster really is 6/9/9 and 4/7/7 | Asserted from the tables: AGENT three short on every mission; the keycard toast, the hack prompt and the phone's manual each mutation-verified |
+| **7 · Plates off the crosshair** | The waypoint label sits above its chevron; the chevron picks the nearest *walkable* objective (locked doors solid without the key, secret doors until found); RELOADING and INVULNERABLE move out from under a phone's pads; the toast stack is three deep on a phone; the pain arc skips the waypoint plate; the meltdown plate lives at the top centre; the capture band clears a lowered crosshair; plates behind four low-contrast strings; ICS SHIELD ACTIVE and the radar's rim blips nudged | The pixel audit's rects: the plate `[170,96 45x13]` **contained the crosshair** for any bearing within 10°; from **181 of 356** key-side cells on M03 the chevron aimed at the audit terminal sealed inside the bay; RLD sat on the plate, the move pad on RELOADING, six toasts on the crosshair; at full pitch the meltdown plate met the crosshair; RELOADING at 1.73:1 | Mutation-verified: `OBJ A · 11M` on the crosshair, `143 of 400 key-side cells`, `MELTDOWN 0:20` |
+| **8 · The report pages** | Arrow keys, PgUp/PgDn and Space page the F4 report, 21 rows a page | Forty failures rendered 21 and "+19 more in console" | Mutation-verified: page 3 drew page 1's rows |
+| **What did not survive** | Reported, re-run, not changed | **The slow machine**: at 4x and 8x CPU the scored clock ran within 2.5% of sim time; at 24x (12–15 fps) it ran 1.5–1.8x — lag costs time by design, the safe direction. Frame-rate invariance held for walking, sprinting, bursts, the press buffer and the music lookahead. **The marathon**: 38 minutes, 41 pauses, 8 deaths, 4 F4s, heap 54 MB and flat, DOM 395 and flat, one interval, step 0.15–0.23ms throughout, every best right, campaign flag set, reload restored all of it |
+
+---
+
 ## Standing numbers
 
-- **Self-tests:** 420 desktop / 418 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 439 desktop / 431 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -278,10 +300,11 @@ survived. One player filed nothing that did — it refuted itself.
   the code plays existing in the sound table — plus end-to-end checks that
   running F4 leaves the player's saved blob untouched and hands a debrief back,
   a portrait pass at 390x844 measuring the rotate chip and the toast type against the real frame,
-  a storage-denied pass in both shapes, and the suite run with the cheat menu on) · `tools/touch.js` (phone-finger walkthrough, landscape +
+  a storage-denied pass in both shapes, the suite run with the cheat menu on, F4 from the watch
+  keeping its mission, and a seeded soak that prints its seed) · `tools/touch.js` (phone-finger walkthrough, landscape +
   portrait) · `tools/visual.js` (glyph-box audit of all overlay screens,
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.30'` (index.html) ↔ `agent360-v1.30`
+- **Versions:** game `VERSION = '1.31'` (index.html) ↔ `agent360-v1.31`
   (sw.js CACHE), enforced by verify.js

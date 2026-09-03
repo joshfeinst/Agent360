@@ -169,12 +169,30 @@ async function runSelfTest(page, label) {
     G.tainted = false; G.state = 'title'; if (typeof show === 'function') show('s-title');
     return { report, held: before === after, state, screen, nextOk, before, after };
   });
+  /* F4 from the WATCH: the mission behind the report has to be the same one,
+     same clock, same objectives — assertions that load levels used to run
+     here too, and handed back a fresh M01 under a watch titled M05 */
+  const f4Watch = await page.evaluate(() => {
+    selLevel = LEVELS.length - 1; G.diff = 0; startMission(false);
+    for (let i = 0; i < 120; i++) step(1/60);
+    pause();
+    const snap = () => ({ code: G.L.code, time: +G.time.toFixed(2), objs: G.objs.length, ents: G.ents.length, x: +P.x.toFixed(2), y: +P.y.toFixed(2) });
+    const before = snap();
+    const f4 = () => dispatchEvent(new KeyboardEvent('keydown', { code: 'F4', key: 'F4', bubbles: true, cancelable: true }));
+    f4(); const report = G.showTests === true; f4();
+    const after = snap(), state = G.state;
+    resume(false); clearInput(); G.state = 'title'; if (typeof show === 'function') show('s-title');
+    return { report, same: JSON.stringify(before) === JSON.stringify(after), state, before, after };
+  });
+  const f4WatchOK = f4Watch.report && f4Watch.same && f4Watch.state === 'pause';
+  console.log('F4 WATCH the paused mission survives the report ' + (f4WatchOK ? '— yes' :
+              '— NO: ' + JSON.stringify({ report: f4Watch.report, state: f4Watch.state, before: f4Watch.before, after: f4Watch.after })));
   const f4DebriefOK = f4Debrief.report && f4Debrief.held && f4Debrief.state === 'result' &&
                       f4Debrief.screen === 's-result' && f4Debrief.nextOk;
   console.log('F4 DEBRIEF the player\'s debrief survives the report ' + (f4DebriefOK ? '— yes' :
               '— NO: ' + JSON.stringify({ report: f4Debrief.report, held: f4Debrief.held, state: f4Debrief.state,
                                           nextOk: f4Debrief.nextOk, before: f4Debrief.before.slice(0, 80), after: f4Debrief.after.slice(0, 80) })));
-  const f4Bad = (!f4Safe.blobHeld || f4Safe.moved.length || !f4Safe.scratchGone || !f4DebriefOK) ? 1 : 0;
+  const f4Bad = (!f4Safe.blobHeld || f4Safe.moved.length || !f4Safe.scratchGone || !f4DebriefOK || !f4WatchOK) ? 1 : 0;
 
   /* ...and it has to stay green with the cheat menu's toggles left on: it
      pinned INVULNERABLE and nothing else, so INFINITE AMMUNITION turned eight
