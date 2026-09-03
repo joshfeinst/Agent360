@@ -462,7 +462,7 @@ body.touch .no-touch{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.27';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.28';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -480,6 +480,10 @@ const zbuf = new Float32Array(RW);
 
 const clamp = (v,a,b) => v<a?a:(v>b?b:v);
 const lerp  = (a,b,t) => a+(b-a)*t;
+/* Frame-rate-free smoothing: lerp(v, inst, .3) was .3 PER FRAME, so a
+   hostile's smoothed velocity — what the patch cannon leads a mover by —
+   settled in ~16ms at 144Hz and ~77ms at 30Hz. The same 60Hz feel, per second. */
+const velSmooth = (v, inst, dt) => lerp(v, inst, 1 - Math.pow(.7, dt*60));
 const rnd   = (a=1) => Math.random()*a;
 const rr    = (a,b) => a+Math.random()*(b-a);
 const dist2 = (ax,ay,bx,by) => { const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
@@ -624,7 +628,14 @@ addEventListener('keydown', e => {
      operate the menus and the Options screen stays keyboard-accessible. */
   const playing = (typeof G !== 'undefined') && G && G.state === 'play';
   const a = playing ? KEYMAP[e.code] : null;
-  if (e.repeat) { if (a) e.preventDefault(); return; }
+  if (e.repeat) {
+    if (a){ e.preventDefault();
+      /* A key already down when the mission started sends only repeats — the
+         browser never re-issues its keydown — and startMission's clearInput
+         had just dropped it, so W held through the briefing's ENTER walked
+         nowhere until it was let go and pressed again. */
+      if (!held[a]){ held[a] = true; keys.add(e.code); } }
+    return; }
   if (a) { held[a] = true; e.preventDefault();
     /* Space/X get the same press buffer a click does: a tap that lands during
        the weapon's cool-down deserves the next available shot, not nothing. */
@@ -784,10 +795,15 @@ addEventListener('mousemove', e => {
   M.dy += clamp(dy, -MAX_EVENT_PX, MAX_EVENT_PX);
   M.lastMove = performance.now();
 });
-/* Re-entering the window must not read as one huge jump. */
-addEventListener('mouseout', () => { M.lx = null; M.ly = null; });
+/* Re-entering the window must not read as one huge jump — and only the
+   window. mouseout bubbles from EVERY element boundary, and the canvas's own
+   mouseleave said the same thing, so the cursor crossing onto the letterbox
+   reset the seed and the next move was swallowed as a re-entry: a hitch in
+   free look at every crossing. Leaving the window is the exit with no
+   relatedTarget. */
+addEventListener('mouseout', e => { if (!e.relatedTarget){ M.lx = null; M.ly = null; } });
 view.addEventListener('mouseenter', () => { M.inside = true; });
-view.addEventListener('mouseleave', () => { M.inside = false; M.lx = null; M.ly = null; });
+view.addEventListener('mouseleave', () => { M.inside = false; });
 
 /* Panic reset: whatever the browser has stranded, this puts it all back down. */
 function panic(){
@@ -998,14 +1014,20 @@ function unlock(){
   };
   addEventListener('touchend', touchDone);
   addEventListener('touchcancel', touchDone);   // else a cancelled stick walks (or sprints) forever
-  view.addEventListener('touchstart', e=>{ const t=e.changedTouches[0];
+  view.addEventListener('touchstart', e=>{
     /* One owner per look drag, exactly as the pads have at padStart: a second
        finger landing on the canvas used to rebind T.look to itself, so the
        thumb that was still dragging stopped turning the view and its lift
        cleared the record out from under it. The interloper gets its own slot
-       instead of being dropped, because the view answers taps too. */
-    if (T.look){ if (!T.tap) T.tap={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp}; }
-    else { T.look={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp}; M.tlook = true; }
+       instead of being dropped, because the view answers taps too.
+       EVERY changed touch is slotted: two thumbs landing in the same input
+       frame arrive as one event with two changedTouches, and the second used
+       to get no record at all — its lift could not tap-fire, and it could not
+       inherit the drag. */
+    for (const t of e.changedTouches){
+      if (T.look){ if (!T.tap) T.tap={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp}; }
+      else { T.look={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp}; M.tlook = true; }
+    }
     e.preventDefault(); }, {passive:false});
   const dropOwner = [];
   const bind=(id,fn,fn2)=>{ const el=document.getElementById(id);
@@ -2306,6 +2328,16 @@ function isSolid(x,y){ return cellAt(x,y)!==0; }
 
 function ent(o){ G.ents.push(o); return o; }
 
+/* The list a clearance is actually given: filtered, then re-lettered A, B,
+   C... The briefing and the mission both read THIS, so the letters on the
+   briefing are the letters on the watch. The v1.27 re-lettering was done on
+   the mission's own copy and the briefing kept the authored tags, so M01 on
+   AGENT still briefed A, B, C, E and then handed out A, B, C, D — nine of
+   the fifteen clearance pairs disagreed with their own briefing. */
+function objsFor(L, di){
+  return L.objectives.filter(o => o.diff <= di)
+    .map((o,i) => ({...o, tag: String.fromCharCode(65+i), have:0, done:false}));
+}
 function loadLevel(li, di){
   const L = LEVELS[li]; G.L = L; G.level = li; G.diff = di;
   G.H = L.map.length; G.W = L.map[0].length;
@@ -2361,8 +2393,7 @@ function loadLevel(li, di){
      briefing A, B, D — a player counting letters concludes they have missed
      one. The authored tag stays in the level table as documentation; what the
      player is shown is its position in the list actually given to them. */
-  G.objs = L.objectives.filter(o => o.diff <= di)
-    .map((o,i) => ({...o, tag: String.fromCharCode(65+i), have:0, done:false}));
+  G.objs = objsFor(L, di);
   if (G.objs.some(o=>o.kind==='console')) G.shieldDown = false;
 
   for (let y=0;y<G.H;y++) for (let x=0;x<G.W;x++){
@@ -2555,13 +2586,35 @@ function boom(x,y,z,radius,dmg,fromPlayer){
     if (d < radius*.75 && los(x, y, P.x, P.y)) hurtPlayer(dmg*.35*(1-d/(radius*.75)), x, y);
   }
 }
+/* Distance along a unit ray to the first solid cell, or maxT if there is
+   none inside it — the renderer's own grid walk (one cell boundary at a
+   time), so what this calls blocked is exactly what is drawn as wall. Sight
+   and bullets used to SAMPLE the line instead, every .16u and .07u: where two
+   solid cells touch only at a corner, the segment inside either cell is
+   shorter than a sample step and the sample line hopped the zero-width gap.
+   Four such corners ship (M01's terminal room, M04's ramp lane, two in M05's
+   escape closet), and at M01's a hostile parked outside the room could see
+   and shoot the agent mid-hack through a wall the agent could not see or
+   shoot back through. The origin cell is not tested: an actor is never inside
+   a wall and a blast point is its projectile's last free position. */
+function wallDist(ox, oy, dx, dy, maxT){
+  let mx = Math.floor(ox), my = Math.floor(oy);
+  const sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1;
+  const ddx = dx === 0 ? Infinity : Math.abs(1/dx), ddy = dy === 0 ? Infinity : Math.abs(1/dy);
+  let tx = dx === 0 ? Infinity : (dx < 0 ? ox - mx : mx + 1 - ox) * ddx;
+  let ty = dy === 0 ? Infinity : (dy < 0 ? oy - my : my + 1 - oy) * ddy;
+  for (let i = 0, N = G.W + G.H + 2; i < N; i++){
+    let t;
+    if (tx < ty){ t = tx; mx += sx; tx += ddx; } else { t = ty; my += sy; ty += ddy; }
+    if (t >= maxT) return maxT;
+    if (mx < 0 || my < 0 || mx >= G.W || my >= G.H || G.solid[idx(mx,my)]) return t;
+  }
+  return maxT;
+}
 function los(ax,ay,bx,by){
   const dx=bx-ax, dy=by-ay, n=Math.hypot(dx,dy);
   if (n<.001) return true;
-  const st=.16, ux=dx/n*st, uy=dy/n*st;
-  let x=ax, y=ay;
-  for (let i=0;i<n/st;i++){ x+=ux; y+=uy; if (isSolid(x,y)) return false; }
-  return true;
+  return wallDist(ax, ay, dx/n, dy/n, n) >= n;
 }
 /* Axis-separated so you slide along a wall instead of sticking to it. Each axis
    tests the leading edge at three points across the body width.              */
@@ -2755,15 +2808,11 @@ function spawnDecal(x,y,z){
    leaves a proper cluster, everything else marks once. */
 function hitscan(ox,oy,ang,range,dmg,fromPlayer,pock=1){
   const dx=Math.cos(ang), dy=Math.sin(ang);
+  /* the wall is found exactly, up front; the samples below only look for bodies */
+  const wall = wallDist(ox, oy, dx, dy, range);
   const st=.07;
-  for (let t=.24; t<range; t+=st){
+  for (let t=.24; t<wall; t+=st){
     const x=ox+dx*t, y=oy+dy*t;
-    if (isSolid(x,y)){
-      fx(G.cheats.paint?'paint':'puff', x-dx*.12, y-dy*.12, .32+rnd(.1));
-      for (let i=0;i<pock;i++)
-        spawnDecal(x-dx*.12+rr(-.03,.03), y-dy*.12+rr(-.03,.03), .30+rnd(.16));
-      sfxAt('impact', x, y); return false;
-    }
     if (fromPlayer){
       for (const e of G.ents){
         if (e.dead2) continue;
@@ -2779,6 +2828,13 @@ function hitscan(ox,oy,ang,range,dmg,fromPlayer,pock=1){
     } else {
       if (dist2(P.x,P.y,x,y) < .10){ hurtPlayer(dmg, ox, oy); return true; }
     }
+  }
+  if (wall < range){
+    const x=ox+dx*wall, y=oy+dy*wall;
+    fx(G.cheats.paint?'paint':'puff', x-dx*.12, y-dy*.12, .32+rnd(.1));
+    for (let i=0;i<pock;i++)
+      spawnDecal(x-dx*.12+rr(-.03,.03), y-dy*.12+rr(-.03,.03), .30+rnd(.16));
+    sfxAt('impact', x, y);
   }
   return false;
 }
@@ -3338,7 +3394,7 @@ function step(dt, scored){
       const evx = e.x, evy = e.y;
       updateEnemy(e, dt);
       /* smoothed body velocity, so the patch cannon can lead a mover */
-      if (dt > 0){ e.vx = lerp(e.vx||0, (e.x-evx)/dt, .3); e.vy = lerp(e.vy||0, (e.y-evy)/dt, .3); }
+      if (dt > 0){ e.vx = velSmooth(e.vx||0, (e.x-evx)/dt, dt); e.vy = velSmooth(e.vy||0, (e.y-evy)/dt, dt); }
       continue;
     }
     if (e.kind==='fx'){
@@ -4500,8 +4556,7 @@ function gotoBrief(){
     '<dt>Issued</dt><dd>PP7 · POWERSHELL 7</dd>'+
     '<dt>Billable</dt><dd>No. This is covered.</dd>';
   document.getElementById('b-flavor').textContent = L.brief;
-  objList(document.getElementById('b-objs'),
-    L.objectives.filter(o=>o.diff<=G.diff), false);
+  objList(document.getElementById('b-objs'), objsFor(L, G.diff), false);
   show('s-brief');
 }
 function startMission(gesture){
@@ -4576,6 +4631,12 @@ function pause(){
      whole pause, and RESTART / OPTIONS / ABORT have no keyboard route at all.
      preventScroll: the row is sticky, and scrolling to it would undo show()'s
      open-at-the-top rule. */
+  focusWatch();
+}
+/* ...and BACK from Options over the watch has the same debt: the BACK button
+   that held focus is hidden with its screen, focus falls to the body, and a
+   keyboard or screen-reader player is back to no route to RESTART or ABORT. */
+function focusWatch(){
   const rb = document.querySelector('#s-pause [data-act="resume"]');
   if (rb) rb.focus({ preventScroll:true });
 }
@@ -4601,7 +4662,13 @@ const RANKS=['INTERN WITH DOMAIN ADMIN','TIER 1 TECH','TIER 2 TECH','TIER 3 ENGI
 function rankName(){
   const acc = G.shots ? G.hits/G.shots : 0;
   let s = 0;
-  if (G.time <= G.L.par) s+=2; else if (G.time <= G.L.par*1.45) s+=1;
+  /* A checkpoint run's clock started at the duel, so against the whole
+     mission's par it was always a sprint: a 20-second duel at 6 of 10 and 10
+     damage ranked PRINCIPAL ARCHITECT in gold under an SLA row saying N/A.
+     The time axis sits at its middle rung instead — neither credit nor
+     penalty for a clock that measured nothing. */
+  if (G.ckptRun) s+=1;
+  else if (G.time <= G.L.par) s+=2; else if (G.time <= G.L.par*1.45) s+=1;
   if (acc >= .5) s+=2; else if (acc >= .28) s+=1;
   if (G.dmgTaken <= 45) s+=2; else if (G.dmgTaken <= 130) s+=1;
   if (G.diff===2) s+=1; if (G.diff===0) s-=1;
@@ -5058,12 +5125,13 @@ function selfTestBody(runSim){
         try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v:2, best:{
           'M01:1':{ time:-61, acc:10, rank:'TIER 1 TECH', win:true },
           'M01:9':{ time:5,   acc:10, rank:'TIER 1 TECH', win:true },
+          'M99:0':{ time:5,   acc:10, rank:'TIER 1 TECH', win:true },
           'M02:1':{ time:50,  acc:10, rank:'<img src=x onerror=alert(1)>', win:true } } })); } catch(_){}
         for (const k in BEST) delete BEST[k];
         loadSettings();
-        ok('best hygiene: negative time, junk diff and alien rank all scrubbed',
-           !BEST['M01:1'] && !BEST['M01:9'] && !!BEST['M02:1'] && BEST['M02:1'].rank === '',
-           JSON.stringify(BEST['M02:1'] || null));
+        ok('best hygiene: negative time, junk diff, unknown mission and alien rank all scrubbed',
+           !BEST['M01:1'] && !BEST['M01:9'] && !BEST['M99:0'] && !!BEST['M02:1'] && BEST['M02:1'].rank === '',
+           Object.keys(BEST).join(' ') + ' ' + JSON.stringify(BEST['M02:1'] || null));
       }
       /* The old assertion here read RM_OPT AFTER the restore below and so only
          ever measured the restore. Reframed honestly: loadSettings is supposed
@@ -5611,6 +5679,26 @@ function selfTestBody(runSim){
       ok('mouse pointercancel releases fire', M.fire === false);
     }
 
+    /* the window-level mouseout that re-seeds the cursor on re-entry bubbles
+       from EVERY element boundary: crossing from the canvas onto the letterbox
+       reset the seed, and the next move was swallowed as a re-entry — a hitch
+       in free look at every crossing. Only leaving the window has no
+       relatedTarget, and that one must still re-seed. */
+    { const lm0 = LOOKMODE, lk0 = M.locked, st0 = G.state;
+      LOOKMODE = 'free'; M.locked = false; G.state = 'play';
+      M.dx = 0; M.dy = 0; M.lx = null; M.ly = null;
+      const mv = (x,y) => dispatchEvent(new MouseEvent('mousemove', { clientX:x, clientY:y, bubbles:true }));
+      mv(100, 100);
+      view.dispatchEvent(new MouseEvent('mouseout',   { relatedTarget: document.body, bubbles:true }));
+      view.dispatchEvent(new MouseEvent('mouseleave', { relatedTarget: document.body }));
+      mv(112, 100);
+      const crossed = M.dx;
+      dispatchEvent(new MouseEvent('mouseout', { relatedTarget: null, bubbles:true }));
+      M.dx = 0; mv(600, 100);
+      ok('free look: the cursor crossing onto the letterbox loses no movement', crossed === 12, 'dx='+crossed);
+      ok('free look: leaving the window still re-seeds, so re-entry is not a jump', M.dx === 0, 'dx='+M.dx);
+      LOOKMODE = lm0; M.locked = lk0; G.state = st0; M.dx = 0; M.dy = 0; M.lx = null; M.ly = null; }
+
     /* two wheel notches in one frame are two weapon steps, not one */
     {
       const savedHas = P.has.slice(); P.has = [true, true, true, true];
@@ -5784,6 +5872,18 @@ function selfTestBody(runSim){
         tev('touchend', null, vat(vx + 80, vy));
         step(0.016);
         ok('touch: a drag on the view looks and never fires', P.mag[0] === 7, 'mag='+P.mag[0]);
+        /* two thumbs landing in the same input frame arrive as ONE touchstart
+           with two changedTouches; only the first was slotted, so the second
+           could neither tap-fire nor inherit the drag */
+        P.fireCd = 0; P.mag[0] = 7;
+        tev('touchstart', view, [{ identifier:76, clientX:vx, clientY:vy }, { identifier:77, clientX:vx+40, clientY:vy }]);
+        const both = !!(TIN && TIN.look && TIN.look.id === 76 && TIN.tap && TIN.tap.id === 77);
+        const slots = 'look='+(TIN && TIN.look && TIN.look.id)+' tap='+(TIN && TIN.tap && TIN.tap.id);
+        tev('touchend', null, [{ identifier:77, clientX:vx+40, clientY:vy }]);
+        step(0.016);
+        ok('touch: two fingers in one touchstart both get a slot', both, slots);
+        ok('touch: ...and the second one still tap-fires', P.mag[0] === 6, 'mag='+P.mag[0]);
+        tev('touchend', null, [{ identifier:76, clientX:vx, clientY:vy }]);
         clearInput(); LOOKMODE = savedLM2; AIM_ASSIST = savedAA; }
 
       P.w = 0; P.mag[0] = 3; P.ammo.p9 = Math.max(P.ammo.p9, 20); P.reload = 0;
@@ -6295,6 +6395,16 @@ function selfTestBody(runSim){
           kd('KeyW'); dispatchEvent(new Event('blur')); resume(false);
           ok('blur: a lost-focus pause still drops every held key', !held.fwd && keys.size === 0);
           ku('KeyW'); clearInput(); G.state = 'play'; show(null);
+          /* a key already down when the mission starts sends only repeats —
+             the browser never re-issues its keydown — and startMission's
+             clearInput had just dropped it, so W held through the briefing's
+             ENTER walked nowhere until it was let go and pressed again */
+          dispatchEvent(new KeyboardEvent('keydown', { code:'KeyW', repeat:true, bubbles:true, cancelable:true }));
+          ok('keyboard: a key held from before the mission is heard through its repeats',
+             held.fwd === true && keys.has('KeyW'), 'fwd='+held.fwd+' keys='+[...keys].join(','));
+          ku('KeyW');
+          ok('keyboard: ...and letting it go still stops the agent', !held.fwd && !keys.has('KeyW'));
+          clearInput();
         }
 
         /* ---- the review round's own regressions, each one guarded ---- */
@@ -6354,9 +6464,16 @@ function selfTestBody(runSim){
         { G.state = 'play'; pause();
           act('options');
           const opened = G.state === 'options' && G.screenId === 's-options';
+          /* the way a keyboard player leaves: BACK has the focus when it fires */
+          const ob = document.querySelector('#s-options [data-act="back"]');
+          if (ob) ob.focus({ preventScroll:true });
           act('back');
           ok('watch: OPTIONS returns to the watch, not the title',
              opened && G.state === 'pause' && G.screenId === 's-pause', 'state '+G.state+' screen '+G.screenId);
+          const rb = document.querySelector('#s-pause [data-act="resume"]');
+          ok('watch: ...and hands focus back to RESUME, so the keys still have a route',
+             !!rb && document.activeElement === rb,
+             'focus on '+(document.activeElement ? document.activeElement.tagName+' '+(document.activeElement.textContent||'').trim().slice(0,12) : 'nothing'));
           act('options'); G.state = 'options';       // and from the title it still goes home
           optReturn = null; act('back');
           ok('options: opened anywhere else, BACK still goes to the title', G.state === 'title');
@@ -6604,6 +6721,12 @@ function selfTestBody(runSim){
              [r144,r60,r30].map(v=>v.toFixed(2)).join(' / ')+' want '+want.toFixed(2));
           G.cheats.ammo = am0; G.cheats.god = g0; P.w = w0;
           loadLevel(0,1); G.state = 'play'; clearInput(); }
+        /* the smoothed body velocity the patch cannon leads by has to settle at
+           the same pace at every frame rate — it was .3 per FRAME */
+        { const settle = fdt => { let v = 0; for (let i = 0, N = Math.round((1/15)/fdt); i < N; i++) v = velSmooth(v, 1, fdt); return v; };
+          const vs = [1/30, 1/60, 1/120, 1/240].map(settle);
+          ok('lead: velocity smoothing settles alike at 30, 60, 120 and 240Hz',
+             Math.max(...vs) - Math.min(...vs) < .02, vs.map(v => v.toFixed(3)).join(' / ')); }
 
         /* the press buffer was 20ms shorter than the swap lockout it exists to
            bridge, so the swap-and-shoot reflex lost the shot with no feedback */
@@ -6843,7 +6966,56 @@ function selfTestBody(runSim){
           }
           ok('objectives: the letters run A, B, C with no gap at any clearance',
              gaps.length === 0, gaps.join(' ') || 'no clearance skips a letter');
+          /* ...and the briefing — the screen that INTRODUCES the letters — has
+             to hand out the same ones: it read the authored tags off LEVELS
+             while the mission re-lettered its own copy, so M01 briefed
+             A, B, C, E and then handed out A, B, C, D */
+          const disagree = [];
+          for (let li=0; li<LEVELS.length; li++) for (let di=0; di<DIFFS.length; di++){
+            selLevel = li; G.diff = di; gotoBrief();
+            const briefed = [...document.querySelectorAll('#b-objs .tag')].map(e => e.textContent.trim()).join('');
+            loadLevel(li, di);
+            const given = G.objs.map(o => o.tag).join('');
+            if (briefed !== given) disagree.push(LEVELS[li].code+'/'+di+' briefing '+briefed+' mission '+given);
+          }
+          show(null);
+          ok('objectives: the briefing hands out the letters the mission uses',
+             disagree.length === 0, disagree.join(' | ') || '15 pairs agree');
           selLevel = sel0; loadLevel(0, d0); G.state = st0 === 'result' ? 'play' : st0; }
+
+        /* Sight and bullets have to agree with the renderer about what a wall
+           is. Where two solid cells touch only at a corner, the sampled line
+           used to hop the zero-width gap — a hostile saw and shot the agent
+           through a corner drawn solid. Every such corner in the campaign is
+           asked, from both sides, with the real los() and the real hitscan();
+           the count is asserted too, so the guard cannot pass on an empty
+           list. */
+        { const st0 = G.state, sel0 = selLevel, d0 = G.diff, px0 = P.x, py0 = P.y, hp0 = P.hp, al0 = P.alive;
+          const seen = [], shot = []; let corners = 0;
+          for (let li=0; li<LEVELS.length; li++){
+            loadLevel(li, DIFFS.length - 1);
+            const sol = (x,y) => !!G.solid[idx(x,y)];
+            for (let y=0; y<G.H-1; y++) for (let x=0; x<G.W-1; x++){
+              let a = null, b = null;
+              if (sol(x,y) && sol(x+1,y+1) && !sol(x+1,y) && !sol(x,y+1)){ a = [x+1.5, y+.5]; b = [x+.5, y+1.5]; }
+              else if (sol(x+1,y) && sol(x,y+1) && !sol(x,y) && !sol(x+1,y+1)){ a = [x+.5, y+.5]; b = [x+1.5, y+1.5]; }
+              if (!a) continue;
+              corners++;
+              const tag = LEVELS[li].code+' ('+(x+1)+','+(y+1)+')';
+              if (los(a[0],a[1],b[0],b[1]) || los(b[0],b[1],a[0],a[1])) seen.push(tag);
+              /* a hostile at one cell firing at the agent in the other, both ways */
+              for (const [from, to] of [[a,b],[b,a]]){
+                P.x = to[0]; P.y = to[1]; P.alive = true;
+                if (hitscan(from[0], from[1], Math.atan2(to[1]-from[1], to[0]-from[0]), 20, 0, false)) shot.push(tag);
+              }
+            }
+          }
+          ok('sight: every corner two walls share is opaque from both sides',
+             corners > 0 && seen.length === 0, seen.join(' ') || corners+' corners across the campaign');
+          ok('sight: ...and no round passes through one either',
+             corners > 0 && shot.length === 0, shot.join(' ') || corners+' corners, both ways');
+          selLevel = sel0; loadLevel(0, d0); P.x = px0; P.y = py0; P.hp = hp0; P.alive = al0;
+          G.state = st0 === 'result' ? 'play' : st0; }
 
         /* A best time is the number the player was just shown. The store rounded
            to centiseconds while the debrief floors to the second, so a run
@@ -6961,6 +7133,17 @@ function selfTestBody(runSim){
                top === 'RUNG' + (RANKS.length - 1),
                top + ' of ' + RANKS.length + ' rungs');
             ok('review: ...and the worst lands on its first', bottom === 'RUNG0', bottom); }
+          /* a checkpoint run's clock started at the duel, so its time axis is
+             pinned to the middle rung: the review reads the same at any clock,
+             and the same as a full run that merely made the 1.45x window */
+          { const cr0 = G.ckptRun;
+            G.shots = 10; G.hits = 4; G.dmgTaken = 100; G.diff = 1;   // one rung either side of the time axis
+            G.ckptRun = true; G.time = 1; const fast = rankName();
+            G.time = par*4; const slow = rankName();
+            G.ckptRun = false; G.time = par*1.2; const full = rankName();
+            G.ckptRun = cr0;
+            ok('review: a checkpoint duel is not scored against the mission clock',
+               fast === slow && fast === full, 'duel at 1s '+fast+' / duel at 4x par '+slow+' / full run inside the window '+full); }
           /* the SLA verdict is inclusive at par, where a photo finish lands */
           G.time = par; const met = G.time <= G.L.par;
           G.time = par + .01; const missed = G.time <= G.L.par;
@@ -7463,7 +7646,14 @@ function loadSettings(){
         const m = /^(\d+):([0-2])$/.exec(k);
         if (!m || !V1_CODES[+m[1]]) continue;
         bk = V1_CODES[+m[1]] + ':' + m[2];
-      } else if (!/^M\d\d:[0-2]$/.test(k)) continue;   // junk diffs ('M01:9') used to persist forever
+      } else {
+        /* junk diffs ('M01:9') used to persist forever — and so did junk
+           missions ('M99:0'), which passed a shape check and were written back
+           out on every save; the key has to name a mission and a rung the
+           game has, both read from the tables so a new mission or rung fits */
+        const m = /^(M\d\d):(\d)$/.exec(k);
+        if (!m || +m[2] >= DIFFS.length || !LEVELS.some(L => L.code === m[1])) continue;
+      }
       /* time inside what a clock can say (a stored -61 rendered "BEST -2:0-1";
          1e308 rendered "BEST 1.66e+306:56" — the floor was fixed and the
          ceiling left open) and rank whitelisted against the real names, since
@@ -7615,7 +7805,7 @@ function act(a){
     }
     case 'back':
       if (G.state==='brief'){ buildSelect(); G.state='select'; show('s-select'); }
-      else if (G.state==='options' && optReturn==='pause'){ optReturn=null; G.state='pause'; show('s-pause'); }
+      else if (G.state==='options' && optReturn==='pause'){ optReturn=null; G.state='pause'; show('s-pause'); focusWatch(); }
       else { optReturn=null; G.state='title'; show('s-title'); }
       break;
   }
@@ -7691,7 +7881,17 @@ function onKey(e){
     const sim = (G.state === 'title' || G.state === 'result');
     f4Guard();
     const back = { state: G.state, screen: G.screenId };
+    /* The sim files debriefs of its own through the real endMission, over the
+       same four nodes the player's debrief lives in — so F4 on MISSION
+       COMPLETE brought back another mission's debrief with its NEXT MISSION
+       gone. Keep the player's nodes (not their markup: the buttons carry
+       their handlers) and put them back when the report closes. */
+    const RNODES = ['r-eyebrow','r-title','r-stats','r-actions'];
+    const rkeep = back.state === 'result' ? RNODES.map(id => {
+      const el = document.getElementById(id);
+      return { el, kids: [...el.childNodes], color: el.style.color }; }) : null;
     selfTest(sim);
+    if (rkeep) for (const k of rkeep){ k.el.replaceChildren(...k.kids); k.el.style.color = k.color; }
     G.state = back.state; clearToasts();     // the sim leaves 'play' and a mission toast behind
     G.testReturn = back; G.showTests = true;
     show(null);                              // the report is drawn on the canvas
@@ -7836,7 +8036,9 @@ function fault(where, err){
   if (!G.faultAt || now2 - G.faultAt > 3000){
     G.faultAt = now2;
     console.error('[agent360] '+where+' fault #'+G.faults, err);
-    toast('FAULT IN '+where.toUpperCase()+' — SEE CONSOLE', 'red', 5000);
+    /* this runs inside loop()'s catch: a toast that throws here would end the
+       rAF chain with nothing on screen to say why */
+    try { toast('FAULT IN '+where.toUpperCase()+' — SEE CONSOLE', 'red', 5000); } catch(_){}
   }
 }
 function loop(t){

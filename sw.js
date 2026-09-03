@@ -4,7 +4,7 @@
    installed app keeps its faces with no network. Bump CACHE on every release —
    activate() deletes the old one, and verify.js fails if this drifts from the
    VERSION constant in index.html. */
-const CACHE = 'agent360-v1.27';
+const CACHE = 'agent360-v1.28';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'
@@ -17,7 +17,11 @@ const putOk = (c, req, r) => (r && r.ok) ? c.put(req, r.clone()).then(() => r) :
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(async c => {
-    await c.addAll(SHELL);
+    /* cache:'reload', or the precache reads through the HTTP cache: Pages
+       serves max-age=600, so a reload within ten minutes of a deploy could
+       file the PREVIOUS index.html under the new bucket name, and the
+       installed app carried the wrong build until its next online visit. */
+    await c.addAll(SHELL.map(u => new Request(u, { cache:'reload' })));
     /* Best-effort font precache: fetch the CSS, then the woff2 files it names,
        so the HUD face survives offline even if the first play session never
        touched a glyph the browser had to fetch. Any failure here is fine — the

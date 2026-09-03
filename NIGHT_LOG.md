@@ -189,19 +189,44 @@ was changed on a hunch:
   the watch; and the AGENT and SECRET AGENT blurbs promise a tasking difference
   that M01 and M03 do not have.
 
+---
+
+# Night log — the corners round
+
+Four reviewers were handed one section of the file each and told to find what
+was reproducible, not what was plausible; every claim was then reproduced
+here, headlessly, before anything moved. The headline is a wall that was not
+one: sight and bullets sampled their lines while the renderer walked the grid,
+and where two solid cells touch only at a corner the two disagreed. The rest
+is the game keeping fewer of its small promises than it thought.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · A corner is a wall** | `wallDist()` — the renderer's own DDA — finds the first solid cell along a ray; `los()` and `hitscan()` ask it instead of sampling the line | `los` sampled every .16u and `hitscan` every .07u; where two solid cells touch only at a point the segment inside either cell is shorter than one sample, so the line hopped the zero-width gap that the renderer draws solid. Four such corners ship: M01's terminal room, M04's ramp lane, and two in M05's escape closet. At M01's, an alerted guard homing on the agent parks outside the room, and **12,704 of 117,600** position pairs around the terminal let it see the agent mid-hack; the real `hitscan` from one of them cost **5.5 HP** through a wall the agent could not see or shoot back through | Two assertions enumerate every shared corner in the campaign from the live grid and ask `los()` and `hitscan()` both ways — the count is asserted too, so an empty list cannot pass. Mutation-verified: restore the sampled `los` and the sight guard fails naming all four corners; restore the sampled wall test in `hitscan` and the round guard fails naming all eight directions. Soaks at 60/144/30Hz and the objective-chain runthrough re-run clean, 14/15 as before |
+| **2 · The briefing hands out the letters the mission uses** | `objsFor(L, di)` — filter, then re-letter — is read by `loadLevel` **and** `gotoBrief` | The v1.27 round re-lettered the mission's own copy and the briefing kept reading the authored tags: M01 on AGENT still briefed **A, B, C, E**, then the watch listed A, B, C, D. **Nine of fifteen** clearance pairs disagreed with their own briefing — the exact symptom the round claimed to have fixed, one screen earlier | Assertion drives `gotoBrief()` and reads the DOM tags against `G.objs` for all fifteen pairs. Mutation-verified: the failure prints all nine |
+| **3 · F4 on the debrief gives the debrief back** | The F4 path keeps the four `r-*` nodes' children (not their markup — the buttons carry their handlers) across the sim and puts them back | The sim files debriefs of its own through the real `endMission`, over the same nodes. F4 on M03's MISSION COMPLETE brought back **M02's** debrief, and the campaign chain with it | `verify.js` asserts it from outside the suite, which cannot run itself: win, snapshot, F4 twice, snapshot again, then press the restored NEXT MISSION and require the briefing of M04. Mutation-verified: `held=False`, M03 before, M02 after |
+| **4 · A checkpoint duel is not a sprint** | `rankName()` pins the time axis to its middle rung when `G.ckptRun` | The SLA row already said N/A — CHECKPOINT RUN, and the review beside it scored the duel's 20-second clock against the whole mission's par: **PRINCIPAL ARCHITECT** in gold for a 20-second duel at 6 of 10 | Asserted as the rule: the duel's rank is the same at 1s and at 4x par, and equals a full run inside the 1.45x window. Mutation-verified: `SOLUTIONS ARCHITECT / TIER 3 ENGINEER / SENIOR ENGINEER` |
+| **5 · A key held from before the mission** | A repeat keydown for an action not yet held claims it | The browser never re-issues a keydown for a key still down, and `startMission`'s `clearInput` had dropped it — so W held through the briefing's ENTER walked nowhere until released and pressed again. `resume()` already re-derives held keys for the pause case; mission start was the one entry with no path | Mutation-verified: `fwd=false keys=` |
+| **6 · Only leaving the window re-seeds the cursor** | The window `mouseout` re-seeds only with no `relatedTarget`; the canvas's `mouseleave` no longer does | `mouseout` bubbles from every element boundary and the canvas's own `mouseleave` said the same thing, so the cursor crossing onto the letterbox reset the seed and the next move was swallowed as a re-entry — a hitch in free look at every crossing | Asserted both ways: a crossing keeps its 12px, leaving the window still re-seeds. Mutation-verified: `dx=0` |
+| **7 · Two thumbs in one frame** | The view's `touchstart` slots every changed touch | Two fingers landing in the same input frame arrive as one event with two `changedTouches`; only the first was recorded, so the second could neither tap-fire nor inherit the drag | Mutation-verified with the real handler: `tap=null`, `mag=7` |
+| **8 · Small promises** | Options BACK over the watch hands focus back to RESUME; a stored best must name a mission and a rung the game has (`M99:0` used to be written back out forever); the precache bypasses the HTTP cache (`cache:'reload'`, with Pages' `max-age=600` a reload inside ten minutes of a deploy could file the previous build under the new bucket); a hostile's smoothed velocity — what the patch cannon leads by — settles per second, not per frame (.3 per frame was 16ms at 144Hz and 77ms at 30Hz); the fault toast is wrapped so it cannot end the frame loop from inside its own catch | Each measured before it moved: focus fell to the body (`BUTTON ◀ BACK` had it); `M99:0` survived a load; velocity settled `0.510 / 0.760 / 0.942 / 0.997` across 30–240Hz | Each mutation-verified by name; the service-worker rule is a `verify.js` source check |
+| **What the evidence did not support** | Reported, read, not changed | **A hostile has to be present for a kill to count** — `G.kills` counts boss-blast and splash kills; "Hostiles decommissioned" is what it says. **The wheel drops notches under 100px** — plausible on Firefox and Safari, unverifiable in this harness, left for a real machine. **macOS strands a key released under ⌘** — the mitigation (clear held keys on Meta release) would drop a key still physically down; needs a Mac. **The door's top slab pops at 90% open** — cosmetic, matches the moment the door becomes passable. **An out-of-range `P.w`** — still no real path to it |
+
+---
+
 ## Standing numbers
 
-- **Self-tests:** 382 desktop / 383 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 394 desktop / 395 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
   source checks: index.html/sw.js version lockstep, the title screen's static
-  how-to, the service worker's cache scoping and its clone timing, and every sound name
-  the code plays existing in the sound table — plus an end-to-end check that
-  running F4 leaves the player's saved blob untouched) · `tools/touch.js` (phone-finger walkthrough, landscape +
+  how-to, the service worker's cache scoping, its clone timing and its precache freshness, and every sound name
+  the code plays existing in the sound table — plus end-to-end checks that
+  running F4 leaves the player's saved blob untouched and hands a debrief back) · `tools/touch.js` (phone-finger walkthrough, landscape +
   portrait) · `tools/visual.js` (glyph-box audit of all overlay screens,
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.27'` (index.html) ↔ `agent360-v1.27`
+- **Versions:** game `VERSION = '1.28'` (index.html) ↔ `agent360-v1.28`
   (sw.js CACHE), enforced by verify.js

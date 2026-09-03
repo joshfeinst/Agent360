@@ -85,6 +85,11 @@ function sourceCheck() {
     (sfxOK ? sfxNamed.size + ' names, all answered'
            : (mute.length ? 'SILENT: ' + mute.join(' ')
                           : 'ONLY ' + sfxNamed.size + ' NAMES FOUND — the scan broke')));
+  /* The precache is the OFFLINE copy of the shell, and addAll() in its
+     default cache mode reads through the HTTP cache — with Pages' max-age=600
+     that is the previous build for ten minutes after every deploy. */
+  const swFresh = /addAll\(SHELL\.map\(\s*\w+\s*=>\s*new Request\(\s*\w+\s*,\s*\{\s*cache:\s*'reload'/.test(sw);
+  console.log('SW precache bypasses the HTTP cache ' + (swFresh ? '— yes' : '— NO, IT CAN PRECACHE THE OLD BUILD'));
   const vOK = hv && sv && hv === sv;
   console.log('VERSION index.html v' + hv + ' / sw.js v' + sv + (vOK ? ' — in step' : ' — MISMATCH'));
   /* syncTitleHint() rewrites the title how-to the moment scripts run, but the
@@ -94,7 +99,7 @@ function sourceCheck() {
   const stat = (html.match(/id="titlehint">([^<]+)</) || [])[1];
   const hOK = !!cap && !!stat && stat.indexOf(cap) === 0;
   console.log('TITLE HINT static default ' + (hOK ? 'matches the shipped look mode' : 'DRIFTED from TITLE_HINT.capture'));
-  return vOK && hOK && swScoped && swClone && sfxOK;
+  return vOK && hOK && swScoped && swClone && sfxOK && swFresh;
 }
 
 async function wirePage(page, errors, resourceErrs) {
@@ -136,7 +141,34 @@ async function runSelfTest(page, label) {
   console.log('F4 SAFETY blob held ' + (f4Safe.blobHeld ? 'yes' : 'NO') +
               ' · settings moved: ' + (f4Safe.moved.length ? f4Safe.moved.join(',') : 'none') +
               ' · scratch key cleaned ' + (f4Safe.scratchGone ? 'yes' : 'NO'));
-  const f4Bad = (!f4Safe.blobHeld || f4Safe.moved.length || !f4Safe.scratchGone) ? 1 : 0;
+  /* F4 is legal on the debrief too, and the sim files debriefs of its own
+     through the real endMission over the same nodes — the player's has to be
+     the one on screen when the report closes, buttons and handlers included.
+     Asserted from out here for the same reason: the suite cannot run itself. */
+  const f4Debrief = await page.evaluate(() => {
+    selLevel = 2; G.diff = 1; loadLevel(2, 1); G.state = 'play';
+    G.time = 61.2; G.shots = 20; G.hits = 15; G.dmgTaken = 12;
+    G.tainted = true;                                    // a tainted run files no best
+    for (const o of G.objs){ o.have = o.need || 1; o.done = true; }
+    endMission(true, 'exit');
+    const snap = () => ['r-eyebrow', 'r-title', 'r-stats'].map(id => document.getElementById(id).textContent).join('|') +
+      '|' + [...document.querySelectorAll('#r-actions button')].map(b => b.textContent).join(',');
+    const before = snap();
+    const f4 = () => dispatchEvent(new KeyboardEvent('keydown', { code: 'F4', key: 'F4', bubbles: true, cancelable: true }));
+    f4(); const report = G.showTests === true; f4();
+    const after = snap(), state = G.state, screen = G.screenId;
+    const next = [...document.querySelectorAll('#r-actions button')].find(b => /NEXT/.test(b.textContent));
+    if (next) next.onclick();
+    const nextOk = !!next && G.state === 'brief' && selLevel === 3;
+    G.tainted = false; G.state = 'title'; if (typeof show === 'function') show('s-title');
+    return { report, held: before === after, state, screen, nextOk, before, after };
+  });
+  const f4DebriefOK = f4Debrief.report && f4Debrief.held && f4Debrief.state === 'result' &&
+                      f4Debrief.screen === 's-result' && f4Debrief.nextOk;
+  console.log('F4 DEBRIEF the player\'s debrief survives the report ' + (f4DebriefOK ? '— yes' :
+              '— NO: ' + JSON.stringify({ report: f4Debrief.report, held: f4Debrief.held, state: f4Debrief.state,
+                                          nextOk: f4Debrief.nextOk, before: f4Debrief.before.slice(0, 80), after: f4Debrief.after.slice(0, 80) })));
+  const f4Bad = (!f4Safe.blobHeld || f4Safe.moved.length || !f4Safe.scratchGone || !f4DebriefOK) ? 1 : 0;
 
   const tests = await page.evaluate(() => {
     const R = selfTest(true);
