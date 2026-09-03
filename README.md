@@ -195,6 +195,21 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.28
+
+Four reviewers were each handed one section of the file and told to find
+what was reproducible, and every claim was reproduced headlessly before it
+counted. The one that mattered: sight lines and bullets sampled their path
+while the renderer walked the grid, so where two walls touch only at a corner
+a hostile could see and shoot you through a wall you could not shoot back
+through — four such corners ship, and M01's sits on the terminal you hack.
+Also: the briefing still handed out the letters the v1.27 round had fixed
+everywhere else, F4 on a debrief brought back a different mission's, a
+checkpoint duel was ranked against the whole mission's clock, a key held
+through the briefing's ENTER walked nowhere, and free look hitched every
+time the cursor crossed onto the letterbox. Ledger, including what was
+reported and did not survive: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.27
 
 Six scripted players were handed the game cold — a first-timer on a laptop, a
@@ -216,7 +231,7 @@ reported and did not survive:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **382 assertions** (383 in a touch
+- **F4** runs the in-game self-test suite — **394 assertions** (395 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the
@@ -231,8 +246,9 @@ reported and did not survive:
   prove frame-rate invariance. It also reads the source for the things that
   have to be right before a script runs — the `index.html`/`sw.js` version
   lockstep, the title screen's static how-to matching the look mode the build
-  ships, the service worker's cache scoping and clone timing, and every sound
-  name the code plays existing in the sound table: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
+  ships, the service worker's cache scoping, clone timing and precache
+  freshness, every sound name the code plays existing in the sound table, and
+  F4 on a debrief handing that debrief back: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
 - `tools/touch.js` is a phone-finger walkthrough: boot skipped, every menu
   visited, a mission started, walked, fired, paused and resumed by taps
   alone, with 44px tap-target and screen-utilization measurements. It also
