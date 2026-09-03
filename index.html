@@ -465,7 +465,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.29';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.30';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -814,18 +814,41 @@ addEventListener('mouseout', e => { if (!e.relatedTarget){ M.lx = null; M.ly = n
 view.addEventListener('mouseenter', () => { M.inside = true; });
 view.addEventListener('mouseleave', () => { M.inside = false; });
 
+/* Every menu is a scroller boxed to the game frame, and the wheel was dead on
+   the black surround around it — on a 1024x600 netbook that is 46% of the
+   window, and CONTROLS needs three screens of scroll. A wheel anywhere on
+   the stage scrolls the screen that is up. */
+document.getElementById('stage').addEventListener('wheel', e => {
+  if (typeof G === 'undefined' || !G.screenId) return;
+  const sc = document.getElementById(G.screenId);
+  if (!sc || sc.hidden || sc.contains(e.target)) return;
+  sc.scrollTop += e.deltaMode ? e.deltaY*34 : e.deltaY;
+  e.preventDefault();
+}, {passive:false});
+
 /* Panic reset: whatever the browser has stranded, this puts it all back down. */
 function panic(){
   clearInput();
   toast('INPUT RESET', 'cyan', 1600);
 }
 
+/* A hardware notch, whatever size the OS makes it. Chrome on Windows sends
+   100px; Chrome on a Mac sends OS-accelerated 4-60px per slow click, and
+   Firefox sends 3 lines — and the sub-100px shape fell into the trackpad gate
+   below, where four clicks inside 150ms were one step. The legacy
+   wheelDeltaY is still a multiple of 120 for a notched mouse on every engine
+   that has it, while a trackpad's is not; line/page delta modes are always a
+   notch. */
+const wheelNotch = e => e.deltaMode !== 0 || Math.abs(e.deltaY) >= 100 ||
+  (typeof e.wheelDeltaY === 'number' && e.wheelDeltaY !== 0 && Math.abs(e.wheelDeltaY) % 120 === 0);
 view.addEventListener('wheel', e => {
+  /* a trackpad pinch arrives as ctrl+wheel: it is the browser's zoom, not a
+     weapon swap — used to be swallowed AND stepped the gun */
+  if (e.ctrlKey) return;
   e.preventDefault();
   const now = performance.now(), d = e.deltaMode ? e.deltaY*34 : e.deltaY;
   if (!d) return;
-  /* Mouse notch (Chrome 100px, Firefox 3 lines): always one step, never dropped. */
-  if (Math.abs(d) >= 100){ M.wheel += Math.sign(d); M.wheelAt = 0; return; }
+  if (wheelNotch(e)){ M.wheel += Math.sign(d); M.wheelAt = 0; return; }
   /* Trackpad: dozens of sub-notch deltas per flick plus an inertia tail. One
      step per gesture; a 150 ms quiet gap is the start of the next gesture.   */
   const gap = now - M.wheelAt; M.wheelAt = now;
@@ -959,6 +982,11 @@ function unlock(){
   padStart(stick, nub,  'move',   v => { held.tx = v[0]; held.ty = v[1]; }, true);
   padStart(lpad,  lnub, 'aimpad', v => { held.lx = v[0]; held.ly = v[1]; }, false);
   addEventListener('touchmove', e=>{
+    /* two fingers on the view both travelling is a pinch, not a look: the
+       first finger's half of it used to turn the agent 30 degrees. A still
+       second finger (a tap landing mid-drag) never appears in a touchmove. */
+    const pinch = !!(T.look && T.tap && (T.tap.moved > 12 ||
+      Array.prototype.some.call(e.changedTouches, x => x.identifier === T.tap.id)));
     for (const t of e.changedTouches){
       /* A pad with no owner adopts a finger that is already on it. clearInput()
          drops the owners — and Backspace, the key the field manual sells as
@@ -977,8 +1005,10 @@ function unlock(){
         const ldx = t.clientX - T.look.x, ldy = t.clientY - T.look.y;
         T.look.x = t.clientX; T.look.y = t.clientY;
         T.look.moved += Math.abs(ldx) + Math.abs(ldy);
-        M.dx += ldx*1.6; M.dy += ldy*1.6;
-        M.lastMove = performance.now();   // without this the idle guard ate every touch delta
+        if (!pinch){
+          M.dx += ldx*1.6; M.dy += ldy*1.6;
+          M.lastMove = performance.now();   // without this the idle guard ate every touch delta
+        }
       }
       /* the second finger's travel decides tap-or-not, and NEVER turns the
          view — two fingers dragging the same canvas would double the yaw */
@@ -1095,6 +1125,15 @@ function unlock(){
      the finger was steering. Everything else (blur, panic, a new mission)
      clears outright, owners included — a button whose owner outlived the
      finger stayed dead until that same finger came back. */
+  /* fit() moved the pads out from under thumbs that were still down — the
+     browser bar showing, a fullscreen exit — and the next twitch re-read the
+     stick against the NEW centre: forward became a hard-left strafe mid-sprint.
+     A pad that has moved lets go of its finger; the thumb re-presses. */
+  window.releasePads = () => {
+    T.move = T.aimpad = null; T.run = false;
+    held.tx = held.ty = held.lx = held.ly = 0;
+    nub.style.transform = ''; lnub.style.transform = '';
+  };
   window.resetTouchUI = keep => {
     T.look = null; T.tap = null;
     if (keep){ setTog(taim, !!M.aim); setTog(tcr, !!M.crouch); return; }
@@ -1232,7 +1271,10 @@ const LEAD2 = [B3,0,0,0, D4,0,B3,0, 0,0,0,0, A3,0,Fs3,0,
    G/A state so F4 can assert every branch without an AudioContext. */
 function musMood(){
   const menu = typeof G === 'undefined' || G.state !== 'play';
-  const bossFight = !menu && G.bossAlive;
+  /* the boss weight arrives when the boss is MET (the growl stinger's own
+     flag), not when the level spawns him — M05 used to open in boss-fight
+     music at the spawn, lead and pulse and all, with nobody alerted */
+  const bossFight = !menu && G.bossAlive && G.bossSeen;
   const escape = !menu && G.meltdown > 0;
   return { menu, bossFight, escape,
            combat: bossFight || escape || (!menu && G.heat > 0.4),
@@ -4589,10 +4631,23 @@ function gotoBrief(){
   objList(document.getElementById('b-objs'), objsFor(L, G.diff), false);
   show('s-brief');
 }
+/* The phone's BACK gesture is the most-used control on the platform, and it
+   left the page mid-mission — the run gone, unrecoverable, the same loss the
+   surround's overscroll swipe used to cause. A live mission holds one history
+   entry: BACK in play opens the watch (and re-arms), BACK on the watch or the
+   debrief goes to the title, and the BACK after that leaves, as it should. */
+function armBack(){
+  try { if (!(history.state && history.state.a360)) history.pushState({ a360:1 }, ''); } catch(_){}
+}
+addEventListener('popstate', () => {
+  if (typeof G === 'undefined') return;
+  if (G.state === 'play'){ pause(); armBack(); }
+  else if (G.state === 'pause' || G.state === 'result') act('abort');
+});
 function startMission(gesture){
   clearToasts();
   loadLevel(selLevel, G.diff);
-  G.state='play'; show(null);
+  G.state='play'; show(null); armBack();
   audioInit(); clearInput(); view.focus(); resolveLook();
   /* The click or keypress that started the mission is a user gesture, which is
      all pointer lock needs — so take the mouse right away rather than making the
@@ -4862,7 +4917,7 @@ function selfTest(runSim){
   const live = { sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
                  keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn,
                  scan:SCANOP, map:G.mapOn, rm:RM_OPT, diff:G.diff, level:selLevel,
-                 taint:G.tainted, cheats:Object.assign({}, G.cheats) };
+                 taint:G.tainted, cheats:Object.assign({}, G.cheats), tscale:G.tscale };
   SAVE_KEY = SAVE_KEY_TEST; SAVE_KEY_V1 = SAVE_KEY_V1_TEST;
   try { return selfTestBody(runSim); }
   finally {
@@ -4873,7 +4928,7 @@ function selfTest(runSim){
     KEYS_LAYOUT = live.keys; A.sfxVol = live.sfx; A.musVol = live.mus; A.musOn = live.musOn;
     SCANOP = live.scan; G.mapOn = live.map; RM_OPT = live.rm; G.diff = live.diff;
     selLevel = live.level; G.tainted = live.taint;
-    Object.assign(G.cheats, live.cheats);
+    Object.assign(G.cheats, live.cheats); G.tscale = live.tscale;
     if (!isTouch) LOOK = live.look;
     try { applyLayout(); resolveLook(); syncOptionsUI(); syncRMLabel(); } catch(_){}
   }
@@ -4897,6 +4952,12 @@ function selfTestBody(runSim){
      phone the touch-ghost guard would eat them all. Tests that check the
      guard itself flip this back off locally. */
   SIMGHOSTS = true;
+  /* The suite runs on an honest agent. It pinned the god cheat and nothing
+     else, so INFINITE AMMUNITION left on from the cheat menu turned eight
+     magazine-count assertions red for a player who read a broken game. The
+     finally above puts the player's cheats and time scale back. */
+  for (const k in G.cheats) G.cheats[k] = false;
+  G.tscale = 1;
 
   /* the one hidden cache per mission, by cell — the flood-fill tests below
      prove each is sealed by its 'H' door and open through it. Keyed by mission
@@ -5003,6 +5064,16 @@ function selfTestBody(runSim){
        (PROP.gunH.w!==PROP.ammoH.w || sum(PROP.gunH)!==sum(PROP.ammoH)) &&
        (PROP.gunP.w!==PROP.ammoP.w || sum(PROP.gunP)!==sum(PROP.ammoP)));
   }
+
+  /* ---- the finale's music meets the boss when the player does ---- */
+  { const st0 = G.state, sel0 = selLevel;
+    loadLevel(LEVELS.findIndex(L => L.finale) , 1); G.state = 'play'; G.heat = 0;
+    const spawn = musMood();
+    G.bossSeen = true; const met = musMood();
+    ok('music: the boss weight waits for the boss to be met',
+       G.bossAlive === true && spawn.bossFight === false && spawn.combat === false && met.bossFight === true,
+       'at spawn boss '+spawn.bossFight+' combat '+spawn.combat+' · met '+met.bossFight);
+    selLevel = sel0; loadLevel(0, 1); G.state = st0; }
 
   /* ---- a pickup toast names what was gained, not the item's face value ---- */
   { const hp0 = P.hp, ar0 = P.armor;
@@ -5121,7 +5192,8 @@ function selfTestBody(runSim){
          clobbered for the rest of the session — which is how Reduce Motion was
          lost on every load. Name the survivors rather than trust the list. */
       { let miss = [];
-        try { miss = Object.keys(JSON.parse(blob)).filter(k => k!=='v' && !(k in s0)); } catch(_){}
+        /* 'v' and 'stamp' are the blob's own bookkeeping, not a setting */
+        try { miss = Object.keys(JSON.parse(blob)).filter(k => k!=='v' && k!=='stamp' && !(k in s0)); } catch(_){}
         ok('the persistence snapshot covers every saved field',
            miss.length === 0, miss.join(' ')); }
       M.sens = .5; M.tsens = 1; INVERT_Y = false; AIM_ASSIST = 2; KEYS_LAYOUT = 'wasd';
@@ -5200,6 +5272,38 @@ function selfTestBody(runSim){
         ok('best hygiene: negative time, junk diff, unknown mission and alien rank all scrubbed',
            !BEST['M01:1'] && !BEST['M01:9'] && !BEST['M99:0'] && !!BEST['M02:1'] && BEST['M02:1'].rank === '',
            Object.keys(BEST).join(' ') + ' ' + JSON.stringify(BEST['M02:1'] || null));
+        /* two tabs: a save folds in the disk's better bests instead of
+           erasing them — a settings click next door wiped a mission win */
+        { for (const k in BEST) delete BEST[k];
+          try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v:2, stamp:'other-tab', campaignDone:true, best:{
+            'M02:0':{ time:50, acc:70, rank:'TIER 2 TECH', win:true },
+            'M01:0':{ time:40, acc:70, rank:'TIER 2 TECH', win:true },
+            'M04:0':{ time:90, acc:10, rank:'', win:false } } })); } catch(_){}
+          BEST['M01:0'] = { time:30, acc:80, rank:'TIER 3 ENGINEER', win:true };   // ours is faster
+          BEST['M03:0'] = { time:70, acc:10, rank:'', win:false };
+          BEST['M04:0'] = { time:95, acc:50, rank:'TIER 1 TECH', win:true };       // ours is a win over their loss
+          const cd1 = campaignDone; campaignDone = false;
+          saveSettings();
+          let back = null; try { back = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(_){}
+          const b = back && back.best || {};
+          ok('save: a second tab\'s win survives this tab\'s save; the better of each pair is kept',
+             !!b['M02:0'] && b['M01:0'] && b['M01:0'].time === 30 && !!b['M03:0'] && b['M04:0'] && b['M04:0'].win === true &&
+             back.campaignDone === true,
+             Object.keys(b).map(k => k+'='+b[k].time+(b[k].win?'w':'l')).join(' ') + ' campaignDone ' + (back && back.campaignDone));
+          campaignDone = cd1; for (const k in BEST) delete BEST[k]; }
+        /* a blob that cannot be read is announced and kept aside, not
+           silently replaced by the next save */
+        { SAVE_WARN = null; try { localStorage.setItem(SAVE_KEY, '{"v":2,"best":{'); } catch(_){}
+          loadSettings();
+          let bad = null; try { bad = localStorage.getItem(SAVE_KEY + '.bad'); } catch(_){}
+          ok('save: a corrupt blob is announced and stashed, not silently replaced',
+             typeof SAVE_WARN === 'string' && bad === '{"v":2,"best":{', 'warn '+SAVE_WARN+' stash '+bad);
+          try { localStorage.removeItem(SAVE_KEY + '.bad'); } catch(_){} SAVE_WARN = null; }
+        /* ...and a store that refuses writes is noticed by the probe the
+           boot warning reads */
+        { const real = Storage.prototype.setItem; Storage.prototype.setItem = function(){ throw new Error('denied'); };
+          const w = storageWritable(); Storage.prototype.setItem = real;
+          ok('save: a store that refuses writes is noticed', w === false && storageWritable() === true, 'denied '+w); }
       }
       /* The old assertion here read RM_OPT AFTER the restore below and so only
          ever measured the restore. Reframed honestly: loadSettings is supposed
@@ -5249,9 +5353,10 @@ function selfTestBody(runSim){
        BASS2.join() !== BASS.join() && LEAD2.join() !== LEAD.join());
     {
       const s0 = { st:G.state, boss:G.bossAlive, melt:G.meltdown, heat:G.heat, step:A.step };
-      G.state = 'play'; G.bossAlive = true; G.meltdown = -1; G.heat = 0;
+      const seen0 = G.bossSeen;
+      G.state = 'play'; G.bossAlive = true; G.bossSeen = true; G.meltdown = -1; G.heat = 0;
       const mBoss = musMood();
-      G.bossAlive = false; G.meltdown = 12;
+      G.bossSeen = seen0; G.bossAlive = false; G.meltdown = 12;
       const mEsc = musMood();
       G.state = 'title'; G.heat = 1; G.meltdown = -1;
       const mMenu = musMood();
@@ -5820,6 +5925,33 @@ function selfTestBody(runSim){
       ok('wheel: two notches step two weapons', P.w === 2, 'w='+P.w);
       P.has = savedHas; P.w = 0;
     }
+    /* a hardware notch is one step whatever size the OS makes it: four Mac
+       clicks of 53px inside 150ms used to be one step, while a trackpad
+       flick of fifteen 4px events is still one */
+    { M.wheel = 0; M.wheelAt = 0;
+      const wh = (dy, legacy, ctrl) => { const ev = new WheelEvent('wheel', { deltaY:dy, deltaMode:0, ctrlKey:!!ctrl, bubbles:true, cancelable:true });
+        Object.defineProperty(ev, 'wheelDeltaY', { value: legacy }); view.dispatchEvent(ev); return ev; };
+      for (let i = 0; i < 4; i++) wh(53, -120);
+      const mac = M.wheel;
+      M.wheel = 0; M.wheelAt = 0;
+      for (let i = 0; i < 15; i++) wh(4, -12);
+      const pad = M.wheel;
+      M.wheel = 0; M.wheelAt = 0;
+      const pinch = wh(-8, -24, true);
+      ok('wheel: four Mac notches are four steps, a trackpad flick is one',
+         mac === 4 && pad === 1, 'mac '+mac+' pad '+pad);
+      ok('wheel: a trackpad pinch is left to the browser and swaps nothing',
+         M.wheel === 0 && !pinch.defaultPrevented, 'steps '+M.wheel+' prevented '+pinch.defaultPrevented);
+      M.wheel = 0; M.wheelAt = 0; }
+    /* the wheel on the black surround scrolls the menu that is up */
+    { const st0 = G.state, sc0 = G.screenId;
+      G.state = 'controls'; show('s-controls');
+      const sc = document.getElementById('s-controls'); sc.scrollTop = 0;
+      const room = sc.scrollHeight - sc.clientHeight;
+      document.getElementById('stage').dispatchEvent(new WheelEvent('wheel', { deltaY:120, deltaMode:0, bubbles:true, cancelable:true }));
+      ok('menus: the wheel on the surround scrolls the screen that is up',
+         room <= 0 || sc.scrollTop > 0, 'room '+room+' scrollTop '+sc.scrollTop);
+      G.state = st0; show(sc0); }
 
     /* the M05 duel is clearance-tuned: AGENT faces one slow slug, 00 AGENT
        keeps the triple fan, and the escape fuse is longest where needed */
@@ -5909,6 +6041,17 @@ function selfTestBody(runSim){
         ok('touch: easing off the rim stops sprinting', runHeld() === false);
         tev('touchend', null, at(cx, cy));
         ok('touch: releasing the stick stops walking', !held.tx && !held.ty && !runHeld());
+        /* a frame that changed size moved the pads out from under the thumbs:
+           the pad lets go rather than re-reading the thumb against its new
+           centre (forward became a hard-left strafe) */
+        { const fw0 = FIT_W;
+          tev('touchstart', document.getElementById('tstick'), [{ identifier:73, clientX:cx, clientY:cy - r.height/2*.76 }]);
+          const before = TIN.move === 73 && held.ty < -.5;
+          FIT_W = 1; fit();
+          ok('touch: a re-fitted frame lets go of the thumbs on its pads',
+             before && TIN.move === null && held.ty === 0, 'before='+before+' move='+TIN.move+' ty='+held.ty);
+          tev('touchend', null, [{ identifier:73, clientX:cx, clientY:cy - r.height/2*.76 }]);
+          FIT_W = fw0; }
       }
       if (!hadTouch) document.body.classList.remove('touch');
       if (!hadOn) tdiv.classList.remove('on');
@@ -6008,6 +6151,21 @@ function selfTestBody(runSim){
         ok('touch: two fingers in one touchstart both get a slot', both, slots);
         ok('touch: ...and the second one still tap-fires', P.mag[0] === 6, 'mag='+P.mag[0]);
         tev('touchend', null, [{ identifier:76, clientX:vx, clientY:vy }]);
+        /* two fingers travelling apart is a pinch: the view must not turn */
+        M.dx = 0; M.dy = 0;
+        tev('touchstart', view, [{ identifier:78, clientX:vx-20, clientY:vy }, { identifier:79, clientX:vx+20, clientY:vy }]);
+        for (let i = 1; i <= 6; i++)
+          tev('touchmove', null, [{ identifier:78, clientX:vx-20-i*10, clientY:vy }, { identifier:79, clientX:vx+20+i*10, clientY:vy }]);
+        const pinchDx = M.dx;
+        tev('touchend', null, [{ identifier:78, clientX:vx-80, clientY:vy }, { identifier:79, clientX:vx+80, clientY:vy }]);
+        M.dx = 0;
+        tev('touchstart', view, [{ identifier:80, clientX:vx, clientY:vy }]);
+        for (let i = 1; i <= 6; i++) tev('touchmove', null, [{ identifier:80, clientX:vx+i*10, clientY:vy }]);
+        const dragDx = M.dx;
+        tev('touchend', null, [{ identifier:80, clientX:vx+60, clientY:vy }]);
+        ok('touch: a two-finger pinch does not turn the view, a one-finger drag does',
+           pinchDx === 0 && dragDx > 50, 'pinch dx='+pinchDx.toFixed(1)+' drag dx='+dragDx.toFixed(1));
+        M.dx = 0; M.dy = 0;
         clearInput(); LOOKMODE = savedLM2; AIM_ASSIST = savedAA; }
 
       P.w = 0; P.mag[0] = 3; P.ammo.p9 = Math.max(P.ammo.p9, 20); P.reload = 0;
@@ -6603,6 +6761,18 @@ function selfTestBody(runSim){
           ok('options: opened anywhere else, BACK still goes to the title', G.state === 'title');
           G.state = 'play'; show(null); clearInput();
         }
+
+        /* BACK holds a mission: in play it opens the watch, on the watch it goes
+           home, and only then does it leave the page */
+        { G.state = 'play'; show(null); armBack();
+          const armed = !!(history.state && history.state.a360);
+          dispatchEvent(new PopStateEvent('popstate', { state: null }));
+          const watched = G.state === 'pause', rearmed = !!(history.state && history.state.a360);
+          dispatchEvent(new PopStateEvent('popstate', { state: null }));
+          ok('back: BACK in play opens the watch and re-arms; BACK on the watch goes home',
+             armed && watched && rearmed && G.state === 'title',
+             'armed '+armed+' watch '+watched+' rearmed '+rearmed+' then '+G.state);
+          G.state = 'play'; show(null); clearInput(); }
 
         /* Tab on the watch walks the watch and never leaves it: the browser
            used to walk focus off the panel onto the canvas, and the next Tab
@@ -7469,7 +7639,8 @@ function selfTestBody(runSim){
              fmt(0)+' '+fmt(61)+' '+fmt(FMT_MAX)); }
 
         /* ...and the store never hands it one of those in the first place */
-        { const raw0 = localStorage.getItem(SAVE_KEY);
+        if (!lsWritable()) ok('best: only a time a clock can say is kept', true, 'store denied: the write half is skipped');
+        else { const raw0 = (() => { try { return localStorage.getItem(SAVE_KEY); } catch(_){ return null; } })();
           const kept = [];
           for (const t of ['null', '"soon"', '-1', '1e308', String(FMT_MAX + 1),
                            'null', '99.5']){
@@ -7790,19 +7961,86 @@ const BEST = {};                  // 'M01:diff' -> { time, acc, rank, win }
 let campaignDone = false;
 let SCANOP = 50;                  // scanline slider 0..100; JS-side so it can be saved before the DOM syncs
 let SCAN_PREV = 50;               // the level P turns back ON to, so OFF is a stored 0 and not a shadow class
+/* The bests a blob holds, validated the same way whichever door they come in
+   by: v1 keyed by level index (re-keyed through V1_CODES), v2 by mission code;
+   a key must name a mission and a rung the game has, a time must be one a
+   clock can say, and a rank reaches the select screen as innerHTML, so it is
+   whitelisted against the real names. */
+function bestsOf(d){
+  const out = {};
+  if (!d || !d.best || typeof d.best !== 'object') return out;
+  const num = (v,lo,hi,fb) => typeof v === 'number' && isFinite(v) ? clamp(v,lo,hi) : fb;
+  for (const k in d.best){ const b = d.best[k];
+    let bk = k;
+    if (d.v === 1){
+      const m = /^(\d+):([0-2])$/.exec(k);
+      if (!m || !V1_CODES[+m[1]]) continue;
+      bk = V1_CODES[+m[1]] + ':' + m[2];
+    } else {
+      const m = /^(M\d\d):(\d)$/.exec(k);
+      if (!m || +m[2] >= DIFFS.length || !LEVELS.some(L => L.code === m[1])) continue;
+    }
+    if (b && typeof b.time === 'number' && isFinite(b.time) && b.time >= 0 && b.time <= FMT_MAX)
+      out[bk] = { time:b.time, acc:num(b.acc,0,100,0), rank:RANKS.includes(b.rank) ? b.rank : '', win:b.win === true };
+  }
+  return out;
+}
+/* the endMission rule, as a choice between two entries: a win displaces a
+   loss, a loss displaces nothing, between wins the clock decides */
+function betterBest(a, b){
+  if (!a) return b; if (!b) return a;
+  if (a.win !== b.win) return a.win ? a : b;
+  if (a.win && b.win) return b.time < a.time ? b : a;
+  return a;
+}
+/* Two tabs used to erase each other: every save wrote this tab's whole
+   memory over the key, so a settings click in one tab wiped the other tab's
+   mission win from disk. A save now reads the key first and, if another
+   writer has touched it since this tab last wrote (the stamp), folds the
+   disk's better bests and its campaign flag in before writing. */
+let SAVE_STAMP = null, SAVE_WARN = null;
+function mergeFromDisk(){
+  let d = null; try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(_){ return; }
+  if (!d || typeof d !== 'object' || d.v !== 2 || d.stamp === SAVE_STAMP) return;
+  const disk = bestsOf(d);
+  for (const k in disk) BEST[k] = betterBest(BEST[k], disk[k]);
+  if (d.campaignDone === true) campaignDone = true;
+}
 function saveSettings(){
   try {
+    mergeFromDisk();
+    SAVE_STAMP = Math.random().toString(36).slice(2) + Date.now().toString(36);
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      v:2, sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
+      v:2, stamp:SAVE_STAMP, sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
       keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn,
       scan:SCANOP, map:G.mapOn, diff:G.diff, level:selLevel, rm:RM_OPT,
       best:BEST, campaignDone
     }));
   } catch(_){}
 }
+/* ...and the other tab's save lands here as it happens, so MISSION SELECT
+   shows the win the moment it is filed next door */
+addEventListener('storage', e => {
+  if (e.key !== SAVE_KEY) return;
+  mergeFromDisk();
+  if (G.state === 'select') buildSelect();
+  if (G.state === 'title') show('s-title');
+});
+/* A store that answers reads and refuses writes is the common shape of a
+   blocked one; the game used to say nothing and forget everything on reload. */
+function storageWritable(){
+  const k = SAVE_KEY + '.probe';
+  try { localStorage.setItem(k, '1'); const back = localStorage.getItem(k) === '1'; localStorage.removeItem(k); return back; }
+  catch(_){ return false; }
+}
 function loadSettings(){
-  let d = null;
-  try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(_){ d = null; }
+  let d = null, raw = null;
+  try { raw = localStorage.getItem(SAVE_KEY); d = JSON.parse(raw); }
+  catch(_){ d = null;
+    /* a blob that will not parse used to be replaced in silence by the next
+       save: say so, and keep the bytes aside for anyone who wants them */
+    if (raw){ SAVE_WARN = 'SAVED PROGRESS COULD NOT BE READ — STARTING FRESH';
+      try { localStorage.setItem(SAVE_KEY + '.bad', raw); } catch(_2){} } }
   /* no v2 blob yet: fall back to the v1 key so an upgrade keeps the save */
   if (!d){ try { d = JSON.parse(localStorage.getItem(SAVE_KEY_V1)); } catch(_){ d = null; } }
   if (!d || typeof d !== 'object' || (d.v !== 2 && d.v !== 1)) return;
@@ -7832,35 +8070,15 @@ function loadSettings(){
      rung — half of the choice remembered, which reads as a bug either way. */
   if ((d.level|0) === d.level && d.level >= 0 && d.level < LEVELS.length) selLevel = d.level;
   campaignDone = d.campaignDone === true;
-  if (d.best && typeof d.best === 'object')
-    for (const k in d.best){ const b = d.best[k];
-      /* v1 keyed bests by level index; re-key each through V1_CODES on the way
-         in ('2:1' -> 'M05:1'), so the entry follows its mission, not its slot */
-      let bk = k;
-      if (d.v === 1){
-        const m = /^(\d+):([0-2])$/.exec(k);
-        if (!m || !V1_CODES[+m[1]]) continue;
-        bk = V1_CODES[+m[1]] + ':' + m[2];
-      } else {
-        /* junk diffs ('M01:9') used to persist forever — and so did junk
-           missions ('M99:0'), which passed a shape check and were written back
-           out on every save; the key has to name a mission and a rung the
-           game has, both read from the tables so a new mission or rung fits */
-        const m = /^(M\d\d):(\d)$/.exec(k);
-        if (!m || +m[2] >= DIFFS.length || !LEVELS.some(L => L.code === m[1])) continue;
-      }
-      /* time inside what a clock can say (a stored -61 rendered "BEST -2:0-1";
-         1e308 rendered "BEST 1.66e+306:56" — the floor was fixed and the
-         ceiling left open) and rank whitelisted against the real names, since
-         it reaches the select screen as innerHTML */
-      if (b && typeof b.time === 'number' && isFinite(b.time) &&
-          b.time >= 0 && b.time <= FMT_MAX)
-        BEST[bk] = { time:b.time, acc:num(b.acc,0,100,0),
-                     rank:RANKS.includes(b.rank) ? b.rank : '', win:b.win === true };
-    }
+  /* junk diffs ('M01:9') and junk missions ('M99:0') used to persist forever;
+     a stored -61 rendered "BEST -2:0-1" and 1e308 "BEST 1.66e+306:56" — the
+     whole validation lives in bestsOf(), shared with the two-tab merge */
+  Object.assign(BEST, bestsOf(d));
+  if (d.v === 2 && typeof d.stamp === 'string') SAVE_STAMP = d.stamp;
   resolveLook(); applyLayout();
 }
 loadSettings();                   // before boot() and before any UI sync, so labels reflect the blob
+if (!storageWritable()) SAVE_WARN = SAVE_WARN || 'STORAGE IS BLOCKED — SETTINGS AND BESTS WILL NOT BE KEPT';
 
 /* ------------------------------ shell wiring --------------------------- */
 const LOOK_BLURB = {
@@ -8096,7 +8314,11 @@ function onKey(e){
     const rkeep = back.state === 'result' ? RNODES.map(id => {
       const el = document.getElementById(id);
       return { el, kids: [...el.childNodes], color: el.style.color }; }) : null;
-    selfTest(sim);
+    /* a suite that throws (a storage getter that denies access did) must
+       still hand the screen back — it used to leave the sim's mission live
+       under the title with no report */
+    try { selfTest(sim); }
+    catch (err){ G.tests = [{ name:'the suite itself threw', pass:false, detail:String(err && err.message || err) }]; }
     if (rkeep) for (const k of rkeep){ k.el.replaceChildren(...k.kids); k.el.style.color = k.color; }
     G.state = back.state; clearToasts();     // the sim leaves 'play' and a mission toast behind
     G.testReturn = back; G.showTests = true;
@@ -8204,6 +8426,7 @@ const bootSkippable = () => G.state==='boot' && performance.now() - bootAt > 400
 function bootDone(){
   if (bootT) { clearInterval(bootT); bootT = null; }
   G.state = 'title'; show('s-title');
+  if (SAVE_WARN){ toast(SAVE_WARN, 'cyan', 6000); SAVE_WARN = null; }
 }
 /* The 350ms click-swallow exists only for the SKIP tap's trailing click, so it
    arms here — bootDone() stamping it meant a natural splash-end ate the first
@@ -8330,6 +8553,10 @@ function fit(){
   if (s * dpr >= 2) s = Math.floor(s * dpr) / dpr;
   view.style.width = (RW*s)+'px';
   view.style.height = (RH*s)+'px';
+  /* a frame that changed size moved the pads: let go of the thumbs on them */
+  if (FIT_W && RW*s !== FIT_W && TIN && (TIN.move !== null || TIN.aimpad !== null) &&
+      typeof releasePads === 'function') releasePads();
+  FIT_W = RW*s;
   /* Toasts scale with the PICTURE. 1.15vh read the phone's tall axis in
      portrait — 9.7px type in a 216px-tall frame, four toasts deep across the
      crosshair while the guards were still up. */
@@ -8346,6 +8573,7 @@ function fit(){
    moved — and no resize fires, so the DEVICE-pixel snap above would keep the
    old ratio and hand the art back the uneven columns it exists to prevent.
    There is no event for it that every engine agrees on, so the loop asks. */
+let FIT_W = 0;
 function checkDpr(){ if ((devicePixelRatio || 1) !== FIT_DPR) fit(); }
 addEventListener('resize', fit);
 fit();
