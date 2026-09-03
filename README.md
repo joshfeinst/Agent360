@@ -46,8 +46,8 @@ the full list.
 **On a phone it works out that it's a phone.** Two pads: the left one moves —
 push it to the rim and you sprint — and the right one looks, so you can walk
 and turn at once instead of choosing. Dragging the view still looks if you
-prefer it, a tap on the view shoots, and FIRE, AIM, RELOAD, GUN, USE, CROUCH
-and PAUSE cluster around whichever pad the thumb is already on, every one of
+prefer it, a tap on the view shoots, and FIRE, AIM, RLD, GUN, USE, CRCH and
+❚❚ (pause) cluster around whichever pad the thumb is already on, every one of
 them at least 44px. The pause screen's field watch stands in for Tab's floor plan. Landscape
 is the better way to hold it; installed from *Add to Home Screen*, it launches
 fullscreen. Settings and per-mission bests survive reloads, and cheated runs

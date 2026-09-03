@@ -153,11 +153,11 @@ input[type=range]{accent-color:var(--cyan); width:150px}
 /* The shared .touch-only rule below restores display:grid, which stacks a .ctl
    row's label on top of its slider — a control row is a flex row. */
 .ctl.touch-only{display:none}
-body.touch .ctl.touch-only{display:flex}
+body.touch .ctl.touch-only, body.hybrid .ctl.touch-only{display:flex}
 .mi .best{display:block; font-size:.72em; color:var(--gold); margin-top:5px; letter-spacing:.06em}
 .stat{font-family:var(--pix); color:var(--gold); font-size:clamp(9px,1.5vh,13px)}
 #touch{position:absolute; inset:0; pointer-events:none; display:none}
-body.touch #touch.on{display:block}
+body.touch #touch.on, body.hybrid #touch.on{display:block}
 /* Buttons float over the canvas but take pointer events ONLY on themselves, so
    every uncovered pixel stays part of the look surface. 44px floors keep them
    tappable on small phones where vmin shrinks below thumb size. */
@@ -225,7 +225,8 @@ body.touch #touch.on{display:block}
 /* Touch players get taught touch first; the pointer-lock prose would only
    confuse a device that can never hold a lock. */
 .touch-only{display:none}
-body.touch .touch-only{display:grid}
+body.touch .touch-only, body.hybrid .touch-only{display:grid}
+body.touch p.touch-only, body.hybrid p.touch-only{display:block}
 body.touch .no-touch{display:none}
 body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
 .screen:focus{outline:none}
@@ -303,8 +304,9 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
                   style="image-rendering:pixelated;width:100%;height:auto;border:1px solid var(--line)"></canvas>
           <p class="hint" style="margin:8px 0 0;font-size:clamp(9px,1.3vh,12px)">
             Lettered markers are your outstanding objectives. Shape says what it is — screen: terminal,
-            rack: patch console, diamond: rogue access point, figure: the CFO, cross: hostile,
-            doorway: the way out, tick: done. Doors with a dark keyhole pip need a keycard.</p>
+            rack: patch console, diamond: rogue access point or infected endpoint, case: a keycard, tape or
+            credentials to pick up, figure: the CFO, cross: hostile, doorway: the way out, tick: done.
+            Doors with a dark keyhole pip need a keycard.</p>
         </div>
         <div>
           <div class="eyebrow" style="margin-bottom:10px">objectives</div>
@@ -381,7 +383,9 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
       Open the HTML file directly for guaranteed mouse capture. Change the mode under <b>Look mode</b> in Options;
       <b>,</b> and <b>.</b> turn from the keyboard. <b>Backspace</b> resets stuck input; <b>F3</b> shows a live
       input readout and <b>F2</b> the raw mouse stream.</p>
-      <p class="hint">Lost? The corner radar (<b>N</b>) marks objectives, and the watch (<b>Tab</b>) shows the whole floor
+      <p class="hint no-touch">Lost? The corner radar (<b>N</b>) marks objectives, and the watch (<b>Tab</b>) shows the whole floor
+      plan with every outstanding objective lettered on it and its range in metres.</p>
+      <p class="hint touch-only">Lost? The corner radar marks objectives, and the watch (<b>❚❚</b>) shows the whole floor
       plan with every outstanding objective lettered on it and its range in metres.</p>
       <p class="hint">Aim mode narrows your spread and zooms in — the only way the <b>KB-Klobb</b> hits anything past four metres.</p>
       <p class="hint"><b>Keep moving.</b> Hostile aim tracks a sprinting agent badly — worst on AGENT clearance — and crouching
@@ -392,7 +396,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     <!-- OPTIONS -->
     <div class="screen" id="s-options" hidden>
       <div class="eyebrow">options</div>
-      <h2 class="ttl">SETTINGS</h2>
+      <h2 class="ttl">OPTIONS</h2>
       <div class="grid2 panel">
         <!-- the same slider also scales a DRAG on the view, so on touch it is
              relabelled rather than left promising a mouse nobody has -->
@@ -431,8 +435,8 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
       <div class="eyebrow">unlocked at the console, as tradition demands</div>
       <h2 class="ttl">CHEAT MENU</h2>
       <div class="menu" id="cheatlist"></div>
-      <p class="hint">Cheats are honest about themselves: turn any of these on and the mission still counts, but the
-      results screen gets a permanent asterisk.</p>
+      <p class="hint">Cheats are honest about themselves: turn any of these on and the mission still counts, but that
+      run's results screen gets an asterisk and it records no best.</p>
       <div class="row"><button class="btn ghost" data-act="back">◀ BACK</button></div>
     </div>
 
@@ -495,7 +499,7 @@ const pack = (r,g,b,a=255) => ((a<<24)|(b<<16)|(g<<8)|r)>>>0;
 
 /* ---------------------------------- input -------------------------------- */
 const keys = new Set();
-const M = { locked:false, dragging:false, dx:0, dy:0, fire:false, aim:false, sens:.7, tsens:1, wheel:0, wheelAt:0,
+const M = { locked:false, dragging:false, dx:0, dy:0, tdx:0, tdy:0, fire:false, aim:false, sens:.7, tsens:1, wheel:0, wheelAt:0,
             justLocked:0, moved:0, downT:0, lx:null, ly:null, tapDone:false, fireEdge:0, fireBuf:0, pressNew:false, tlook:false,
             /* pointer-lock bookkeeping */
             lockPending:false, lockPromise:false, lockAt:0, unlockAt:0, lockFails:0,
@@ -557,6 +561,20 @@ const TPAD_TURN  = 3.1;           // right-pad yaw rad/s at the rim (TURN_MAX is
 const TPAD_PITCH = 24;            // right-pad horizon px/s at the rim (46 pinned the view at the ceiling in .65s)
 const TPAD_DEAD  = .28;           // ...and a horizontal sweep must stay horizontal
 const isTouch = matchMedia('(hover:none) and (pointer:coarse)').matches;
+/* The input model was decided once, by that media query, and a touchscreen
+   laptop answers "mouse": the cluster never appeared, so with the keyboard
+   folded away a finger could shoot and look and nothing else — 0.00 units
+   moved, no pause. The first real finger on the view now opens HYBRID: the
+   cluster and the touch rows appear beside the mouse's, the pads and the
+   buttons work, the mouse keeps its capture and its look mode. */
+let TOUCH_SEEN = false;
+function enableHybrid(){
+  if (isTouch || TOUCH_SEEN) return;
+  TOUCH_SEEN = true;
+  document.body.classList.add('hybrid');
+  if (typeof G !== 'undefined' && G.state === 'play' && !G.showTests)
+    document.getElementById('touch').classList.add('on');
+}
 /* A finger tap also emits compatibility mouse events (mousemove with buttons=0,
    mousedown, mouseup, click). The touch cluster owns M.fire/M.aim on touch
    devices, so those ghosts must never reach the mouse handlers: a letterbox tap
@@ -674,7 +692,7 @@ function clearInput(keepHeld){
     if (TIN){ TIN.use = false; TIN.run = false; }
   }
   M.dragging = false; M.tapDone = false; M.fireEdge = 0; M.fireBuf = 0; M.pressNew = false; M.tlook = false;
-  M.dx = 0; M.dy = 0; M.moved = 0; M.lx = null; M.ly = null; M.wheel = 0;
+  M.dx = 0; M.dy = 0; M.tdx = 0; M.tdy = 0; M.moved = 0; M.lx = null; M.ly = null; M.wheel = 0;
   M.yawF = 0;                        // a stale sweep must not keep aimCone open
   /* the look pad is a held axis like the move stick: an in-window pause that
      keeps one and drops the other resumed with a dead turn under a thumb that
@@ -1006,7 +1024,11 @@ function unlock(){
         T.look.x = t.clientX; T.look.y = t.clientY;
         T.look.moved += Math.abs(ldx) + Math.abs(ldy);
         if (!pinch){
-          M.dx += ldx*1.6; M.dy += ldy*1.6;
+          /* a finger's travel is DIRECT look in every mode — through the
+             mouse's lane a swipe in free look pinned the reticle at the edge
+             and the view kept spinning after the finger lifted (170 degrees
+             for one 300px swipe) */
+          M.tdx += ldx*1.6; M.tdy += ldy*1.6;
           M.lastMove = performance.now();   // without this the idle guard ate every touch delta
         }
       }
@@ -1028,6 +1050,9 @@ function unlock(){
   const viewTap = (s, e) => {
     if (e.type !== 'touchend' || s.moved >= 12 || e.timeStamp - s.t0 >= TAP_MS) return;
     if (G.state !== 'play' || !P.alive) return;
+    /* the band says CLICK THE VIEW to capture the mouse: a finger's tap is
+       that click, not a shot — it used to fire and leave the band up */
+    if (!isTouch && !M.locked && wantsLock() && !lockGivenUp()){ tryLock(); return; }
     if (!playerFire()){ M.fireEdge = performance.now(); M.pressNew = true; }
   };
   const touchDone = e => {
@@ -1059,6 +1084,7 @@ function unlock(){
   addEventListener('touchend', touchDone);
   addEventListener('touchcancel', touchDone);   // else a cancelled stick walks (or sprints) forever
   view.addEventListener('touchstart', e=>{
+    enableHybrid();
     /* One owner per look drag, exactly as the pads have at padStart: a second
        finger landing on the canvas used to rebind T.look to itself, so the
        thumb that was still dragging stopped turning the view and its lift
@@ -2029,7 +2055,7 @@ const LEVELS = [
   objectives:[
     { tag:'A', text:'Deploy the management agent to every endpoint', kind:'term', need:3, diff:0 },
     { tag:'B', text:'Destroy the rogue access point on the core switch', kind:'ap', need:1, diff:0 },
-    { tag:'C', text:'Recover the door keycard from the UPS cage', kind:'key', need:1, diff:0 },
+    { tag:'C', text:'Recover the door keycard from the caged store', kind:'key', need:1, diff:0 },
     { tag:'D', text:'Pull the audit log from the terminal on the loading dock', kind:'audit', need:1, diff:2 },
     { tag:'E', text:'Exit down the loading-dock stairs, south-east', kind:'exit', need:1, diff:0 }
   ]
@@ -2279,12 +2305,16 @@ const finaleIndex = () => LEVELS.findIndex(L => L.finale);
    fraction can only cut in raster order, which is how M01 once lost its only
    legacy tower to a %3. */
 const DIFFS = [
-  { name:'AGENT',        note:'Fewer hostiles, softer hits, a shorter task list.', dmg:.55, hp:.75, acc:.55 },
+  /* The notes say what is TRUE on every mission: three hostiles fewer on
+     AGENT (6/9 on M01-M04, 4/7 on M05), damage at .55/.8/1.6 — the old
+     "shorter task list" and "deeper tasking" were false on M01, M03 and M04,
+     under a select note that counted the same objectives for both rungs. */
+  { name:'AGENT',        note:'Three hostiles stay home, and hits land at half strength.', dmg:.55, hp:.75, acc:.55 },
   /* dmg .8/acc .7, not the old 1.0/.78: with AGENT at .55/.55 and 00 at
      1.6/.93 the middle rung sat within a whisker of 00's punishment — a
      measured cliff (playtest bot: 15/15 AGENT, dead in 9s median on SECRET). */
-  { name:'SECRET AGENT', note:'Full roster, deeper tasking, they aim.',            dmg:.8, hp:1.0, acc:.7 },
-  { name:'00 AGENT',     note:'Every objective, every hostile, and they hit.',   dmg:1.6, hp:1.4, acc:.93 }
+  { name:'SECRET AGENT', note:'Full roster, real damage, they aim.',                 dmg:.8, hp:1.0, acc:.7 },
+  { name:'00 AGENT',     note:'Full roster, the hardest hits, and they rarely miss.', dmg:1.6, hp:1.4, acc:.93 }
 ];
 
 /* map chars -> wall texture (anything not listed is walkable floor) */
@@ -3288,24 +3318,30 @@ function step(dt, scored){
     M.dx = clamp(M.dx - mdx, -MAX_FRAME_PX*4, MAX_FRAME_PX*4);
     M.dy = clamp(M.dy - mdy, -MAX_FRAME_PX*4, MAX_FRAME_PX*4);
     M.sumF = mdx;
+    /* The finger's lane: direct drag, both axes, no gate, no decay, in EVERY
+       look mode — on a touch profile it is the whole look, on a hybrid it
+       rides beside the mouse's. M.tsens is the touch sensitivity dial. */
+    const tdx = clamp(M.tdx, -cap, cap), tdy = clamp(M.tdy, -cap, cap);
+    M.tdx = 0; M.tdy = 0;
+    yaw += tdx * LOOK_PX * DRAG_MUL * M.sens * M.tsens * zsens;
+    P.pitch = clamp(P.pitch - tdy*ydir * .10 * M.sens * M.tsens * zsens, -PITCH_MAX, PITCH_MAX);
+    /* ...and the right pad turns by RATE on top of it, so a parked thumb can
+       hold a turn while the other hand shoots. Squared response: small
+       deflections stay fine for tracking, the rim swings hard. */
+    if (held.lx || held.ly){
+      yaw += Math.sign(held.lx) * held.lx*held.lx * TPAD_TURN * M.tsens * zsens * dt;
+      /* Dead zone on the VERTICAL axis only: a thumb sweeping left to right
+         bows, and the bow was enough to pin the horizon at the ceiling,
+         where nothing recentres it. The horizontal axis keeps its full range. */
+      const ly = Math.abs(held.ly) < TPAD_DEAD ? 0 : held.ly;
+      P.pitch = clamp(P.pitch - Math.sign(ly) * ly*ly *
+                      ydir * TPAD_PITCH * M.tsens * zsens * dt, -PITCH_MAX, PITCH_MAX);
+    }
     if (LOOKMODE === 'touch'){                     /* the look finger IS the view */
-      /* Direct drag, both axes, no gate, no decay: the reticle stays pinned to
-         centre and P.pitch finally answers a vertical thumb. M.tsens is the
-         touch sensitivity dial (Options slider, persisted).                   */
-      yaw = mdx * LOOK_PX * DRAG_MUL * M.sens * M.tsens * zsens;
+      /* the mouse lane too: a touch profile with a pointer attached drags the
+         same way the finger does */
+      yaw += mdx * LOOK_PX * DRAG_MUL * M.sens * M.tsens * zsens;
       P.pitch = clamp(P.pitch - mdy*ydir * .10 * M.sens * M.tsens * zsens, -PITCH_MAX, PITCH_MAX);
-      /* ...and the right pad turns by RATE on top of it, so a parked thumb can
-         hold a turn while the other hand shoots. Squared response: small
-         deflections stay fine for tracking, the rim swings hard. */
-      if (held.lx || held.ly){
-        yaw += Math.sign(held.lx) * held.lx*held.lx * TPAD_TURN * M.tsens * zsens * dt;
-        /* Dead zone on the VERTICAL axis only: a thumb sweeping left to right
-           bows, and the bow was enough to pin the horizon at the ceiling,
-           where nothing recentres it. The horizontal axis keeps its full range. */
-        const ly = Math.abs(held.ly) < TPAD_DEAD ? 0 : held.ly;
-        P.pitch = clamp(P.pitch - Math.sign(ly) * ly*ly *
-                        ydir * TPAD_PITCH * M.tsens * zsens * dt, -PITCH_MAX, PITCH_MAX);
-      }
       P.rx = 0; P.turning = false;
     } else if (LOOKMODE === 'drag'){               /* only turns while held */
       if (M.dragging || M.tlook){                /* a look finger counts as holding */
@@ -3602,7 +3638,11 @@ function pickup(e){
     case 'med': { if (P.hp>=100) return; const g = Math.min(100,P.hp+35) - P.hp; P.hp += g; toast('FIELD KIT +'+Math.round(g),'cyan',1400); break; }
     case 'vest': { if (P.armor>=100) return; const g = Math.min(100,P.armor+60) - P.armor; P.armor += g; toast('BODY ARMOUR +'+Math.round(g),'cyan',1600); break; }
     /* cause first, consequence second — the newest toast lands at the BOTTOM */
-    case 'key': P.keys++; sfx('key'); toast('DOOR KEYCARD ACQUIRED','gold',2400); bump('key'); e.dead2=true; return;
+    case 'key': { P.keys++; sfx('key');
+      /* the objective names the card — elevator, loading-bay, stairwell — and
+         the toast used to call every one of them a door keycard */
+      const ko = G.objs.find(o => o.kind==='key'), m = ko && /(\S+) keycard/i.exec(ko.text);
+      toast((m ? m[1].toUpperCase() : 'DOOR')+' KEYCARD ACQUIRED','gold',2400); bump('key'); e.dead2=true; return; }
     case 'case': toast('CREDENTIAL CASE SECURED','gold',2400); sfx('pickup'); bump('case'); e.dead2=true; return;
     case 'tape': toast('BACKUP TAPE SECURED','gold',2400); sfx('pickup'); bump('tape'); e.dead2=true; return;
     case 'wpn1': case 'wpn2': case 'wpn3': {
@@ -3931,15 +3971,43 @@ const OBJ_ENT = {
   boss:     e => e.sub==='boss'     && e.state!=='dead',
   exit:     e => e.kind==='exit'
 };
-function nearestFor(o){
+/* The cells the player can WALK to from here: closed doors count, a locked
+   door only with the keycard, a secret door only once found. Straight-line
+   distance alone aimed the chevron at the audit terminal sealed inside M03's
+   loading bay from 181 of the 356 cells on the key's side of it, when the
+   keycard that opens the bay was the one thing to go and get. */
+function reachable(){
+  const W = G.W, H = G.H, seen = new Uint8Array(W*H);
+  const doorAt = new Map(); for (const d of G.doors) doorAt.set(d.c, d);
+  const walk = c => { if (!G.solid[c]) return true; const d = doorAt.get(c); if (!d) return false;
+    if (d.locked && P.keys <= 0) return false; if (d.secret && !d.found) return false; return true; };
+  const q = [idx(P.x|0, P.y|0)]; seen[q[0]] = 1;
+  for (let i = 0; i < q.length; i++){
+    const c = q[i], x = c % W, y = (c - x) / W;
+    for (const [nx, ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const n = idx(nx, ny); if (seen[n] || !walk(n)) continue;
+      seen[n] = 1; q.push(n);
+    }
+  }
+  return seen;
+}
+function nearestFor(o, reach){
   const test = OBJ_ENT[o.kind]; if (!test) return null;
-  let best=null, bd=Infinity;
+  /* an entity counts as reached when its own cell or a neighbour is: props
+     and terminals sit in cells the player stands beside, not on */
+  const near = e => { if (!reach) return true; const x = e.x|0, y = e.y|0;
+    return [[x,y],[x+1,y],[x-1,y],[x,y+1],[x,y-1]].some(([a,b]) => a>=0 && b>=0 && a<G.W && b<G.H && reach[idx(a,b)]); };
+  let best=null, bd=Infinity, far=null, fd=Infinity;
   for (const e of G.ents){
     if (e.dead2 || !test(e)) continue;
     const d = dist2(e.x,e.y,P.x,P.y);
-    if (d < bd){ bd = d; best = e; }
+    if (near(e)){ if (d < bd){ bd = d; best = e; } }
+    else if (d < fd){ fd = d; far = e; }
   }
-  return best ? { e:best, dist:Math.sqrt(bd) } : null;
+  if (best) return { e:best, dist:Math.sqrt(bd), reached:true };
+  if (far) return { e:far, dist:Math.sqrt(fd), reached:false };   // nothing walkable: point anyway
+  return null;
 }
 /* The NEAREST outstanding objective, not the first one listed. Pointing at
    left[0] aimed the chevron through a wall at a task on the far side of the
@@ -3953,16 +4021,20 @@ function objTarget(){
   return G.objT;
 }
 function objTargetScan(){
-  const left = objsLeft();
+  const left = objsLeft(), reach = reachable();
+  /* the nearest REACHABLE outstanding objective; only when none is walkable
+     from here does the nearest by air win, as it always used to */
   let bo = null, bn = null;
   for (const o of left){
-    const n = nearestFor(o);
-    if (n && (!bn || n.dist < bn.dist)){ bn = n; bo = o; }
+    const n = nearestFor(o, reach);
+    if (!n) continue;
+    const better = !bn || (n.reached && !bn.reached) || (n.reached === bn.reached && n.dist < bn.dist);
+    if (better){ bn = n; bo = o; }
   }
   if (!bo){
     const x = G.objs.find(q => q.kind==='exit' && !q.done);
     if (!x) return null;
-    bo = x; bn = nearestFor(x);
+    bo = x; bn = nearestFor(x, reach);
   }
   return bn ? { e:bn.e, dist:bn.dist, tag:bo.tag, text:bo.text } : null;
 }
@@ -4077,7 +4149,7 @@ function drawMinimap(){
   for (const e of G.ents){
     const p = radarRot((e.x-P.x)*k, (e.y-P.y)*k, rc, rs);
     const dx = p[0], dy = p[1];
-    if (Math.abs(dx) > MM/2 || Math.abs(dy) > MM/2) continue;
+    if (Math.abs(dx) > MM/2-3 || Math.abs(dy) > MM/2-3) continue;   // a blip on the rim drew half-clipped
     /* Hue alone cannot carry this: amber-outstanding and green-done are
        luminance-matched and collapse into one colour under red-green colour
        blindness. Every blip takes a BLIP glyph, and the watch draws the same. */
@@ -4121,7 +4193,10 @@ function drawMinimap(){
 function drawWaypoint(){
   const t = objTarget(); if (!t) return;
   const rel = angDiff(P.ang, Math.atan2(t.e.y-P.y, t.e.x-P.x));
-  const cx = RW>>1, y = 90, lim = RW/2 - 34;      // clear of the radar and the clock
+  const cx = RW>>1, y = 90;
+  /* clear of the radar and the clock — and on a phone of the RLD button,
+     which sat on the plate for any bearing past +60 degrees */
+  const lim = RW/2 - 34 - ((isTouch || TOUCH_SEEN) ? 26 : 0);
   const x = cx + clamp(rel/1.2, -1, 1)*lim;
   const behind = Math.abs(rel) > 1.2;
   ctx.fillStyle = '#ffd76a';
@@ -4130,7 +4205,12 @@ function drawWaypoint(){
     ctx.moveTo(x+6*s, y); ctx.lineTo(x-2*s, y-5); ctx.lineTo(x-2*s, y+5);
   } else { ctx.moveTo(x, y-6); ctx.lineTo(x-5, y+2); ctx.lineTo(x+5, y+2); }
   ctx.closePath(); ctx.fill();
-  txtP('OBJ '+t.tag+' · '+metres(t.dist)+'M', clamp(x, 44, RW-44), y+14, '#ffd76a', 6);
+  /* the label ABOVE the chevron: below it, the plate covered the crosshair
+     for any bearing within ten degrees of straight ahead — the moment the
+     player was aiming at the thing it points to */
+  const lx = clamp(x, 44, RW-44), label = 'OBJ '+t.tag+' · '+metres(t.dist)+'M';
+  txtP(label, lx, y-10, '#ffd76a', 6);
+  G.wpPlate = [lx - label.length*3 - 3, y-18, lx + label.length*3 + 3, y-5];   // for the pain arc
 }
 
 /* The watch: a full floor plan with the outstanding objectives lettered on it. */
@@ -4258,11 +4338,19 @@ function drawHUD(horizon){
 
   /* directional pain: a short red arc on a 70px ring, one per remembered hit
      source. rel 0 = dead ahead = top of the ring; behind lands at the bottom. */
+  /* ...drawn in short pieces, skipping any that cross the waypoint plate: a
+     flanking hit used to run its arc straight through the objective label */
+  const wp = G.wpPlate;
   for (const dd of P.dmgDir){
     const rel = angDiff(P.ang, dd.ang) - Math.PI/2;
     ctx.strokeStyle = 'rgba(255,45,30,'+clamp(dd.t*1.4, 0, .85).toFixed(2)+')';
     ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.arc(RW/2, RH/2, 70, rel-.38, rel+.38); ctx.stroke();
+    for (let a = rel-.38; a < rel+.38; a += .095){
+      const b = Math.min(a+.095, rel+.38), m = (a+b)/2;
+      const px = RW/2 + Math.cos(m)*70, py = RH/2 + Math.sin(m)*70;
+      if (wp && px >= wp[0]-3 && px <= wp[2]+3 && py >= wp[1]-3 && py <= wp[3]+3) continue;
+      ctx.beginPath(); ctx.arc(RW/2, RH/2, 70, a, b); ctx.stroke();
+    }
   }
 
   /* crosshair */
@@ -4313,11 +4401,11 @@ function drawHUD(horizon){
   bar(10, 10, 92, 6, P.armor/100, '#35d0ff');
   bar(10, 20, 92, 8, P.hp/100, P.hp>35?'#ffb02e':'#ff3b30');
   txt('AR', 106, 17, '#35d0ff', 6);
-  txt('HP', 106, 28, P.hp>35?'#ffb02e':'#ff3b30', 6);
+  txtP('HP', 106, 28, P.hp>35?'#ffb02e':'#ff3b30', 6);
   /* On a plate, like the bars above them: bare over M03's white mist and M04's
      dusk sky these three read as nothing at all. */
   if (P.keys>0) txtP('KEY', 10, 40, '#8be6ff', 6, 'left');
-  if (G.cheats.god) txt('INVULNERABLE', 10, RH-46, '#4ade80', 6);
+  if (G.cheats.god) txtP('INVULNERABLE', 10, (isTouch || TOUCH_SEEN) ? 62 : RH-46, '#4ade80', 6);
 
   /* radar top right; clock sits left, clear of both. The waypoint is its own
      feature — hiding the radar with N must not take the objective chevron with
@@ -4341,18 +4429,20 @@ function drawHUD(horizon){
     /* the countdown sits under the waypoint row — the DOM toast stack (top:17%)
        parks squarely over canvas y36 for the first seconds of the escape */
     if (meltShow(t)){
-      ctx.fillStyle='rgba(5,8,14,.72)'; ctx.fillRect((RW>>1)-58, 126, 116, 12);
-      txt('MELTDOWN '+fmt(Math.max(0,t)), RW>>1, 135, t<15?'#ff3b30':'#ffb02e', 8, 'center');
+      /* top centre: the only strip empty in every HUD state — under the
+         crosshair it met the crosshair itself at full downward pitch */
+      ctx.fillStyle='rgba(5,8,14,.72)'; ctx.fillRect((RW>>1)-58, 6, 116, 12);
+      txt('MELTDOWN '+fmt(Math.max(0,t)), RW>>1, 15, t<15?'#ff3b30':'#ffb02e', 8, 'center');
     }
   }
 
   /* boss bar */
   const boss = G.ents.find(e=>e.kind==='enemy'&&e.sub==='boss'&&e.state!=='dead');
   if (boss && dist2(boss.x,boss.y,P.x,P.y) < 400 && los(boss.x,boss.y,P.x,P.y)){
-    txt('LEGACY-DC01', RW>>1, RH-40, G.shieldDown?'#ff3b30':'#35d0ff', 6, 'center');
+    txtP('LEGACY-DC01', RW>>1, RH-40, G.shieldDown?'#ff3b30':'#35d0ff', 6, 'center');
     bar((RW>>1)-70, RH-36, 140, 5, boss.hp/(ESPEC.boss.hp*BOSSTUNE.hp[G.diff]),
         G.shieldDown?'#ff3b30':'#35d0ff');
-    if (!G.shieldDown) txt('ICS SHIELD ACTIVE', RW>>1, RH-27, '#35d0ff', 6, 'center');
+    if (!G.shieldDown) txt('ICS SHIELD ACTIVE', RW>>1, RH-24, '#35d0ff', 6, 'center');
   }
 
   /* Ammo, bottom right — on a plate so it reads over the gun. It has to be a
@@ -4373,8 +4463,11 @@ function drawHUD(horizon){
   txt(mag, RW-52, RH-12, P.mag[P.w]>0?'#ffb02e':'#ff3b30', 16, 'right');
   txt('/ '+res, RW-12, RH-12, '#8fa8c0', 8, 'right');
   if (P.reload>0){
-    txt('RELOADING', 10, RH-22, '#35d0ff', 7);
-    bar(10, RH-18, 70, 4, 1-P.reload/WEAPS[P.w].rel, '#35d0ff');
+    /* on a phone the move pad covers the bottom-left corner: the readout
+       moves up to the prompt row, where nothing else draws while reloading */
+    const ry = (isTouch || TOUCH_SEEN) ? RH-57 : RH-22;
+    txtP('RELOADING', (isTouch || TOUCH_SEEN) ? (RW>>1)-40 : 10, ry, '#35d0ff', 7);
+    bar((isTouch || TOUCH_SEEN) ? (RW>>1)-40 : 10, ry+4, 70, 4, 1-P.reload/WEAPS[P.w].rel, '#35d0ff');
   }
 
   /* weapon slots */
@@ -4396,7 +4489,9 @@ function drawHUD(horizon){
     const label = P.useTarget.sub==='npc' ? hf+' 1.9s — ESCORT THE CFO'
       : P.useTarget.sub==='console' ? hf+' 1.9s — APPLY PATCH'
       : P.useTarget.sub==='audit' ? hf+' 1.9s — PULL AUDIT LOG'
-      : hf+' 1.9s — DEPLOY AGENT';
+      /* the terminal's job is whatever its objective says — M04's stairwell
+         terminal is a hack, and the prompt used to sell it as a deployment */
+      : hf+' 1.9s — '+(G.objs.some(o => o.kind==='term' && /^hack/i.test(o.text)) ? 'HACK TERMINAL' : 'DEPLOY AGENT');
     txtP(label, RW>>1, RH-57, '#4ade80', 7);
     bar((RW>>1)-50, RH-54, 100, 5, P.useTarget.prog, '#4ade80');
   } else if (P.shootTarget){
@@ -4412,8 +4507,9 @@ function drawHUD(horizon){
   } else if (!M.locked && wantsLock() && !lockGivenUp()){
     /* Capture wanted but not held: say exactly what to do, for as long as it
        applies — not just for the first fifteen seconds. */
-    ctx.fillStyle = 'rgba(5,8,14,.70)'; ctx.fillRect(0, RH-80, RW, 16);
-    txt('CLICK THE VIEW OR PRESS ENTER TO CAPTURE THE MOUSE', RW>>1, RH-69, '#ffb02e', 6, 'center');
+    const by = HALFH + P.pitch < RH-84 ? RH-80 : RH-116;      // never on a lowered crosshair
+    ctx.fillStyle = 'rgba(5,8,14,.70)'; ctx.fillRect(0, by, RW, 16);
+    txt('CLICK THE VIEW OR PRESS ENTER TO CAPTURE THE MOUSE', RW>>1, by+11, '#ffb02e', 6, 'center');
   } else if (G.time < 15){
     txtP(M.locked ? 'MOUSE CAPTURED · ESC TO RELEASE'
        : LOOKMODE==='touch' ? 'LEFT PAD MOVES · RIGHT PAD LOOKS · TAP TO SHOOT'
@@ -4500,7 +4596,7 @@ function toast(text, kind, ms){
   /* The column grows downward out of #frame, which has no overflow clip, so an
      unbounded stack paints onto the letterbox bars and off the window edge.
      Six fits every viewport measured; the oldest line is the one to lose. */
-  while (wrap.children.length > 6) wrap.firstChild.remove();
+  while (wrap.children.length > ((isTouch || TOUCH_SEEN) ? 3 : 6)) wrap.firstChild.remove();
   setTimeout(()=>{ d.style.transition='opacity .35s'; d.style.opacity='0';
     setTimeout(()=>d.remove(), 400); }, ms||2400);
 }
@@ -4534,7 +4630,7 @@ function show(id){
      canvas with no screen behind it. The cluster used to stay live and on top
      of it, so an AIM/CROUCH/RLD tap set a latch on the mission paused behind
      the report and keepHeld rode it back into play on RESUME. */
-  document.getElementById('touch').classList.toggle('on', id===null && isTouch && !G.showTests);
+  document.getElementById('touch').classList.toggle('on', id===null && (isTouch || TOUCH_SEEN) && !G.showTests);
   syncRotHint();
 }
 /* Portrait on a phone is a letterboxed strip a third of the screen tall. Say
@@ -4717,7 +4813,7 @@ function pause(){
   document.getElementById('p-title').textContent = G.L.code+' · '+G.L.name;
   document.getElementById('p-meta').innerHTML =
     '<dt>Elapsed</dt><dd>'+fmt(G.time)+'</dd>'+
-    '<dt>Par</dt><dd>'+fmt(G.L.par)+'</dd>'+
+    '<dt>SLA window</dt><dd>'+fmt(G.L.par)+'</dd>'+
     '<dt>Health</dt><dd>'+Math.round(P.hp)+'% · armour '+Math.round(P.armor)+'%</dd>'+
     '<dt>Hostiles down</dt><dd>'+G.kills+'</dd>'+
     '<dt>Accuracy</dt><dd>'+(G.shots?Math.round(G.hits/G.shots*100):0)+'%</dd>'+
@@ -4802,7 +4898,7 @@ function endMission(win, why){
      eyebrow-and-title treatment plus a career line over the stored bests. */
   const finale = win && G.L.finale === true;
   document.getElementById('r-eyebrow').textContent = finale
-    ? 'CONTRACT COMPLETE — '+G.L.code+' · '+DIFFS[G.diff].name
+    ? 'CONTRACT COMPLETE — '+G.L.code+' · '+G.L.name+' · '+DIFFS[G.diff].name
     : G.L.code+' · '+G.L.name+' · '+DIFFS[G.diff].name;
   document.getElementById('r-title').textContent =
     finale ? 'THE NETWORK IS MANAGED' : (win ? 'MISSION COMPLETE' : why);
@@ -4929,7 +5025,12 @@ function selfTest(runSim){
   const live = { sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
                  keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn,
                  scan:SCANOP, map:G.mapOn, rm:RM_OPT, diff:G.diff, level:selLevel,
-                 taint:G.tainted, cheats:Object.assign({}, G.cheats), tscale:G.tscale };
+                 taint:G.tainted, cheats:Object.assign({}, G.cheats), tscale:G.tscale,
+                 /* the board too: a scripted win the suite filed to its scratch
+                    blob was reloaded into the live BEST by a later probe and
+                    the next honest save wrote it to disk — a fabricated best */
+                 best:JSON.stringify(BEST), cd:campaignDone, ghosts:SIMGHOSTS,
+                 hadBack:!!(history.state && history.state.a360) };
   SAVE_KEY = SAVE_KEY_TEST; SAVE_KEY_V1 = SAVE_KEY_V1_TEST;
   try { return selfTestBody(runSim); }
   finally {
@@ -4941,8 +5042,16 @@ function selfTest(runSim){
     SCANOP = live.scan; G.mapOn = live.map; RM_OPT = live.rm; G.diff = live.diff;
     selLevel = live.level; G.tainted = live.taint;
     Object.assign(G.cheats, live.cheats); G.tscale = live.tscale;
-    if (!isTouch) LOOK = live.look;
-    try { applyLayout(); resolveLook(); syncOptionsUI(); syncRMLabel(); } catch(_){}
+    for (const k in BEST) delete BEST[k];
+    try { Object.assign(BEST, JSON.parse(live.best)); } catch(_){}
+    campaignDone = live.cd;
+    /* a suite that threw used to leave the ghost guard OFF — the next compat
+       mousedown from a touch fired the gun — and a phone in DRAG look */
+    SIMGHOSTS = live.ghosts; LOOK = live.look;
+    try { applyLayout(); resolveLook(); syncOptionsUI(); syncRMLabel(); clearInput(); } catch(_){}
+    /* the sim's missions armed BACK; pop the entry the suite added, or the
+       player's next BACK is a dead press */
+    if (!live.hadBack && history.state && history.state.a360){ try { history.back(); } catch(_){} }
   }
 }
 function selfTestBody(runSim){
@@ -5076,6 +5185,135 @@ function selfTestBody(runSim){
        (PROP.gunH.w!==PROP.ammoH.w || sum(PROP.gunH)!==sum(PROP.ammoH)) &&
        (PROP.gunP.w!==PROP.ammoP.w || sum(PROP.gunP)!==sum(PROP.ammoP)));
   }
+
+  /* ---- a hit lands the way the tables say: armour, rungs, and the god cheat ---- */
+  { const hp0 = P.hp, ar0 = P.armor, d0 = G.diff, g0 = G.cheats.god, dm0 = G.dmgTaken, al0 = P.alive;
+    P.alive = true; G.cheats.god = false;
+    P.hp = 100; P.armor = 0;  G.diff = 1; hurtPlayer(10); const bare = 100 - P.hp;
+    P.hp = 100; P.armor = 60; hurtPlayer(10); const armoured = 100 - P.hp, absorbed = 60 - P.armor;
+    P.hp = 100; P.armor = 0;  G.diff = 0; hurtPlayer(10); const easy = 100 - P.hp;
+    P.hp = 100;               G.diff = 2; hurtPlayer(10); const hard = 100 - P.hp;
+    G.cheats.god = true; P.hp = 100; hurtPlayer(50); const god = 100 - P.hp;
+    ok('damage: armour absorbs most of a hit, and the rest still lands',
+       bare > 0 && armoured > 0 && armoured < bare && absorbed > 0 && Math.abs(armoured + absorbed - bare) < 1e-6,
+       'bare ' + bare.toFixed(2) + ' armoured ' + armoured.toFixed(2) + ' absorbed ' + absorbed.toFixed(2));
+    ok('damage: the rungs scale a hit by the table',
+       Math.abs(easy / bare - DIFFS[0].dmg / DIFFS[1].dmg) < 1e-6 && Math.abs(hard / bare - DIFFS[2].dmg / DIFFS[1].dmg) < 1e-6,
+       'AGENT ' + easy.toFixed(2) + ' SECRET ' + bare.toFixed(2) + ' 00 ' + hard.toFixed(2));
+    ok('damage: the god cheat takes none of it', god === 0, 'took ' + god);
+    P.hp = hp0; P.armor = ar0; G.diff = d0; G.cheats.god = g0; G.dmgTaken = dm0; P.alive = al0; P.dmgDir.length = 0; }
+
+  /* ---- a locked door answers the keycard and nothing else ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, g0 = G.cheats.god;
+    const li = LEVELS.findIndex(L => L.map.some(r => r.indexOf('L') >= 0));
+    loadLevel(li, 1); G.state = 'play'; G.cheats.god = true;
+    const al0 = P.alive; P.alive = true; G.deadT = 0; clearInput();   // a corpse's step() never reaches the doors
+    const d = G.doors.find(d => d.locked);
+    let spot = null;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) if (d && !isSolid(d.x + dx, d.y + dy)){ spot = [d.x + dx, d.y + dy]; break; }
+    let shut = null, opened = null;
+    if (d && spot){
+      P.x = spot[0]; P.y = spot[1]; P.keys = 0; d.open = 0;
+      for (let i = 0; i < 40; i++) step(1/60); shut = d.open;
+      P.keys = 1;
+      for (let i = 0; i < 40; i++) step(1/60); opened = d.open;
+    }
+    ok('doors: a locked door stays shut without the keycard and opens with it',
+       !!d && !!spot && shut === 0 && opened > 0, 'without ' + shut + ' with ' + opened + (d ? '' : ' (no locked door)'));
+    P.keys = 0; P.alive = al0; G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
+  /* ---- what the copy promises is what the tables do ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff;
+    const roster = (li, di) => { loadLevel(li, di); return G.ents.filter(e => e.kind === 'enemy').length; };
+    const off = [];
+    for (let li = 0; li < LEVELS.length; li++){
+      const a = roster(li, 0), sec = roster(li, 1), zz = roster(li, 2);
+      if (sec - a !== 3 || zz !== sec) off.push(LEVELS[li].code + ' ' + a + '/' + sec + '/' + zz);
+    }
+    ok('copy: "three hostiles stay home" and "full roster" hold on every mission',
+       off.length === 0 && /Three hostiles/.test(DIFFS[0].note) && /Full roster/.test(DIFFS[1].note) && /Full roster/.test(DIFFS[2].note),
+       off.join(' ') || 'AGENT is three short, SECRET and 00 muster the same roster, on all five');
+    /* the keycard toast names the card the objective names */
+    const named = [];
+    for (let li = 0; li < LEVELS.length; li++){
+      loadLevel(li, 1); const ko = G.objs.find(o => o.kind === 'key'); if (!ko) continue;
+      const want = (/(\S+) keycard/i.exec(ko.text) || [,'door'])[1].toUpperCase();
+      clearToasts(); P.keys = 0; pickup({ kind:'item', sub:'key', x:P.x, y:P.y, dead2:false });
+      if (P.keys !== 1) named.push(LEVELS[li].code + ' keys=' + P.keys + ' after the pickup');
+      const got = [...document.getElementById('toasts').children].map(t => t.textContent).find(t => /KEYCARD/.test(t)) || '';
+      if (got !== want + ' KEYCARD ACQUIRED') named.push(LEVELS[li].code + ' "' + got + '" for "' + ko.text + '"');
+    }
+    clearToasts();
+    ok('copy: the keycard toast names the card the objective names', named.length === 0, named.join(' | ') || 'elevator, loading-bay, stairwell, door');
+    /* a terminal whose objective is a hack is prompted as one */
+    loadLevel(LEVELS.findIndex(L => L.objectives.some(o => o.kind === 'term' && /^hack/i.test(o.text))), 1);
+    const term = G.ents.find(e => e.kind === 'prop' && e.sub === 'term') || G.ents.find(e => e.sub === 'term');
+    let prompt = '';
+    if (term){ P.x = term.x + .8; P.y = term.y; P.ang = Math.atan2(term.y - P.y, term.x - P.x); G.state = 'play';
+      P.useTarget = term; const c = view.getContext('2d'); const calls = [];
+      const t0 = txtP; txtP = (t, ...r) => { calls.push(String(t)); return t0(t, ...r); };
+      try { drawHUD(HALFH); } catch(_){} txtP = t0;
+      prompt = calls.find(c => /HOLD (F|USE)/.test(c)) || ''; }
+    ok('copy: a terminal that the objective says to hack is prompted as a hack',
+       /HACK TERMINAL/.test(prompt), 'prompt "' + prompt + '"' + (term ? '' : ' (no terminal found)'));
+    P.useTarget = null; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
+  /* ---- the chevron never points through a locked door ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, px0 = P.x, py0 = P.y, k0 = P.keys;
+    const li = LEVELS.findIndex(L => L.objectives.some(o => o.kind === 'audit') && L.map.some(r => r.indexOf('L') >= 0));
+    loadLevel(li, 2); G.state = 'play';
+    for (const o of G.objs) if (o.kind !== 'audit' && o.kind !== 'key' && o.kind !== 'exit'){ o.done = true; o.have = o.need || 1; }
+    const auditEnt = G.ents.find(e => OBJ_ENT.audit(e)), keyEnt = G.ents.find(e => OBJ_ENT.key(e));
+    const nearR = (r, e) => { const x = e.x|0, y = e.y|0;
+      return [[x,y],[x+1,y],[x-1,y],[x,y+1],[x,y-1]].some(([a,b]) => a>=0 && b>=0 && a<G.W && b<G.H && r[idx(a,b)]); };
+    const count = keys => { P.keys = keys; let audit = 0, cells = 0;
+      for (let y = 1; y < G.H-1; y++) for (let x = 1; x < G.W-1; x++){
+        if (G.solid[idx(x,y)]) continue;
+        P.x = x + .5; P.y = y + .5; G.frame++;
+        /* only cells on the key's side of the bay: the key walkable, the
+           audit not — inside the bay the audit is rightly the target */
+        const r = reachable();
+        if (!auditEnt || !keyEnt || nearR(r, auditEnt) || !nearR(r, keyEnt)) continue;
+        const t = objTarget(); if (!t) continue;
+        cells++; if (t.tag === G.objs.find(o => o.kind === 'audit').tag) audit++;
+      }
+      return { audit, cells }; };
+    const without = count(0);
+    ok('chevron: with no keycard it never aims at a task sealed behind a locked door',
+       li >= 0 && without.cells > 100 && without.audit === 0,
+       'no key: '+without.audit+' of '+without.cells+' key-side cells aim at the sealed audit');
+    P.keys = k0; P.x = px0; P.y = py0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
+  /* ---- the HUD keeps its plates off the crosshair ---- */
+  { const st0 = G.state, m0 = G.meltdown, b0 = G.bossAlive, p0 = P.pitch, lk0 = M.locked, lm0 = LOOKMODE, f0 = M.lockFails;
+    loadLevel(0, 1); G.state = 'play';
+    const rects = []; const t0 = txt, tp0 = txtP;
+    const rec = (fn) => (str, x, y, col, size, align) => { const w = String(str).length * (size||7) * .9;
+      const x0 = align === 'center' ? x - w/2 : align === 'right' ? x - w : x;
+      rects.push({ s:String(str), x0, y0:y - (size||7), x1:x0 + w, y1:y + 2 }); return fn(str, x, y, col, size, align); };
+    txt = rec(t0); txtP = rec(tp0);
+    const hits = (cx, cy) => rects.filter(r => cx >= r.x0 - 4 && cx <= r.x1 + 4 && cy >= r.y0 - 4 && cy <= r.y1 + 4).map(r => r.s);
+    /* waypoint dead ahead */
+    const tgt = objTarget(); if (tgt){ P.ang = Math.atan2(tgt.e.y - P.y, tgt.e.x - P.x); }
+    P.pitch = 0; rects.length = 0; drawHUD(HALFH); const ahead = hits(RW>>1, HALFH).filter(x => /OBJ /.test(x));
+    /* meltdown plate and capture band at full downward pitch */
+    G.meltdown = 20; G.bossAlive = false; P.pitch = PITCH_MAX; M.locked = false; LOOKMODE = 'capture'; M.lockFails = 0;
+    rects.length = 0; drawHUD(HALFH + P.pitch); const low = hits(RW>>1, HALFH + P.pitch).filter(x => /MELTDOWN|CAPTURE/.test(x));
+    txt = t0; txtP = tp0;
+    ok('HUD: the waypoint label sits clear of the crosshair when the target is dead ahead', ahead.length === 0, ahead.join(' | ') || 'clear');
+    ok('HUD: the meltdown plate and the capture band stay off a crosshair at full pitch', low.length === 0, low.join(' | ') || 'clear');
+    G.meltdown = m0; G.bossAlive = b0; P.pitch = p0; M.locked = lk0; LOOKMODE = lm0; M.lockFails = f0; loadLevel(0, 1); G.state = st0; }
+
+  /* ---- the report pages instead of hiding failures in the console ---- */
+  { const R0 = G.tests, pg0 = G.testPage;
+    G.tests = Array.from({ length: 50 }, (_, i) => ({ name: 'probe ' + i, pass: false, detail: '' }));
+    const seen = []; const t0 = txt; txt = (str, ...r) => { seen.push(String(str)); return t0(str, ...r); };
+    G.testPage = 0; drawTestReport(); const p0 = seen.filter(x => /^FAIL probe/.test(x)).length;
+    seen.length = 0; G.testPage = 2; drawTestReport(); const p2 = seen.filter(x => /^FAIL probe/.test(x)), foot = seen.find(x => /^PAGE/.test(x));
+    txt = t0; G.tests = R0; G.testPage = pg0;
+    ok('report: fifty failures page rather than vanish into the console',
+       p0 === 21 && p2.length === 8 && /^FAIL probe 42/.test(p2[0]) && /PAGE 3\/3/.test(foot || ''),
+       'page 1 rows '+p0+' page 3 rows '+p2.length+' footer "'+foot+'"'); }
 
   /* ---- the finale's music meets the boss when the player does ---- */
   { const st0 = G.state, sel0 = selLevel;
@@ -5455,7 +5693,10 @@ function selfTestBody(runSim){
     { const w = document.getElementById('toasts');
       const n0 = w ? w.children.length : -1;
       for (let i=0;i<12;i++) toast('STACK TEST '+i, 'cyan', 60);
-      ok('toasts: the stack is capped at six', !!w && w.children.length === 6,
+      /* six on a desktop; three on a phone, where a six-stack marched over
+         the chevron, the crosshair and the meltdown plate */
+      const cap = (isTouch || TOUCH_SEEN) ? 3 : 6;
+      ok('toasts: the stack is capped at ' + cap, !!w && w.children.length === cap,
          'was '+n0+', now '+(w?w.children.length:-1));
       clearToasts(); }
 
@@ -6133,9 +6374,57 @@ function selfTestBody(runSim){
           const c = chip.getBoundingClientRect(), p = pb.getBoundingClientRect(), t = tw.getBoundingClientRect();
           chip.hidden = h0;
           const hit = !(c.right <= p.left || c.left >= p.right || c.bottom <= p.top || c.top >= p.bottom);
+          /* the phone's manual sends nobody to N or Tab: those are keys */
+          { const shown = [...document.querySelectorAll('#s-controls .hint')].filter(h => getComputedStyle(h).display !== 'none').map(h => h.textContent).join(' ');
+            ok('touch: the manual never names N or Tab on a phone', !/\(N\)|\(Tab\)/.test(shown) && /❚❚/.test(shown),
+               shown.replace(/\s+/g,' ').slice(0, 90)); }
           ok('touch: the rotate chip is clear of PAUSE and above the toast column',
              c.width > 0 && !hit && c.bottom <= t.top,
              'chip '+[c.left,c.top,c.right,c.bottom].map(v=>v|0)+' pause '+[p.left,p.top,p.right,p.bottom].map(v=>v|0)+' toasts top '+(t.top|0)); }
+        /* HYBRID: on a mouse profile the first finger on the view opens the
+           cluster and the touch rows beside the mouse's — a touchscreen laptop
+           with the keyboard folded away moved 0.00 units and could not pause */
+        if (!isTouch){
+          TOUCH_SEEN = false; document.body.classList.remove('hybrid'); G.state = 'play'; show(null);
+          const before = document.getElementById('touch').classList.contains('on');
+          const vr0 = view.getBoundingClientRect();
+          tev('touchstart', view, [{ identifier:70, clientX:vr0.left + vr0.width*.5, clientY:vr0.top + vr0.height*.5 }]);
+          tev('touchend', null, [{ identifier:70, clientX:vr0.left + vr0.width*.5, clientY:vr0.top + vr0.height*.5 }]);
+          const after = document.getElementById('touch').classList.contains('on');
+          const rows = getComputedStyle(document.querySelector('#s-controls .touch-only')).display !== 'none';
+          const mouseRows = getComputedStyle(document.querySelector('#s-controls .no-touch')).display !== 'none';
+          ok('hybrid: the first finger on the view opens the cluster and the touch rows, and keeps the mouse rows',
+             !before && after && TOUCH_SEEN && rows && mouseRows,
+             'cluster '+before+'->'+after+' touch rows '+rows+' mouse rows '+mouseRows);
+          /* the finger's lane is direct look in the mouse's modes: a swipe in
+             FREE look used to pin the reticle at the edge and keep spinning */
+          { const lm0 = LOOKMODE, lk0 = M.locked; LOOKMODE = 'free'; M.locked = false; clearInput(); P.rx = 0;
+            const a0 = P.ang, vr = view.getBoundingClientRect(), fx = vr.left + vr.width*.5, fy = vr.top + vr.height*.5;
+            tev('touchstart', view, [{ identifier:71, clientX:fx, clientY:fy }]);
+            for (let i = 1; i <= 10; i++) tev('touchmove', null, [{ identifier:71, clientX:fx + i*10, clientY:fy }]);
+            step(1/60);
+            const turned = angDiff(a0, P.ang), rx = P.rx;
+            tev('touchend', null, [{ identifier:71, clientX:fx + 100, clientY:fy }]);
+            for (let i = 0; i < 30; i++) step(1/60);
+            const after = angDiff(a0, P.ang);
+            ok('hybrid: a finger swipe in free look turns the view directly and stops when the finger does',
+               turned > .1 && rx === 0 && Math.abs(after - turned) < .02,
+               'turned '+turned.toFixed(3)+' rx '+rx+' then '+after.toFixed(3));
+            LOOKMODE = lm0; M.locked = lk0; clearInput(); }
+          /* a tap on the view is the "click the view" the capture band asks
+             for, not a shot */
+          { const l0 = M.locked, f0 = M.lockFails, p0 = M.lockPending, lm0 = LOOKMODE, a0 = M.lockAt;
+            const LK0 = LOOK; LOOK = 'capture'; LOOKMODE = 'capture'; M.locked = false; M.lockFails = 0; M.lockPending = false; M.lockAt = 0;
+            P.w = 0; P.mag[0] = 7; P.fireCd = 0; P.alive = true;
+            const vr = view.getBoundingClientRect(), fx = vr.left + vr.width*.5, fy = vr.top + vr.height*.5;
+            tev('touchstart', view, [{ identifier:72, clientX:fx, clientY:fy }]);
+            tev('touchend', null, [{ identifier:72, clientX:fx, clientY:fy }]);
+            step(1/60);
+            ok('hybrid: a finger tap takes the capture the band asks for, and fires nothing',
+               (M.lockPending || M.locked) && P.mag[0] === 7, 'pending '+M.lockPending+' locked '+M.locked+' mag '+P.mag[0]);
+            clearTimeout(M.lockTimer); try { document.exitPointerLock(); } catch(_){}
+            M.locked = l0; M.lockFails = f0; M.lockPending = p0; M.lockAt = a0; LOOKMODE = lm0; LOOK = LK0; }
+        }
         /* a quick still touch on the world is a shot; a drag is a look */
         clearInput(); P.w = 0; P.mag[0] = 7; P.fireCd = 0; P.alive = true;
         const vr = view.getBoundingClientRect();
@@ -6164,20 +6453,20 @@ function selfTestBody(runSim){
         ok('touch: ...and the second one still tap-fires', P.mag[0] === 6, 'mag='+P.mag[0]);
         tev('touchend', null, [{ identifier:76, clientX:vx, clientY:vy }]);
         /* two fingers travelling apart is a pinch: the view must not turn */
-        M.dx = 0; M.dy = 0;
+        M.tdx = 0; M.tdy = 0;
         tev('touchstart', view, [{ identifier:78, clientX:vx-20, clientY:vy }, { identifier:79, clientX:vx+20, clientY:vy }]);
         for (let i = 1; i <= 6; i++)
           tev('touchmove', null, [{ identifier:78, clientX:vx-20-i*10, clientY:vy }, { identifier:79, clientX:vx+20+i*10, clientY:vy }]);
-        const pinchDx = M.dx;
+        const pinchDx = M.tdx;
         tev('touchend', null, [{ identifier:78, clientX:vx-80, clientY:vy }, { identifier:79, clientX:vx+80, clientY:vy }]);
-        M.dx = 0;
+        M.tdx = 0;
         tev('touchstart', view, [{ identifier:80, clientX:vx, clientY:vy }]);
         for (let i = 1; i <= 6; i++) tev('touchmove', null, [{ identifier:80, clientX:vx+i*10, clientY:vy }]);
-        const dragDx = M.dx;
+        const dragDx = M.tdx;
         tev('touchend', null, [{ identifier:80, clientX:vx+60, clientY:vy }]);
         ok('touch: a two-finger pinch does not turn the view, a one-finger drag does',
            pinchDx === 0 && dragDx > 50, 'pinch dx='+pinchDx.toFixed(1)+' drag dx='+dragDx.toFixed(1));
-        M.dx = 0; M.dy = 0;
+        M.tdx = 0; M.tdy = 0;
         clearInput(); LOOKMODE = savedLM2; AIM_ASSIST = savedAA; }
 
       P.w = 0; P.mag[0] = 3; P.ammo.p9 = Math.max(P.ammo.p9, 20); P.reload = 0;
@@ -7386,12 +7675,23 @@ function selfTestBody(runSim){
             for (const o of G.objs){ o.have = o.need || 1; o.done = true; }
             endMission(true, '');
             G.tainted = tt; G.ckptRun = cr;
+            /* the debrief's OWN line, not fmt(t) recomputed by the test */
+            const dd = (/Time to resolution\s*([0-9]+:[0-9]{2})/.exec(document.getElementById('r-stats').textContent) || [])[1] || 'none';
             const shown = fmt(t), stored = BEST[bk] ? fmt(BEST[bk].time) : 'none';
-            if (shown !== stored) off.push(t + ': shown ' + shown + ' stored ' + stored);
+            if (shown !== stored || dd !== shown) off.push(t + ': debrief ' + dd + ' fmt ' + shown + ' stored ' + stored);
           }
-          delete BEST[bk]; if (had) BEST[bk] = had;
           ok('best: the board shows the clock the debrief showed',
              off.length === 0, off.join(' | ') || 'five times across a second boundary');
+          /* a slower second win never displaces the faster one; a faster one does */
+          { BEST[bk] = { time:30, acc:50, rank:'TIER 1 TECH', win:true };
+            const win = t => { loadLevel(0,1); G.state = 'play'; G.time = t; G.shots = 10; G.hits = 5; G.dmgTaken = 0;
+              const tt = G.tainted, cr = G.ckptRun; G.tainted = false; G.ckptRun = false;
+              for (const o of G.objs){ o.have = o.need || 1; o.done = true; }
+              endMission(true, ''); G.tainted = tt; G.ckptRun = cr; return BEST[bk].time; };
+            const slower = win(60), faster = win(20);
+            ok('best: a slower win keeps the faster time, a faster one takes it', slower === 30 && faster === 20,
+               'after 60s ' + slower + ', after 20s ' + faster); }
+          delete BEST[bk]; if (had) BEST[bk] = had;
           G.time = t0; G.shots = s0; G.hits = h0; G.dmgTaken = dm0;
           loadLevel(0,1); G.state = st0 === 'result' ? 'play' : st0; }
 
@@ -7498,11 +7798,18 @@ function selfTestBody(runSim){
             G.ckptRun = cr0;
             ok('review: a checkpoint duel is not scored against the mission clock',
                fast === slow && fast === full, 'duel at 1s '+fast+' / duel at 4x par '+slow+' / full run inside the window '+full); }
-          /* the SLA verdict is inclusive at par, where a photo finish lands */
-          G.time = par; const met = G.time <= G.L.par;
-          G.time = par + .01; const missed = G.time <= G.L.par;
-          ok('SLA: finishing exactly on par is MET, a hundredth over is not',
-             met === true && missed === false, 'at par ' + met + ', over ' + missed);
+          /* the SLA verdict is inclusive at par, where a photo finish lands —
+             asked of the debrief itself, not of a comparison the test wrote */
+          { const verdict = t => { loadLevel(0,1); G.state = 'play'; G.time = t; G.shots = 10; G.hits = 5;
+              const tt = G.tainted; G.tainted = true;             // a scripted run files no best
+              for (const o of G.objs){ o.have = o.need || 1; o.done = true; }
+              endMission(true, ''); G.tainted = tt;
+              const r = document.getElementById('r-stats').textContent;
+              return /BREACHED/.test(r) ? 'BREACHED' : /MET/.test(r) ? 'MET' : 'neither'; };
+            const atPar = verdict(G.L.par), over = verdict(G.L.par + .01);
+            ok('SLA: finishing exactly on par is MET, a hundredth over is not',
+               atPar === 'MET' && over === 'BREACHED', 'at par ' + atPar + ', over ' + over);
+            loadLevel(0,1); G.state = 'play'; }
           G.time = t0; G.shots = s0; G.hits = h0; G.dmgTaken = dt0;
           selLevel = sel0; loadLevel(0, d0); G.state = 'play'; }
 
@@ -7664,6 +7971,7 @@ function selfTestBody(runSim){
         /* ...and the store never hands it one of those in the first place */
         if (!lsWritable()) ok('best: only a time a clock can say is kept', true, 'store denied: the write half is skipped');
         else { const raw0 = (() => { try { return localStorage.getItem(SAVE_KEY); } catch(_){ return null; } })();
+          const board0 = JSON.stringify(BEST);
           const kept = [];
           for (const t of ['null', '"soon"', '-1', '1e308', String(FMT_MAX + 1),
                            'null', '99.5']){
@@ -7676,10 +7984,12 @@ function selfTestBody(runSim){
           ok('best: only a time a clock can say is kept',
              kept.slice(0,6).every(x => /rejected$/.test(x)) && /99\.5$/.test(kept[6]),
              kept.join(' '));
+          /* the board comes back from the snapshot: loadSettings() here reloaded
+             the scripted wins the suite had saved to its scratch blob */
           for (const k in BEST) delete BEST[k];
           try { raw0 === null ? localStorage.removeItem(SAVE_KEY)
                               : localStorage.setItem(SAVE_KEY, raw0); } catch(_){}
-          loadSettings(); }
+          Object.assign(BEST, JSON.parse(board0)); }
 
         /* ...and the same question for the audio scratch state. A.stepI is the
            footstep phase index derived from P.bob; left behind when P.bob was
@@ -7786,7 +8096,7 @@ function selfTestBody(runSim){
           const over = cls.classList.contains('on');
           G.showTests = false; show(null);
           ok('the touch cluster never overlays the self-test report',
-             over === false && cls.classList.contains('on') === isTouch, 'over='+over);
+             over === false && cls.classList.contains('on') === (isTouch || TOUCH_SEEN), 'over='+over);
           G.showTests = sh0; show(sc0); }
 
         /* the watch: no toasts over it, and a keyboard route into its buttons */
@@ -7945,13 +8255,17 @@ function drawTestReport(){
   txt('SELF TEST  '+(R.length-fails)+'/'+R.length+' PASSED', 8, 12,
       fails ? '#ff3b30' : '#4ade80', 7);
   const show = fails ? R.filter(r => !r.pass) : R;
-  const max = Math.min(show.length, 21);
+  /* 21 rows fit; the rest used to be "+399 more in console" — with forty
+     failures, nineteen were invisible on the canvas. Arrow keys page. */
+  const PER = 21, pages = Math.max(1, Math.ceil(show.length / PER));
+  G.testPage = clamp(G.testPage|0, 0, pages-1);
+  const from = G.testPage*PER, max = Math.min(show.length - from, PER);
   for (let i=0;i<max;i++){
-    const r = show[i];
+    const r = show[from+i];
     txt((r.pass?'OK  ':'FAIL') + ' ' + r.name + (r.detail ? '  '+r.detail : ''),
         8, 24+i*9, r.pass ? '#8fa8c0' : '#ff8a7d', 5);
   }
-  if (show.length > max) txt('+'+(show.length-max)+' more in console', 8, 24+max*9, '#7d93ab', 5);
+  if (pages > 1) txt('PAGE '+(G.testPage+1)+'/'+pages+' · ↑↓ PGUP PGDN', 8, RH-8, '#7d93ab', 6);
   txt('F4 CLOSES', RW-8, RH-8, '#7d93ab', 6, 'right');
 }
 
@@ -8123,7 +8437,7 @@ function syncTitleHint(){
      Options row still says the player asked for */
   const mode = (LOOK === 'capture' && lockGivenUp()) ? 'free' : LOOK;
   el.textContent = (isTouch ? 'Left pad moves, right pad looks. Tap the view or FIRE to shoot.'
-                            : TITLE_HINT[mode]) + ' Headphones recommended.';
+                            : TITLE_HINT[mode]) + (A.sfxVol > 0 || (A.musOn && A.musVol > 0) ? ' Headphones recommended.' : '');
 }
 function syncLookLabel(){
   const b = document.getElementById('o-look');
@@ -8242,7 +8556,7 @@ function act(a){
     case 'back':
       if (G.state==='brief'){ buildSelect(); G.state='select'; show('s-select'); }
       else if (G.state==='options' && optReturn==='pause'){ optReturn=null; G.state='pause'; show('s-pause'); focusWatch(); }
-      else { optReturn=null; G.state='title'; show('s-title'); }
+      else { optReturn=null; G.state='title'; syncTitleHint(); show('s-title'); }
       break;
   }
 }
@@ -8344,11 +8658,16 @@ function onKey(e){
     catch (err){ G.tests = [{ name:'the suite itself threw', pass:false, detail:String(err && err.message || err) }]; }
     if (rkeep) for (const k of rkeep){ k.el.replaceChildren(...k.kids); k.el.style.color = k.color; }
     G.state = back.state; clearToasts();     // the sim leaves 'play' and a mission toast behind
-    G.testReturn = back; G.showTests = true;
+    G.testReturn = back; G.showTests = true; G.testPage = 0;
     show(null);                              // the report is drawn on the canvas
     return;
   }
-  if (G.showTests) return;                   // the report owns every other key until F4
+  if (G.showTests){                          // the report owns every other key until F4
+    if (e.code==='ArrowDown' || e.code==='PageDown' || e.code==='Space') G.testPage = (G.testPage|0) + 1;
+    if (e.code==='ArrowUp' || e.code==='PageUp') G.testPage = Math.max(0, (G.testPage|0) - 1);
+    if (/^(Arrow|Page)/.test(e.code) || e.code==='Space') e.preventDefault();
+    return;
+  }
   if (e.code==='F2'){ e.preventDefault(); M.diag2 = !M.diag2; return; }
   if (e.code==='F3'){ e.preventDefault(); M.diag = !M.diag; return; }
   if (e.code==='Backspace'){ e.preventDefault(); panic(); return; }

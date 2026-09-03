@@ -126,17 +126,23 @@ async function runSelfTest(page, label) {
     SCANOP = distinct.scan; G.mapOn = distinct.map; RM_OPT = distinct.rm;
     G.diff = distinct.diff; if (!isTouch) LOOK = distinct.look;
     saveSettings();
-    const before = localStorage.getItem('a360.v2');
+    const before = localStorage.getItem(SAVE_KEY_REAL);
+    const board0 = JSON.stringify(BEST), cd0 = campaignDone;
     selfTest(true);
-    const after = localStorage.getItem('a360.v2');
+    const after = localStorage.getItem(SAVE_KEY_REAL);
+    /* ...and the BOARD in memory: a scripted win the suite filed to its
+       scratch blob used to come back into BEST and reach disk on the next
+       honest save */
+    const boardMoved = JSON.stringify(BEST) !== board0 || campaignDone !== cd0;
     const live = { sens:M.sens, tsens:M.tsens, inv:INVERT_Y, aim:AIM_ASSIST,
                    sfx:A.sfxVol, mus:A.musVol, scan:SCANOP, map:G.mapOn,
                    rm:RM_OPT, diff:G.diff, look:LOOK };
     const moved = Object.keys(distinct).filter(k =>
       (k === 'look' && isTouch) ? false : live[k] !== distinct[k]);
+    if (boardMoved) moved.push('BEST/campaignDone');
     G.state = 'title'; if (typeof show === 'function') show('s-title');
     return { blobHeld: before === after, moved,
-             scratchGone: localStorage.getItem('a360.selftest.v2') === null };
+             scratchGone: localStorage.getItem(SAVE_KEY_TEST) === null };
   });
   console.log('F4 SAFETY blob held ' + (f4Safe.blobHeld ? 'yes' : 'NO') +
               ' · settings moved: ' + (f4Safe.moved.length ? f4Safe.moved.join(',') : 'none') +
@@ -192,7 +198,14 @@ async function runSelfTest(page, label) {
     return R.map(r => ({ name: r.name, pass: r.pass, detail: r.detail }));
   });
   const fails = tests.filter(t => !t.pass);
-  console.log('SELFTEST[' + label + '] ' + (tests.length - fails.length) + '/' + tests.length + ' passed');
+  /* a guard branch that passes with "(no X to test on)" is a test that did
+     not run; the phone context has every geometry, so none may skip there,
+     and on desktop only the look pad (a phone-only control) may */
+  const skipped = tests.filter(t => t.pass && /\(no .* to test on\)/.test(t.name + ' ' + t.detail)).map(t => t.name);
+  const badSkips = skipped.filter(n => label !== 'desktop' || !/look pad/.test(n));
+  console.log('SELFTEST[' + label + '] ' + (tests.length - fails.length) + '/' + tests.length + ' passed' +
+              (skipped.length ? ' · skipped: ' + skipped.join(' | ') + (badSkips.length ? ' — SKIPS NOT EXPECTED HERE' : '') : ''));
+  if (badSkips.length) fails.push({ name: 'skipped assertions', detail: badSkips.join(' | ') });
   fails.forEach(f => console.log('  FAIL ' + f.name + '  ' + f.detail));
   return fails.length + f4Bad;
 }
@@ -203,12 +216,18 @@ async function runSelfTest(page, label) {
    for exactly two — the loop's own cap is .05 so nothing here can exceed what a
    real frame can. */
 async function runSoak(page, frames, label, dts) {
-  const soak = await page.evaluate(({ FRAMES, DTS }) => {
+  /* seeded per combo, so a faulting frame can be replayed: raw rnd()
+     made every soak failure a one-off */
+  const SEED = +(process.env.SOAK_SEED || (Date.now() % 100000));
+  const soak = await page.evaluate(({ FRAMES, DTS, SEED }) => {
     const out = [];
     const savedGod = G.cheats.god;
     for (let li = 0; li < LEVELS.length; li++) for (let di = 0; di < DIFFS.length; di++) {
       let exc = null, frames = 0;
       const f0 = G.faults || 0;
+      let a = (SEED + li * 31 + di * 7) | 0;
+      const rnd = () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
       try {
         selLevel = li; G.diff = di;
         startMission(false);
@@ -216,17 +235,17 @@ async function runSoak(page, frames, label, dts) {
         for (let f = 0; f < FRAMES; f++) {
           if (f % 7 === 0) {
             for (const k of ['fwd','back','left','right','run','crouch','use','fire','aim','reload'])
-              held[k] = Math.random() < .3;
+              held[k] = rnd() < .3;
             /* on a touch context the stick axes are the movement input */
             if (document.body.classList.contains('touch')) {
-              held.tx = Math.random() * 2 - 1; held.ty = Math.random() * 2 - 1;
+              held.tx = rnd() * 2 - 1; held.ty = rnd() * 2 - 1;
             }
           }
-          M.dx += (Math.random() - .5) * 90;
-          M.dy += (Math.random() - .5) * 30;
+          M.dx += (rnd() - .5) * 90;
+          M.dy += (rnd() - .5) * 30;
           M.lastMove = performance.now();
-          if (Math.random() < .02) M.wheel += Math.random() < .5 ? 1 : -1;
-          if (Math.random() < .05) { M.fire = Math.random() < .5; M.fireEdge = performance.now(); M.pressNew = true; }
+          if (rnd() < .02) M.wheel += rnd() < .5 ? 1 : -1;
+          if (rnd() < .05) { M.fire = rnd() < .5; M.fireEdge = performance.now(); M.pressNew = true; }
           if (G.state !== 'play') break;
           const dt = DTS.length === 2 ? DTS[f < FRAMES / 2 ? 0 : 1] : DTS[0];
           step(dt);
@@ -240,14 +259,16 @@ async function runSoak(page, frames, label, dts) {
     clearInput(); G.state = 'title';
     if (typeof show === 'function') show('s-title');
     return out;
-  }, { FRAMES: frames, DTS: dts });
+  }, { FRAMES: frames, DTS: dts, SEED });
 
   let totalFrames = 0, totalFaults = 0, excs = 0;
   for (const s of soak) {
     totalFrames += s.frames; totalFaults += s.faults; if (s.exc) excs++;
-    if (s.exc || s.faults) console.log('  SOAK ' + s.code + ' diff ' + s.di + ': faults=' + s.faults + ' exc=' + (s.exc || 'none'));
+    /* a run that left play with god on ended in something other than a win */
+    if (s.endState !== 'play' && s.endState !== 'result') { s.faults++; totalFaults++; s.exc = s.exc || ('ended in state ' + s.endState); }
+    if (s.exc || s.faults) console.log('  SOAK ' + s.code + ' diff ' + s.di + ': faults=' + s.faults + ' exc=' + (s.exc || 'none') + ' (SOAK_SEED=' + SEED + ' replays it)');
   }
-  console.log('SOAK[' + label + '] ' + totalFrames + ' frames across ' + soak.length + ' combos, faults=' + totalFaults + ', exceptions=' + excs);
+  console.log('SOAK[' + label + '] ' + totalFrames + ' frames across ' + soak.length + ' combos, faults=' + totalFaults + ', exceptions=' + excs + (totalFaults + excs ? '' : ' · seed ' + SEED));
   return totalFaults + excs;
 }
 
