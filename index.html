@@ -3321,8 +3321,12 @@ function step(dt, scored){
     /* The finger's lane: direct drag, both axes, no gate, no decay, in EVERY
        look mode — on a touch profile it is the whole look, on a hybrid it
        rides beside the mouse's. M.tsens is the touch sensitivity dial. */
+    /* ...and banks its surplus the way the mouse lane does: on a throttled
+       phone the touch events bunch, and a 400px flick that arrived in one
+       130px frame lost 60-160px of its turn */
     const tdx = clamp(M.tdx, -cap, cap), tdy = clamp(M.tdy, -cap, cap);
-    M.tdx = 0; M.tdy = 0;
+    M.tdx = clamp(M.tdx - tdx, -MAX_FRAME_PX*4, MAX_FRAME_PX*4);
+    M.tdy = clamp(M.tdy - tdy, -MAX_FRAME_PX*4, MAX_FRAME_PX*4);
     yaw += tdx * LOOK_PX * DRAG_MUL * M.sens * M.tsens * zsens;
     P.pitch = clamp(P.pitch - tdy*ydir * .10 * M.sens * M.tsens * zsens, -PITCH_MAX, PITCH_MAX);
     /* ...and the right pad turns by RATE on top of it, so a parked thumb can
@@ -6387,6 +6391,31 @@ function selfTestBody(runSim){
           ok('touch: the rotate chip is clear of PAUSE and above the toast column',
              c.width > 0 && !hit && c.bottom <= t.top,
              'chip '+[c.left,c.top,c.right,c.bottom].map(v=>v|0)+' pause '+[p.left,p.top,p.right,p.bottom].map(v=>v|0)+' toasts top '+(t.top|0)); }
+        /* the skip tap's own click is swallowed whenever it lands, and only
+           once: at 24x CPU it arrived 372ms after the skip, past the old
+           350ms window, and pressed CONTROLS under the finger */
+        { const st0 = G.state, sc0 = G.screenId, bx = bootExitAt;
+          G.state = 'title'; show('s-title');
+          const row = document.querySelector('#titlemenu [data-act="controls"]');
+          bootExitAt = performance.now() - 500;
+          row.dispatchEvent(new MouseEvent('click', { bubbles:true }));
+          const swallowed = G.state === 'title';
+          row.dispatchEvent(new MouseEvent('click', { bubbles:true }));
+          const thenActs = G.state === 'controls';
+          ok('boot: the skip tap\'s late click is swallowed once, and the next click acts',
+             swallowed && thenActs, 'after the ghost '+(swallowed ? 'title' : G.state)+', after the real one '+G.state);
+          bootExitAt = bx; G.state = st0; show(sc0); }
+        /* a flick that arrives in one frame is not thrown away: the finger
+           lane banks what the frame cap refuses, like the mouse lane */
+        { const lm0 = LOOKMODE, LK0 = LOOK, lk0 = M.locked; if (!isTouch){ LOOK = 'free'; LOOKMODE = 'free'; M.locked = false; }
+          clearInput(); const a0 = P.ang; M.tdx = 480; M.tdy = 0;
+          step(1/60); const one = Math.abs(angDiff(a0, P.ang));
+          for (let i = 0; i < 8; i++) step(1/60);
+          const all = Math.abs(angDiff(a0, P.ang)), want = 480 * LOOK_PX * DRAG_MUL * M.sens * M.tsens;
+          ok('touch: a flick banked in one frame keeps its whole distance over the next frames',
+             one < want * .5 && Math.abs(all - want) < want * .02,
+             'first frame '+one.toFixed(3)+' of '+want.toFixed(3)+', after nine '+all.toFixed(3));
+          LOOKMODE = lm0; LOOK = LK0; M.locked = lk0; clearInput(); }
         /* HYBRID: on a mouse profile the first finger on the view opens the
            cluster and the touch rows beside the mouse's — a touchscreen laptop
            with the keyboard folded away moved 0.00 units and could not pause */
@@ -6412,10 +6441,12 @@ function selfTestBody(runSim){
             const turned = angDiff(a0, P.ang), rx = P.rx;
             tev('touchend', null, [{ identifier:71, clientX:fx + 100, clientY:fy }]);
             for (let i = 0; i < 30; i++) step(1/60);
-            const after = angDiff(a0, P.ang);
-            ok('hybrid: a finger swipe in free look turns the view directly and stops when the finger does',
-               turned > .1 && rx === 0 && Math.abs(after - turned) < .02,
-               'turned '+turned.toFixed(3)+' rx '+rx+' then '+after.toFixed(3));
+            const after = angDiff(a0, P.ang), want = 100 * 1.6 * LOOK_PX * DRAG_MUL * M.sens * M.tsens;
+            for (let i = 0; i < 30; i++) step(1/60);
+            const later = angDiff(a0, P.ang);
+            ok('hybrid: a finger swipe in free look turns the view by its travel and no further',
+               turned > .1 && rx === 0 && Math.abs(after - want) < want * .02 && Math.abs(later - after) < 1e-9,
+               'turned '+turned.toFixed(3)+' rx '+rx+' settled '+after.toFixed(3)+' of '+want.toFixed(3)+', later '+later.toFixed(3));
             LOOKMODE = lm0; M.locked = lk0; clearInput(); }
           /* a tap on the view is the "click the view" the capture band asks
              for, not a shot */
@@ -8570,7 +8601,10 @@ document.addEventListener('click', e=>{
   audioInit();
   /* The tap/click that skips the boot splash fires its click AFTER the title
      menu appears, squarely on whatever row landed under the finger. */
-  if (performance.now() - bootExitAt < 350) return;
+  /* the skip's own click, whenever it lands: at 24x CPU it arrived 372ms
+     after the skip, past a 350ms window, and pressed CONTROLS under the
+     finger. One click within a second of the skip is the skip's. */
+  if (bootExitAt && performance.now() - bootExitAt < 1000){ bootExitAt = 0; return; }
   const b = e.target.closest('[data-act]');
   if (b) act(b.dataset.act);
 });
@@ -8776,7 +8810,7 @@ function bootDone(){
   G.state = 'title'; show('s-title');
   if (SAVE_WARN){ toast(SAVE_WARN, 'cyan', 6000); SAVE_WARN = null; }
 }
-/* The 350ms click-swallow exists only for the SKIP tap's trailing click, so it
+/* The click-swallow exists only for the SKIP tap's trailing click, so it
    arms here — bootDone() stamping it meant a natural splash-end ate the first
    honest tap on the title menu. */
 addEventListener('pointerdown', ()=>{ if (bootSkippable()){ bootExitAt = performance.now(); bootDone(); } });
