@@ -278,7 +278,7 @@ reported and did not survive:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **439 assertions** (431 in a touch
+- **F4** runs the in-game self-test suite — **441 assertions** (433 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the
