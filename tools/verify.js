@@ -321,6 +321,41 @@ async function runTouchDrive(page) {
   bad += await runSoak(mpage, Math.min(SOAK_FRAMES, 600), 'mobile 60Hz', [1 / 60]);
   await mctx.close();
 
+  /* ---------------- portrait pass ---------------- */
+  /* The F4 suite runs landscape. Portrait is where the toast type read the
+     phone's tall axis (9.7px lines four deep across a 216px picture) and the
+     rotate chip sat under PAUSE and across the toast column for the whole
+     mission — so the picture is measured here, at 390x844. */
+  const pctx = await browser.newContext({
+    viewport: { width: 390, height: 844 }, deviceScaleFactor: 3,
+    isMobile: true, hasTouch: true
+  });
+  const ppage = await pctx.newPage();
+  await wirePage(ppage, errors, resourceErrs);
+  const portrait = await ppage.evaluate(async () => {
+    selLevel = 0; G.diff = 0; startMission(false);
+    await new Promise(r => setTimeout(r, 300));
+    const chip = document.getElementById('rothint'), pb = document.getElementById('tpause'), tw = document.getElementById('toasts');
+    const shown = !chip.hidden;
+    const c = chip.getBoundingClientRect(), p = pb.getBoundingClientRect(), t = tw.getBoundingClientRect();
+    const onPause = !(c.right <= p.left || c.left >= p.right || c.bottom <= p.top || c.top >= p.bottom);
+    toast('PORTRAIT PROBE', 'cyan', 4000);
+    const el = tw.lastChild, fs = parseFloat(getComputedStyle(el).fontSize), th = el.getBoundingClientRect().height;
+    const fh = view.getBoundingClientRect().height;
+    await new Promise(r => setTimeout(r, ROT_HINT_MS + 800));
+    const gone = chip.hidden;
+    clearToasts(); G.state = 'title'; show('s-title');
+    return { shown, onPause, aboveToasts: c.bottom <= t.top, fontPx: fs, toastH: th, frameH: fh, gone };
+  });
+  const pOK = portrait.shown && !portrait.onPause && portrait.aboveToasts && portrait.fontPx <= 6.05 &&
+              portrait.toastH <= portrait.frameH * .12 && portrait.gone;
+  console.log('PORTRAIT chip shown ' + (portrait.shown ? 'yes' : 'NO') + ' · clear of PAUSE ' + (portrait.onPause ? 'NO' : 'yes') +
+              ' · above toasts ' + (portrait.aboveToasts ? 'yes' : 'NO') + ' · toast ' + portrait.fontPx + 'px type, ' +
+              portrait.toastH.toFixed(0) + 'px of a ' + portrait.frameH.toFixed(0) + 'px frame · chip gone after ' + '6s ' +
+              (portrait.gone ? 'yes' : 'NO') + (pOK ? '' : ' — FAILED'));
+  if (!pOK) bad++;
+  await pctx.close();
+
   console.log('PAGE ERRORS ' + errors.length + (errors.length ? '\n  ' + errors.join('\n  ') : ''));
   if (resourceErrs.length) console.log('(resource-load errors, non-fatal: ' + resourceErrs.length + ' — fonts/CDN offline)');
 
