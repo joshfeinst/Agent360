@@ -1012,6 +1012,11 @@ function unlock(){
          fix for a stuck stick was what killed it: the thumb stayed down, the
          pad stayed unbound, and no amount of pushing moved the agent until the
          player lifted and replaced the finger. */
+      /* ...but never a finger a re-fit just let go of: Blink targets every
+         touchmove at the touchstart element, so the released thumb's next
+         1px twitch re-adopted it against the moved pad, and forward became
+         a hard-left sprint after all */
+      if (dead.has(t.identifier)) continue;
       if (T.move === null && t.target && stick.contains(t.target)) T.move = t.identifier;
       else if (T.aimpad === null && t.target && lpad.contains(t.target)) T.aimpad = t.identifier;
       if (t.identifier === T.move){ const v = padVec(t,stick,nub,true); if (v){ held.tx=v[0]; held.ty=v[1]; } }
@@ -1047,15 +1052,21 @@ function unlock(){
      the handlers happened to run: on a janky frame the delivery clock counted
      a 150ms tap as 300ms and deleted it. */
   const TAP_MS = 600;               // above the 500ms long-press norm; a parked thumb is not a tap
+  const TAP_SWALLOW_MS = 600;
   const viewTap = (s, e) => {
     if (e.type !== 'touchend' || s.moved >= 12 || e.timeStamp - s.t0 >= TAP_MS) return;
     if (G.state !== 'play' || !P.alive) return;
+    /* the taps that hammered RETRY land on the view once the debrief hides:
+       seven rounds into the spawn wall and a guard alerted. The first
+       moments of a mission answer no tap. */
+    if (G.startAt && s.t0 - G.startAt < TAP_SWALLOW_MS) return;
     /* the band says CLICK THE VIEW to capture the mouse: a finger's tap is
        that click, not a shot — it used to fire and leave the band up */
     if (!isTouch && !M.locked && wantsLock() && !lockGivenUp()){ tryLock(); return; }
     if (!playerFire()){ M.fireEdge = performance.now(); M.pressNew = true; }
   };
   const touchDone = e => {
+    for (const t of e.changedTouches) dead.delete(t.identifier);
     for (const t of e.changedTouches){
       /* a finger still on the pad inherits it: the owner lifting must not zero
          an axis the player is still steering with the other thumb */
@@ -1083,6 +1094,19 @@ function unlock(){
   };
   addEventListener('touchend', touchDone);
   addEventListener('touchcancel', touchDone);   // else a cancelled stick walks (or sprints) forever
+  /* The glass is empty: nothing can still be held. A finger whose end event
+     the OS never delivered left FIRE lit and dead, the stick sprinting and a
+     terminal hacking itself, with no Backspace on a phone to reset it — the
+     next honest lift of any finger is the reset. The AIM/CROUCH latches are
+     toggles the player set, and stay. */
+  const glassEmpty = e => { if (!e.touches || e.touches.length) return;
+    T.move = T.aimpad = null; T.run = false; T.look = null; T.tap = null; M.tlook = false;
+    held.tx = held.ty = held.lx = held.ly = 0; nub.style.transform = ''; lnub.style.transform = '';
+    M.fire = false; T.use = false;
+    for (const c of dropOwner) c();
+    for (const el of document.querySelectorAll('.tbtn.press')) el.classList.remove('press'); };
+  addEventListener('touchend', glassEmpty);
+  addEventListener('touchcancel', glassEmpty);
   view.addEventListener('touchstart', e=>{
     enableHybrid();
     /* One owner per look drag, exactly as the pads have at padStart: a second
@@ -1155,7 +1179,9 @@ function unlock(){
      browser bar showing, a fullscreen exit — and the next twitch re-read the
      stick against the NEW centre: forward became a hard-left strafe mid-sprint.
      A pad that has moved lets go of its finger; the thumb re-presses. */
+  const dead = new Set();                          // fingers a re-fit let go of, until they lift
   window.releasePads = () => {
+    if (T.move !== null) dead.add(T.move); if (T.aimpad !== null) dead.add(T.aimpad);
     T.move = T.aimpad = null; T.run = false;
     held.tx = held.ty = held.lx = held.ly = 0;
     nub.style.transform = ''; lnub.style.transform = '';
@@ -4742,7 +4768,7 @@ function armBack(){
 addEventListener('popstate', () => {
   if (typeof G === 'undefined') return;
   if (G.state === 'play'){ pause(); armBack(); }
-  else if (G.state === 'pause' || G.state === 'result') act('abort');
+  else if (G.state === 'pause' || G.state === 'result'){ sfx('click'); abortToTitle(); }
 });
 /* A mission starts with the hands the player already has on the keys, the way
    resume() does. clearInput() alone dropped them, and the repeat-keydown
@@ -4759,7 +4785,7 @@ function reclaimKeys(){
 function startMission(gesture){
   clearToasts();
   loadLevel(selLevel, G.diff);
-  G.state='play'; show(null); armBack();
+  G.state='play'; show(null); armBack(); G.startAt = performance.now();
   audioInit(); reclaimKeys(); view.focus(); resolveLook();
   /* The click or keypress that started the mission is a user gesture, which is
      all pointer lock needs — so take the mouse right away rather than making the
@@ -4887,7 +4913,8 @@ function ticketOf(code, diff){
   for (let i = 0; i < code.length; i++) h = (h*31 + code.charCodeAt(i)) % 997;
   return 'INC-' + (104200 + h*137 + diff*11);
 }
-const RESULT_ARM_MS = 500;
+const RESULT_ARM_MS = 500, ABORT_ARM_MS = 2500;
+function abortToTitle(){ G.abortArmAt = 0; G.state='title'; show('s-title'); clearToasts(); }
 const resultArmed = () => performance.now() - (G.resultAt || 0) >= RESULT_ARM_MS;
 function endMission(win, why){
   if (G.state!=='play') return;
@@ -6316,7 +6343,15 @@ function selfTestBody(runSim){
           FIT_W = 1; fit();
           ok('touch: a re-fitted frame lets go of the thumbs on its pads',
              before && TIN.move === null && held.ty === 0, 'before='+before+' move='+TIN.move+' ty='+held.ty);
+          /* ...and the thumb's next twitch does not take the pad back against
+             its new centre — that was forward becoming a hard-left sprint */
+          tev('touchmove', null, [{ identifier:73, clientX:cx + 4, clientY:cy - r.height/2*.76, target:document.getElementById('tstick') }]);
+          ok('touch: ...and its next twitch does not re-adopt the moved pad', TIN.move === null && held.tx === 0 && held.ty === 0,
+             'move='+TIN.move+' tx='+held.tx+' ty='+held.ty);
           tev('touchend', null, [{ identifier:73, clientX:cx, clientY:cy - r.height/2*.76 }]);
+          tev('touchstart', document.getElementById('tstick'), [{ identifier:74, clientX:cx, clientY:cy - r.height/2*.76 }]);
+          ok('touch: a fresh press after the lift owns the pad again', TIN.move === 74 && held.ty < -.5, 'move='+TIN.move+' ty='+held.ty);
+          tev('touchend', null, [{ identifier:74, clientX:cx, clientY:cy - r.height/2*.76 }]);
           FIT_W = fw0; }
       }
       if (!hadTouch) document.body.classList.remove('touch');
@@ -6400,13 +6435,17 @@ function selfTestBody(runSim){
         { const st0 = G.state, sc0 = G.screenId, bx = bootExitAt;
           G.state = 'title'; show('s-title');
           const row = document.querySelector('#titlemenu [data-act="controls"]');
-          bootExitAt = performance.now() - 500;
+          bootExitAt = performance.now() - 380;                       // the ghost, late
           row.dispatchEvent(new MouseEvent('click', { bubbles:true }));
-          const swallowed = G.state === 'title';
+          const ghostEaten = G.state === 'title', rearmed = performance.now() - bootExitAt < 50;
+          bootExitAt = performance.now() - 300;                       // a mash tap, 300ms on
+          row.dispatchEvent(new MouseEvent('click', { bubbles:true }));
+          const mashEaten = G.state === 'title';
+          bootExitAt = performance.now() - 600;                       // a deliberate tap after quiet
           row.dispatchEvent(new MouseEvent('click', { bubbles:true }));
           const thenActs = G.state === 'controls';
-          ok('boot: the skip tap\'s late click is swallowed once, and the next click acts',
-             swallowed && thenActs, 'after the ghost '+(swallowed ? 'title' : G.state)+', after the real one '+G.state);
+          ok('boot: the skip\'s late ghost and a mash are swallowed, and a tap after a moment\'s quiet acts',
+             ghostEaten && rearmed && mashEaten && thenActs, 'ghost '+(ghostEaten?'eaten':'landed')+' rearmed '+rearmed+' mash '+(mashEaten?'eaten':'landed')+' then '+G.state);
           bootExitAt = bx; G.state = st0; show(sc0); }
         /* a flick that arrives in one frame is not thrown away: the finger
            lane banks what the frame cap refuses, like the mouse lane */
@@ -6455,7 +6494,7 @@ function selfTestBody(runSim){
              for, not a shot */
           { const l0 = M.locked, f0 = M.lockFails, p0 = M.lockPending, lm0 = LOOKMODE, a0 = M.lockAt;
             const rpl = view.requestPointerLock; let asked = 0; view.requestPointerLock = () => { asked++; return Promise.resolve(); };
-            const LK0 = LOOK; LOOK = 'capture'; LOOKMODE = 'capture'; M.locked = false; M.lockFails = 0; M.lockPending = false; M.lockAt = 0;
+            const LK0 = LOOK; LOOK = 'capture'; LOOKMODE = 'capture'; M.locked = false; M.lockFails = 0; M.lockPending = false; M.lockAt = 0; G.startAt = 0;
             P.w = 0; P.mag[0] = 7; P.fireCd = 0; P.alive = true;
             const vr = view.getBoundingClientRect(), fx = vr.left + vr.width*.5, fy = vr.top + vr.height*.5;
             tev('touchstart', view, [{ identifier:72, clientX:fx, clientY:fy }]);
@@ -6467,7 +6506,7 @@ function selfTestBody(runSim){
             M.locked = l0; M.lockFails = f0; M.lockPending = p0; M.lockAt = a0; LOOKMODE = lm0; LOOK = LK0; }
         }
         /* a quick still touch on the world is a shot; a drag is a look */
-        clearInput(); P.w = 0; P.mag[0] = 7; P.fireCd = 0; P.alive = true;
+        clearInput(); P.w = 0; P.mag[0] = 7; P.fireCd = 0; P.alive = true; G.startAt = 0;
         const vr = view.getBoundingClientRect();
         const vat = (x,y) => [{ identifier:75, clientX:x, clientY:y }];
         const vx = vr.left + vr.width*.5, vy = vr.top + vr.height*.35;
@@ -6475,6 +6514,29 @@ function selfTestBody(runSim){
         tev('touchend', null, vat(vx, vy));
         step(0.016);
         ok('touch: a tap on the view fires', P.mag[0] === 6, 'mag='+P.mag[0]);
+        /* the first moments of a mission answer no tap: a RETRY mash landed
+           on the view once the debrief hid and emptied the pistol into the wall */
+        { P.fireCd = 0; P.mag[0] = 7; G.startAt = performance.now();
+          tev('touchstart', view, vat(vx, vy)); tev('touchend', null, vat(vx, vy)); step(0.016);
+          const early = P.mag[0];
+          G.startAt = performance.now() - 1000;
+          tev('touchstart', view, vat(vx, vy)); tev('touchend', null, vat(vx, vy)); step(0.016);
+          ok('touch: a tap in the first moments of a mission is the finger that started it, not a shot',
+             early === 7 && P.mag[0] === 6, 'at start mag='+early+', a second later '+P.mag[0]);
+          G.startAt = 0; P.fireCd = 0; }
+        /* the glass is empty, nothing is held: a finger the OS never lifted
+           left FIRE lit and dead with no Backspace to reset it */
+        { const fire = document.getElementById('tfire'); const fr = fire.getBoundingClientRect();
+          tev('touchstart', fire, [{ identifier:90, clientX:fr.left + fr.width/2, clientY:fr.top + fr.height/2 }]);
+          const lit = M.fire === true;
+          const ev = new Event('touchend', { bubbles:true, cancelable:true }); ev.changedTouches = [{ identifier:91, clientX:vx, clientY:vy }]; ev.touches = []; window.dispatchEvent(ev);
+          const freed = M.fire === false && !fire.classList.contains('press');
+          tev('touchstart', fire, [{ identifier:92, clientX:fr.left + fr.width/2, clientY:fr.top + fr.height/2 }]);
+          const again = M.fire === true;
+          tev('touchend', fire, [{ identifier:92, clientX:fr.left + fr.width/2, clientY:fr.top + fr.height/2 }]);
+          ok('touch: the last finger lifting frees everything, so a lost finger cannot hold FIRE forever',
+             lit && freed && again, 'lit '+lit+' freed '+freed+' again '+again);
+          M.fire = false; M.fireEdge = 0; M.pressNew = false; M.fireBuf = 0; }
         P.fireCd = 0; P.mag[0] = 7;
         tev('touchstart', view, vat(vx, vy));
         tev('touchmove', null, vat(vx + 80, vy));
@@ -7127,6 +7189,23 @@ function selfTestBody(runSim){
              'armed '+armed+' watch '+watched+' rearmed '+rearmed+' then '+G.state);
           G.state = 'play'; show(null); clearInput(); }
 
+        /* on a phone ABORT TO MENU sits where the FIRE thumb rests: it asks
+           twice; a mouse is deliberate and goes at once; BACK goes at once */
+        { G.state = 'play'; show(null); pause();
+          const ab = document.querySelector('#s-pause [data-act="abort"]'), label0 = ab.textContent;
+          const twoStep = isTouch || TOUCH_SEEN;
+          act('abort');
+          const first = G.state, asked = ab.textContent;
+          if (twoStep){ act('abort'); }
+          ok(twoStep ? 'watch: ABORT asks twice on a phone, and the second tap goes home'
+                     : 'watch: ABORT goes home at once with a mouse',
+             (twoStep ? first === 'pause' && /AGAIN/.test(asked) : first === 'title') && G.state === 'title',
+             'first '+first+' label "'+asked+'" then '+G.state);
+          ab.textContent = label0; G.abortArmAt = 0;
+          G.state = 'play'; show(null); pause();
+          dispatchEvent(new PopStateEvent('popstate', { state: null }));
+          ok('watch: BACK on the watch goes home at once', G.state === 'title', 'state '+G.state);
+          G.state = 'play'; show(null); clearInput(); }
         /* a chord is the browser's: Ctrl+P must not touch the scanlines, Alt+F4
            must not open the report */
         { const sc0 = SCANOP, st0 = G.state; G.state = 'play'; show(null);
@@ -7205,7 +7284,9 @@ function selfTestBody(runSim){
           st.dispatchEvent(ev('touchstart', mk(51,.5,.1)));       // finger 1 pushes up
           const ty1 = held.ty;
           st.dispatchEvent(ev('touchstart', mk(52,.5,.5)));       // finger 2 grazes...
-          dispatchEvent(ev('touchend', mk(52,.5,.5)));            // ...and lifts
+          /* ...and lifts, with finger 1 still on the glass (touches says so —
+             an empty glass is the reset) */
+          dispatchEvent(new TouchEvent('touchend', { changedTouches:[mk(52,.5,.5)], touches:[mk(51,.5,.1)], bubbles:true, cancelable:true }));
           ok('stick: a grazing second finger cannot steal the walk',
              ty1 < 0 && held.ty === ty1, 'ty '+ty1+'->'+held.ty);
           dispatchEvent(ev('touchend', mk(51,.5,.1)));
@@ -8573,7 +8654,20 @@ function act(a){
     case 'start': startMission(true); break;
     case 'resume': resume(true); break;
     case 'restart': startMission(true); break;
-    case 'abort': G.state='title'; show('s-title'); clearToasts(); break;
+    case 'abort': {
+      /* on the watch ABORT TO MENU sits where the FIRE thumb rests, one
+         graze of ❚❚ away: a phone asks twice, a mouse is deliberate */
+      const ab = document.querySelector('#s-pause [data-act="abort"]');
+      if ((isTouch || TOUCH_SEEN) && G.state === 'pause' && ab){
+        const now = performance.now();
+        if (!(G.abortArmAt && now - G.abortArmAt < ABORT_ARM_MS)){
+          G.abortArmAt = now; const label = ab.textContent; ab.textContent = 'TAP AGAIN TO ABORT';
+          setTimeout(() => { if (ab.textContent === 'TAP AGAIN TO ABORT') ab.textContent = label; G.abortArmAt = 0; }, ABORT_ARM_MS);
+          break;
+        }
+        G.abortArmAt = 0; ab.textContent = 'ABORT TO MENU';
+      }
+      abortToTitle(); break; }
     case 'facepick': { const fi = document.getElementById('o-face'); if (fi) fi.click(); break; }
     case 'facereset': drawDefaultFace(); bakeAllActors(); toast('DEFAULT FACE RESTORED','cyan'); break;
     case 'cyclelook': {
@@ -8627,10 +8721,13 @@ document.addEventListener('click', e=>{
   audioInit();
   /* The tap/click that skips the boot splash fires its click AFTER the title
      menu appears, squarely on whatever row landed under the finger. */
-  /* the skip's own click, whenever it lands: at 24x CPU it arrived 372ms
-     after the skip, past a 350ms window, and pressed CONTROLS under the
-     finger. One click within a second of the skip is the skip's. */
-  if (bootExitAt && performance.now() - bootExitAt < 1000){ bootExitAt = 0; return; }
+  /* the skip's own click, whenever it lands — at 24x CPU it arrived 372ms
+     after the skip — and the mash behind it: nothing happens for the
+     splash's first 400ms, so a thumb taps again and again, and one of those
+     taps pressed CONTROLS under it. A click inside the window is swallowed
+     and RE-ARMS the window, so a mash never lands and a deliberate tap after
+     a moment's quiet does. */
+  if (bootExitAt && performance.now() - bootExitAt < 400){ bootExitAt = performance.now(); return; }
   const b = e.target.closest('[data-act]');
   if (b) act(b.dataset.act);
 });
