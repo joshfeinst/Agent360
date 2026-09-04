@@ -481,7 +481,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.38';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.39';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -4898,6 +4898,18 @@ addEventListener('popstate', () => {
   if (typeof G === 'undefined') return;
   if (G.state === 'play'){ pause(); armBack(); }
   else if (G.state === 'pause' || G.state === 'result'){ sfx('click'); abortToTitle(); }
+  /* A sheet is a sheet, and BACK closes a sheet. OPTIONS opened from the
+     WATCH used to fall through every branch here: the entry armBack() had
+     pushed was spent on a gesture that did nothing, and the next BACK was a
+     real navigation — off the page, the run gone. That is the same
+     unrecoverable loss this handler exists to prevent, one screen deeper.
+     act('back') already knows where each screen goes (it is what Esc and the
+     on-screen BACK button both call); re-arm unless it landed on the title,
+     which is where BACK is allowed to leave. */
+  else if (G.state === 'options' || G.state === 'controls' || G.state === 'cheats' ||
+           G.state === 'select'  || G.state === 'brief'){
+    sfx('click'); act('back'); if (G.state !== 'title') armBack();
+  }
 });
 /* A mission starts with the hands the player already has on the keys, the way
    resume() does. clearInput() alone dropped them, and the repeat-keydown
@@ -4969,6 +4981,14 @@ function pause(){
      mission banner squarely covers the watch's OBJECTIVES header — the same
      reason boot, startMission and abort all wipe them. */
   G.state='pause'; unlock(); clearInput(true); clearToasts();
+  /* Every fresh visit to the watch asks twice. The arm used to be global and
+     to expire only on its own 2.5s timer, so a thumb that grazed the pause
+     button, tapped ABORT (the arming tap), then RESUMED and grazed it again
+     threw the run away on ONE tap — and RESTART did the same. The two-tap
+     rule is per visit; this is where a visit begins. */
+  G.abortArmAt = 0;
+  { const ab = document.querySelector('#s-pause [data-act="abort"]');
+    if (ab && ab.textContent === 'TAP AGAIN TO ABORT') ab.textContent = 'ABORT TO MENU'; }
   document.getElementById('p-title').textContent = G.L.code+' · '+G.L.name;
   document.getElementById('p-meta').innerHTML =
     '<dt>Elapsed</dt><dd>'+fmt(G.time)+'</dd>'+
@@ -5830,7 +5850,14 @@ function selfTestBody(runSim){
       const s0 = { sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
                    keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn, scan:SCANOP,
                    map:G.mapOn, campaignDone:campaignDone, god:G.cheats.god, taint:G.tainted,
-                   diff:G.diff, level:selLevel, rm:RM_OPT, best:JSON.stringify(BEST) };
+                   diff:G.diff, level:selLevel, rm:RM_OPT, best:JSON.stringify(BEST),
+                   /* The pending BOOT warning is state too, and the same kind of
+                      omission as the missing `rm` below: boot() runs this suite
+                      BEFORE bootDone() shows the toast, and the corrupt-blob block
+                      nulls SAVE_WARN twice — so a player whose save could not be
+                      read had every best and setting wiped in total silence, with
+                      the message for it sitting in the source unused. */
+                   warn:SAVE_WARN };
       M.sens = 1.23; M.tsens = .77; INVERT_Y = true; AIM_ASSIST = 0; KEYS_LAYOUT = 'arrows';
       A.sfxVol = .12; A.musVol = .21; A.musOn = false; SCANOP = 15; G.mapOn = false;
       G.diff = 2;
@@ -5960,6 +5987,26 @@ function selfTestBody(runSim){
         { const real = Storage.prototype.setItem; Storage.prototype.setItem = function(){ throw new Error('denied'); };
           const w = storageWritable(); Storage.prototype.setItem = real;
           ok('save: a store that refuses writes is noticed', w === false && storageWritable() === true, 'denied '+w); }
+        /* ...and a write that fails MID-SESSION says so, once, and re-arms.
+           The quota can fill under a running game (a sibling app on the same
+           origin), and this used to be swallowed whole: the debrief printed
+           MISSION COMPLETE and a rank over a run that was already lost. */
+        { const lost0 = SAVE_LOST, real = Storage.prototype.setItem;
+          const wrap = document.getElementById('toasts'), n0 = wrap.children.length;
+          const said = () => [...wrap.children].slice(n0).map(t => t.textContent).filter(t => /COULD NOT SAVE/.test(t)).length;
+          SAVE_LOST = false;
+          Storage.prototype.setItem = function(){ const e = new Error('quota'); e.name = 'QuotaExceededError'; throw e; };
+          saveSettings(); const told = said();
+          saveSettings(); saveSettings(); const spam = said();
+          Storage.prototype.setItem = real;
+          saveSettings(); const armed = !SAVE_LOST;
+          Storage.prototype.setItem = function(){ const e = new Error('quota'); e.name = 'QuotaExceededError'; throw e; };
+          saveSettings(); const again = said();
+          Storage.prototype.setItem = real;
+          ok('save: a write that fails mid-session tells the player, once, and re-arms',
+             told === 1 && spam === 1 && armed && again === 2,
+             'told '+told+' after three '+spam+' re-armed '+armed+' again '+again);
+          SAVE_LOST = lost0; }
       }
       /* The old assertion here read RM_OPT AFTER the restore below and so only
          ever measured the restore. Reframed honestly: loadSettings is supposed
@@ -5970,10 +6017,15 @@ function selfTestBody(runSim){
          checked by verify.js, outside the suite that would be marking its own
          homework. */
       ok('the persistence snapshot carries reduce motion', s0.rm === true, 'rm='+s0.rm);
+      /* ...and the pending boot warning, for the same reason: this suite runs
+         inside boot(), before the toast that announces it. verify.js proves
+         the end of it, where the suite cannot mark its own homework. */
+      ok('the persistence snapshot carries the pending boot warning', 'warn' in s0, Object.keys(s0).length+' fields');
       M.sens = s0.sens; M.tsens = s0.tsens; INVERT_Y = s0.inv; AIM_ASSIST = s0.aim;
       KEYS_LAYOUT = s0.keys; A.sfxVol = s0.sfx; A.musVol = s0.mus; A.musOn = s0.musOn;
       SCANOP = s0.scan; G.mapOn = s0.map; campaignDone = s0.campaignDone; G.diff = s0.diff;
       G.cheats.god = s0.god; G.tainted = s0.taint; RM_OPT = s0.rm; selLevel = s0.level;
+      SAVE_WARN = s0.warn;
       if (!isTouch) LOOK = s0.look;
       for (const k in BEST) delete BEST[k];
       Object.assign(BEST, JSON.parse(s0.best));
@@ -7578,6 +7630,22 @@ function selfTestBody(runSim){
              armed && watched && rearmed && G.state === 'title',
              'armed '+armed+' watch '+watched+' rearmed '+rearmed+' then '+G.state);
           G.state = 'play'; show(null); clearInput(); }
+        /* ...and a sheet opened OVER the watch closes on BACK instead of
+           spending the entry on nothing and letting the NEXT one leave with
+           the run. OPTIONS from the watch was the reachable one; the other
+           menu screens fell through the same way. */
+        { const or0 = optReturn;
+          G.state = 'play'; show(null); armBack();
+          dispatchEvent(new PopStateEvent('popstate', { state: null }));   // -> the watch
+          const onWatch = G.state === 'pause';
+          act('options');                                                  // the sheet
+          const onSheet = G.state === 'options';
+          dispatchEvent(new PopStateEvent('popstate', { state: null }));   // BACK closes it
+          const back = G.state, rearmed = !!(history.state && history.state.a360);
+          ok('back: BACK closes a sheet opened over the watch, and re-arms behind it',
+             onWatch && onSheet && back === 'pause' && rearmed,
+             'watch '+onWatch+' sheet '+onSheet+' back to '+back+' rearmed '+rearmed);
+          optReturn = or0; G.state = 'play'; show(null); clearInput(); }
 
         /* on a phone ABORT TO MENU sits where the FIRE thumb rests: it asks
            twice; a mouse is deliberate and goes at once; BACK goes at once */
@@ -7592,6 +7660,22 @@ function selfTestBody(runSim){
              (twoStep ? first === 'pause' && /AGAIN/.test(asked) : first === 'title') && G.state === 'title',
              'first '+first+' label "'+asked+'" then '+G.state);
           ab.textContent = label0; G.abortArmAt = 0;
+          /* ...and it asks twice on EVERY visit. The arm was global and expired
+             only on its own 2.5s timer, so an arming tap, a RESUME and a second
+             graze of the pause button threw the run away on one tap. */
+          if (twoStep){
+            G.state = 'play'; show(null); pause();
+            act('abort');                       // the arming tap
+            const armed = G.abortArmAt > 0;
+            resume(true);                       // ...the player carries on...
+            pause();                            // ...and comes straight back
+            const label = ab.textContent, disarmed = !G.abortArmAt;
+            act('abort');                       // ONE tap must not go home
+            ok('watch: ...and it asks again on the next visit, not once for 2.5s',
+               armed && disarmed && label === 'ABORT TO MENU' && G.state === 'pause',
+               'armed '+armed+' disarmed '+disarmed+' label "'+label+'" then '+G.state);
+            ab.textContent = label0; G.abortArmAt = 0;
+          }
           G.state = 'play'; show(null); pause();
           dispatchEvent(new PopStateEvent('popstate', { state: null }));
           ok('watch: BACK on the watch goes home at once', G.state === 'title', 'state '+G.state);
@@ -8978,7 +9062,7 @@ function betterBest(a, b){
    mission win from disk. A save now reads the key first and, if another
    writer has touched it since this tab last wrote (the stamp), folds the
    disk's better bests and its campaign flag in before writing. */
-let SAVE_STAMP = null, SAVE_WARN = null;
+let SAVE_STAMP = null, SAVE_WARN = null, SAVE_LOST = false;
 function mergeFromDisk(){
   let d = null; try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(_){ return; }
   if (!d || typeof d !== 'object' || d.v !== 2 || d.stamp === SAVE_STAMP) return;
@@ -8996,7 +9080,17 @@ function saveSettings(){
       scan:SCANOP, map:G.mapOn, diff:G.diff, level:selLevel, rm:RM_OPT,
       best:BEST, campaignDone
     }));
-  } catch(_){}
+    SAVE_LOST = false;                    // it works again: re-arm the warning
+  } catch(_){
+    /* The store can go unwritable in the MIDDLE of a session — the sibling
+       app sharing this origin fills the quota — and this used to swallow it
+       whole. The player finished M01, read MISSION COMPLETE and their rank
+       off the debrief, and the run was simply gone on the next load with
+       nothing ever said. Once per failure run, not once per settings tweak. */
+    if (!SAVE_LOST){ SAVE_LOST = true;
+      try { toast('COULD NOT SAVE — THIS RESULT WILL NOT BE KEPT', 'red', 6000); } catch(_){}
+    }
+  }
 }
 /* ...and the other tab's save lands here as it happens, so MISSION SELECT
    shows the win the moment it is filed next door */

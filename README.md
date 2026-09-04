@@ -195,6 +195,19 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.39
+
+Four ways to lose a run without being told, each with a message or a rule
+already written for it that never ran. A save that cannot be read is stashed
+aside and announced — except boot runs the self-test before the announcement,
+and the self-test nulled it, so no player had ever seen it. A save that fails
+mid-session, when a sibling app on the same origin fills the quota, was
+swallowed whole: the debrief printed a rank over a run already lost. BACK from
+OPTIONS opened over the field watch fell through every branch, spending the
+history entry so the next BACK left the page. And the watch's two-tap ABORT
+was armed globally, so an arming tap, a RESUME and a second graze of the pause
+button threw the run away on one tap. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.38
 
 Two players found halves of fixes. v1.32 ruled that a Ctrl, Alt or Meta chord
