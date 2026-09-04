@@ -503,11 +503,21 @@ that hardware makes reachable and a trackpad never does.
 | **2 · The thumb button gets the two steps it is promised** | Button 3 under a captured pointer opens the field watch and re-arms, and owns its own popstate so the press is answered once | v1.31 made BACK open the watch rather than leave the page, and almost every mouse maps buttons 3 and 4 to browser BACK and FORWARD, which players press by reflex from every other app. But **a captured pointer swallows the browser's navigation**: measured in play, `{state:"play", locked:true, pop:0}` — no popstate, so the run-saving branch never ran. The first press that landed was the one on the **watch**, where BACK means go home: `pause → title`, the run gone to an unlabelled button under the thumb, with ABORT TO MENU one row away. In free look the same button behaved correctly, which is what proves the lock is the cause | An assertion presses the button in play and requires the watch, then fires the popstate the browser may or may not also send and requires the watch to survive it, then a second deliberate press for the title: `first press pause rearmed true · its own popstate pause · second press title`. Mutation-verified at `first press play` |
 | **What the hardware cleared** | Measured, not changed | **Both buttons in every release order**, side buttons pressed mid-chord, ~180 presses: no stuck fire, no stuck aim, no stray shot. **The free-spinning wheel**: one hardware notch is one weapon in both directions, `deltaMode 1` is one step, `deltaY 4000` is one step, a 40-notch spin steps per notch and caps at a full cycle per frame — no faster switching than intended. **Sixteen events inside one frame sum exactly**, to four decimal places, and the captured path is frame-rate independent and linear across the whole sensitivity range. **Middle click** is prevented, with no autoscroll. **A real BACK navigation** still goes play → watch → title → leaves, exactly as documented |
 
+# Night log — three verbs a single hand can reach
+
+The one-handed player's third finding was the one held back, because the fix
+was a feature rather than a repair. Asked for, so built.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · Aim, crouch and sprint tap on and tap off** | An Options row, **Aim / crouch / sprint · HOLD · TOGGLE**, persisted beside the other settings. In TOGGLE the keydown flips the latch, the keyup does nothing, and a second press lets go | On a keyboard these three have always been holds, which asks for two keys at once — aim *and* fire, crouch *and* walk, sprint *and* walk. A player who can only ever have one key down loses three of the game's verbs outright: measured, a tap-then-press gives **`P.aim` 0.01** where an aimed shot needs 0.5, **`P.crouch` 0.00**, **`P.speed` 1.00**. This is not a new idea in this game — the touch build has latched AIM and CRCH since v1.20, and the suite already asserts *"touch: second CROUCH tap stands up"*. It is the same offer made to a keyboard. HOLD stays the default, because it is what a two-handed player expects | An assertion presses each key ONE AT A TIME — press, release, step, never two down — and measures each verb on its own with nothing else latched: HOLD gives `0.00 / 0.00 / 1.00`, TOGGLE gives `1.00 / 1.00 / 1.48`, and a second tap returns `0.00 / 0.00 / 1.00`. Mutation-verified: without the flip a second tap cannot let go, `tapped off 1.00/1.00/0.32`. Driven end to end in a browser too — a real click on the row, a real keypress, and the setting still TOGGLE after a reload |
+| **Care taken** | Where a latch could have leaked | Switching back to HOLD **drops whatever was latched**, so the setting can never leave the agent permanently crouched or sprinting. The OS key-repeat path and `resume()`'s re-derive from physically-held keys both skip the latched three, or a repeat would flip the latch on and off many times a second and a pause would set it from a key that happens to be down. The Sticky-Keys sprint from v1.43 stands down in TOGGLE, where tapping Shift already reaches sprint. Only `aim`, `crouch` and `run` can latch — the table says so, so no future binding joins them by accident |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 482 desktop / 472 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 483 desktop / 473 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -522,5 +532,5 @@ that hardware makes reachable and a trackpad never does.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.44'` (index.html) ↔ `agent360-v1.44`
+- **Versions:** game `VERSION = '1.45'` (index.html) ↔ `agent360-v1.45`
   (sw.js CACHE), enforced by verify.js

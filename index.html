@@ -382,6 +382,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
         <div class="ctl"><span>Reload</span><span><b data-code="KeyR">R</b> · <b data-code="Slash">/</b></span></div>
         <div class="ctl"><span>Interact &amp; hack</span><span>Hold <b data-code="KeyF">F</b> · hold <b data-code="Quote">'</b></span></div>
         <div class="ctl"><span>Crouch</span><span><b data-code="KeyC">C</b> · <b data-code="Semicolon">;</b></span></div>
+        <div class="ctl"><span>Hold or tap</span><span>Options · aim, crouch and sprint</span></div>
         <div class="ctl"><span>Sprint</span><span>Either Shift</span></div>
         <div class="ctl"><span>Next / prev weapon</span><span><b data-code="KeyQ">Q</b> <b data-code="KeyE">E</b> · <b data-code="BracketLeft">[</b> <b data-code="BracketRight">]</b> · wheel · <b data-code="Digit1">1</b> <b data-code="Digit2">2</b> <b data-code="Digit3">3</b> <b data-code="Digit4">4</b></span></div>
         <div class="ctl"><span>Corner radar</span><span><b data-code="KeyN">N</b></span></div>
@@ -423,6 +424,9 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
         <div class="ctl"><span>Invert Y axis</span><span><button class="btn ghost" id="o-inv" data-act="toggleinv" aria-pressed="false" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">OFF</button></span></div>
         <div class="ctl"><span>Aim assist</span><span><button class="btn ghost" id="o-aim" data-act="cycleaim" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">SNAP + PULL</button></span></div>
         <div class="ctl no-touch"><span>Movement keys</span><span><button class="btn ghost" id="o-keys" data-act="togglekeys" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">WASD</button></span></div>
+        <!-- the phone has latched AIM and CRCH since v1.20; this is the same
+             offer to a keyboard, for a player who cannot hold two keys -->
+        <div class="ctl no-touch"><span>Aim / crouch / sprint</span><span><button class="btn ghost" id="o-hold" data-act="togglehold" aria-pressed="false" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">HOLD</button></span></div>
         <div class="ctl"><span>Corner radar</span><span><button class="btn ghost" id="o-radar" data-act="togglemap" aria-pressed="true" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">ON</button></span></div>
         <div class="ctl"><span>Soundtrack</span><span><button class="btn ghost" id="o-muson" data-act="togglemus" aria-pressed="true" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">ON</button></span></div>
         <div class="ctl"><span>Sound effects</span><span><input type="range" id="o-sfx" aria-label="Sound effects volume" min="0" max="100" value="70"> <b class="sv" id="v-sfx">70%</b></span></div>
@@ -495,7 +499,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.44';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.45';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -681,6 +685,16 @@ applyLayout();
 const held = Object.create(null);
 /* codes pressed while a Sticky-Keys Shift was latched; each one is a live sprint */
 const shifted = new Set();
+/* Aim, crouch and sprint are HOLDS on a keyboard and always have been, which
+   asks for two keys at once: aim and fire, crouch and walk, sprint and walk.
+   A player with the use of one hand loses three verbs outright — measured, a
+   tap-then-press gives P.aim 0.01 where an aimed shot needs 0.5, P.crouch
+   0.00, P.speed 1.00. The touch build has latched them since v1.20 (AIM and
+   CRCH are tap-on, tap-off) and the suite already asserts that, so this is the
+   same behaviour offered to the keyboard rather than a new idea. HOLD stays
+   the default: it is what a two-handed player expects. */
+let HOLD_LATCH = false;                     // false = hold, true = tap on / tap off
+const LATCHED = { aim:1, crouch:1, run:1 }; // the three that can latch; nothing else may
 /* Three inputs have two sources. FIRE and AIM were always read as the OR of a
    touch flag and a keyboard flag (`M.fire || held.fire`); use, crouch and
    sprint each shared ONE boolean, so whichever device wrote last won — a
@@ -712,7 +726,7 @@ addEventListener('keydown', e => {
          browser never re-issues its keydown — and startMission's clearInput
          had just dropped it, so W held through the briefing's ENTER walked
          nowhere until it was let go and pressed again. */
-      if (!held[a]){ held[a] = true; keys.add(e.code); } }
+      if (!held[a] && !(HOLD_LATCH && LATCHED[a])){ held[a] = true; keys.add(e.code); } }
     return; }
   /* Sticky Keys — the OS accessibility feature a one-handed player leans on —
      LATCHES a modifier instead of holding it: the physical Shift sends its own
@@ -722,10 +736,10 @@ addEventListener('keydown', e => {
      held. A latched Shift is a held Shift as far as every other application is
      concerned, and now as far as this one is. The latch is spent when that key
      comes up, which is exactly what the OS means by it. */
-  if (a && a !== 'run' && e.shiftKey && !keys.has('ShiftLeft') && !keys.has('ShiftRight')){
+  if (a && a !== 'run' && !HOLD_LATCH && e.shiftKey && !keys.has('ShiftLeft') && !keys.has('ShiftRight')){
     shifted.add(e.code); held.run = true;
   }
-  if (a) { held[a] = true; e.preventDefault();
+  if (a) { held[a] = (HOLD_LATCH && LATCHED[a]) ? !held[a] : true; e.preventDefault();
     /* Space/X get the same press buffer a click does: a tap that lands during
        the weapon's cool-down deserves the next available shot, not nothing. */
     if (a === 'fire'){ M.fireEdge = performance.now(); M.pressNew = true; } }
@@ -740,6 +754,7 @@ addEventListener('keyup', e => {
   const spent = shifted.delete(e.code);
   const a = KEYMAP[e.code];
   if (!a){ if (spent) held.run = keys.has('ShiftLeft') || keys.has('ShiftRight') || shifted.size > 0; return; }
+  if (HOLD_LATCH && LATCHED[a]) return;     // a latch is let go by pressing again
   let stillHeld = false;
   for (const c of keys) if (KEYMAP[c] === a){ stillHeld = true; break; }
   held[a] = stillHeld;
@@ -5230,7 +5245,7 @@ function resume(gesture){
   /* Re-derive the action map from the keys that are still physically down —
      including any pressed DURING the pause, which the keydown handler banked
      in `keys` without claiming (it only claims gameplay keys while playing). */
-  for (const c of keys){ const a = KEYMAP[c]; if (a) held[a] = true; }
+  for (const c of keys){ const a = KEYMAP[c]; if (a && !(HOLD_LATCH && LATCHED[a])) held[a] = true; }
   G.state='play'; show(null); view.focus();
   /* Only a click or an activating key can take the lock. Esc is explicitly
      NOT one (the spec excludes it), so resuming with Esc leaves the mouse free
@@ -6124,7 +6139,7 @@ function selfTestBody(runSim){
       const s0 = { sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
                    keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn, scan:SCANOP,
                    map:G.mapOn, campaignDone:campaignDone, god:G.cheats.god, taint:G.tainted,
-                   diff:G.diff, level:selLevel, rm:RM_OPT, best:JSON.stringify(BEST),
+                   diff:G.diff, level:selLevel, rm:RM_OPT, hold:HOLD_LATCH, best:JSON.stringify(BEST),
                    /* The pending BOOT warning is state too, and the same kind of
                       omission as the missing `rm` below: boot() runs this suite
                       BEFORE bootDone() shows the toast, and the corrupt-blob block
@@ -6299,7 +6314,7 @@ function selfTestBody(runSim){
       KEYS_LAYOUT = s0.keys; A.sfxVol = s0.sfx; A.musVol = s0.mus; A.musOn = s0.musOn;
       SCANOP = s0.scan; G.mapOn = s0.map; campaignDone = s0.campaignDone; G.diff = s0.diff;
       G.cheats.god = s0.god; G.tainted = s0.taint; RM_OPT = s0.rm; selLevel = s0.level;
-      SAVE_WARN = s0.warn;
+      HOLD_LATCH = s0.hold; SAVE_WARN = s0.warn;
       if (!isTouch) LOOK = s0.look;
       for (const k in BEST) delete BEST[k];
       Object.assign(BEST, JSON.parse(s0.best));
@@ -7708,6 +7723,48 @@ function selfTestBody(runSim){
         for (let i=0;i<4;i++) step(1/20);
         ok('fire buffer: a cooldown-tail tap fires when the gun frees', P.mag[0] === 5, 'mag='+P.mag[0]);
 
+        /* TOGGLE: aim, crouch and sprint reachable ONE KEY AT A TIME. On a
+           keyboard these have always been holds, which asks for two keys at
+           once — aim and fire, crouch and walk, sprint and walk — so a player
+           with one hand lost three verbs outright: a tap-then-press measured
+           P.aim 0.01 where an aimed shot needs 0.5, P.crouch 0.00, P.speed
+           1.00. The touch build has latched AIM and CRCH since v1.20. */
+        { const hl0 = HOLD_LATCH, st0 = G.state, sel0 = selLevel, d0 = G.diff, g0 = G.cheats.god;
+          selLevel = 0; G.diff = 1; startMission(false); G.state = 'play'; G.cheats.god = true;
+          const kd = c => dispatchEvent(new KeyboardEvent('keydown', { code:c, bubbles:true, cancelable:true }));
+          const ku = c => dispatchEvent(new KeyboardEvent('keyup',   { code:c, bubbles:true }));
+          /* one key at a time: press it, let go, and step — never two down */
+          const tap = c => { kd(c); ku(c); for (let i=0;i<12;i++) step(1/60); };
+          const walk = () => { kd('KeyW'); for (let i=0;i<12;i++) step(1/60);
+                               const sp = P.speed; ku('KeyW'); return sp; };
+          /* each verb measured on its own, with nothing else latched */
+          const probe = () => {
+            clearInput(); for (const k in LATCHED) held[k] = false;
+            tap('KeyZ'); for (let i=0;i<24;i++) step(1/60); const aimOn = P.aim;
+            clearInput(); for (const k in LATCHED) held[k] = false; for (let i=0;i<30;i++) step(1/60);
+            tap('KeyC'); for (let i=0;i<24;i++) step(1/60); const crOn = P.crouch;
+            clearInput(); for (const k in LATCHED) held[k] = false; for (let i=0;i<30;i++) step(1/60);
+            tap('ShiftLeft'); const spOn = walk();
+            return [aimOn, crOn, spOn];
+          };
+          HOLD_LATCH = false; const [holdAim, holdCrouch, holdRun] = probe();
+          HOLD_LATCH = true;  const [latchAim, latchCrouch, latchRun] = probe();
+          /* ...and a second tap lets each one go again */
+          clearInput(); for (const k in LATCHED) held[k] = false;
+          tap('KeyZ'); tap('KeyZ'); for (let i=0;i<30;i++) step(1/60); const offAim = P.aim;
+          tap('KeyC'); tap('KeyC'); for (let i=0;i<30;i++) step(1/60); const offCrouch = P.crouch;
+          tap('ShiftLeft'); tap('ShiftLeft'); const offRun = walk();
+          HOLD_LATCH = hl0; clearInput();
+          for (const k in LATCHED) held[k] = false;
+          ok('options: TOGGLE puts aim, crouch and sprint within one key at a time',
+             holdAim < .1 && holdCrouch < .1 && holdRun < 1.05 &&
+             latchAim > .5 && latchCrouch > .5 && latchRun > 1.3 &&
+             offAim < .1 && offCrouch < .1 && offRun < 1.05,
+             'HOLD aim ' + holdAim.toFixed(2) + ' crouch ' + holdCrouch.toFixed(2) + ' speed ' + holdRun.toFixed(2) +
+             ' · TOGGLE ' + latchAim.toFixed(2) + '/' + latchCrouch.toFixed(2) + '/' + latchRun.toFixed(2) +
+             ' · tapped off ' + offAim.toFixed(2) + '/' + offCrouch.toFixed(2) + '/' + offRun.toFixed(2));
+          G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
         /* a fast flick is a fast flick: the captured path CLAMPS an outsized
            event, it does not throw it away. The old raw-count guard dropped
            anything past 3000, so movementX 2999 turned 1.2449 rad and 3001
@@ -8946,7 +9003,8 @@ function selfTestBody(runSim){
              nobody taught this test to press, and it fails rather than being
              skipped — otherwise the manual could grow a promise in silence. */
           const PROSE = new Set(['Mouse','and','Click','Right','click','wheel','Hold',
-            'hold','Either','opens','resumes','Options','auto-aim,','GoldenEye','style','']);
+            'hold','Either','opens','resumes','Options','auto-aim,','GoldenEye','style','',
+            'aim,','crouch','sprint']);
           const rows = [...document.querySelectorAll('#s-controls .grid2:not(.touch-only) .ctl')];
           const want = new Map();                       // code -> the row that promised it
           const unknown = [];
@@ -9530,7 +9588,7 @@ function saveSettings(){
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       v:2, stamp:SAVE_STAMP, sens:M.sens, tsens:M.tsens, look:LOOK, inv:INVERT_Y, aim:AIM_ASSIST,
       keys:KEYS_LAYOUT, sfx:A.sfxVol, mus:A.musVol, musOn:A.musOn,
-      scan:SCANOP, map:G.mapOn, diff:G.diff, level:selLevel, rm:RM_OPT,
+      scan:SCANOP, map:G.mapOn, diff:G.diff, level:selLevel, rm:RM_OPT, hold:HOLD_LATCH,
       best:BEST, campaignDone
     }));
     SAVE_LOST = false;                    // it works again: re-arm the warning
@@ -9588,6 +9646,7 @@ function loadSettings(){
   SCANOP   = Math.round(num(d.scan, 0, 100, SCANOP));
   G.mapOn  = d.map !== false;
   RM_OPT   = d.rm === true;
+  HOLD_LATCH = d.hold === true;
   /* The clearance was the one choice a reload threw away — and since bests are
      keyed CODE:diff, the select screen then listed somebody else's rung and the
      player's own BEST line vanished with it. */
@@ -9643,6 +9702,10 @@ function syncKeysLabel(){
   const b = document.getElementById('o-keys');
   if (b) b.textContent = KEYS_LAYOUT === 'arrows' ? 'ARROWS (LEFT-HANDED)' : 'WASD';
 }
+function syncHoldLabel(){
+  const b = document.getElementById('o-hold');
+  if (b){ b.textContent = HOLD_LATCH ? 'TOGGLE' : 'HOLD'; b.setAttribute('aria-pressed', String(HOLD_LATCH)); }
+}
 function syncInvLabel(){
   const b = document.getElementById('o-inv');
   if (b){ b.textContent = INVERT_Y ? 'ON' : 'OFF'; b.setAttribute('aria-pressed', String(INVERT_Y)); }
@@ -9685,7 +9748,7 @@ function syncOptionsUI(){
   const ls = document.getElementById('lab-sens');
   if (ls) ls.textContent = isTouch ? 'View-drag sensitivity' : 'Mouse sensitivity';
   syncLookLabel(); syncKeysLabel(); syncAimLabel(); syncInvLabel(); syncRadarLabel();
-  syncMusLabel(); syncRMLabel();
+  syncMusLabel(); syncRMLabel(); syncHoldLabel();
 }
 /* where BACK goes when the options screen was opened over something — set on
    every open, so it can never point at a screen the player has already left */
@@ -9755,6 +9818,17 @@ function act(a){
       A.musOn = !A.musOn; syncMusLabel(); saveSettings();
       toast(A.musOn ? 'MUSIC ON' : 'MUSIC OFF', 'cyan', 1400);
       break;
+    case 'togglehold': {
+      HOLD_LATCH = !HOLD_LATCH;
+      /* whatever was latched is let go on the way out, so switching back to
+         HOLD cannot leave the agent permanently crouched or sprinting */
+      for (const k in LATCHED) held[k] = false;
+      shifted.clear();
+      syncHoldLabel(); saveSettings();
+      toast(HOLD_LATCH ? 'AIM, CROUCH AND SPRINT TAP ON AND TAP OFF'
+                       : 'AIM, CROUCH AND SPRINT ARE HELD', 'cyan', 4200);
+      break;
+    }
     case 'togglekeys': {
       KEYS_LAYOUT = KEYS_LAYOUT === 'wasd' ? 'arrows' : 'wasd';
       applyLayout(); clearInput(); syncKeysLabel(); saveSettings();

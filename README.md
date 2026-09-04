@@ -195,6 +195,16 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.45
+
+Options gains **Aim / crouch / sprint · HOLD · TOGGLE**. On a keyboard these
+three have always been holds, which asks for two keys at once — aim and fire,
+crouch and walk, sprint and walk — so a player who can only ever have one key
+down lost three of the game's verbs: a tap-then-press measures P.aim 0.01
+where an aimed shot needs 0.5, P.crouch 0.00, P.speed 1.00. The touch build
+has latched AIM and CRCH since v1.20; this is the same offer to a keyboard.
+HOLD stays the default. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.44
 
 A player brought a 16000-dpi mouse with side buttons. Two things broke. The
