@@ -5398,6 +5398,7 @@ function selfTestBody(runSim){
 
   }
 
+  if (runSim){   // loads a level: only where nothing is in progress
   /* ---- the CFO stops a round and says so; the crate gives what fits ---- */
   { const st0 = G.state, sel0 = selLevel, d0 = G.diff, px0 = P.x, py0 = P.y;
     const li = LEVELS.findIndex(L => L.objectives.some(o => o.kind === 'npc'));
@@ -5422,6 +5423,8 @@ function selfTestBody(runSim){
     ok('crate: one that would give a round stays on the floor; one that gives names the amount',
        left && P.ammo.smg === 260 && /KB-KLOBB \+60/.test(named), 'left '+left+' smg '+P.ammo.smg+' toast "'+named+'"');
     clearToasts(); P.has = has0; P.ammo = am0; P.x = px0; P.y = py0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
+  }
 
   /* ---- the crosshair gap follows the zoom; health has a number ---- */
   { const a0 = P.aim, r0 = P.recoil, hp0 = P.hp; P.recoil = 0;
