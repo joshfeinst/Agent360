@@ -481,7 +481,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.35';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.36';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -2443,6 +2443,13 @@ const BOSSTUNE = {
 const MISSION_BANNER_MS = 3200;
 const SPAWN_GRACE = MISSION_BANNER_MS / 1000;
 const DOOR_R2 = 2.6, DOOR_R2_SECRET = 1.2;   // SQUARED: 1.61u and 1.10u of reach
+/* Once a secret is FOUND its disguise is spent, and the tight radius that kept
+   it hidden turns into a trap door: the caches behind them run up to 2.21u deep
+   (M03's far corner, measured against a .26 body), so a player standing in the
+   back of one fell outside the 1.10u hold and the wall slid shut on them. A
+   found secret holds on a 2.5u radius, which covers every cache in the game
+   with room to spare. SQUARED. */
+const DOOR_R2_FOUND = 6.25;                  // SQUARED: 2.50u
 const MOVE_DODGE = [.35, .30, .12];  // SECRET .30: part of the same cliff-softening pass as DIFFS[1]
 function aimPenalty(){
   return (1 - clamp(P.speed, 0, 1.6) * MOVE_DODGE[G.diff]) * (1 - P.crouch * .25);
@@ -3539,9 +3546,10 @@ function step(dt, scored){
   /* doors. A secret door holds its disguise until the player is nearly
      touching it — the normal radius would pop it open from the next aisle. */
   for (const d of G.doors){
-    /* SQUARED distances: the open radius is 1.61u, and a secret's 1.10u —
-       the literals read like distances and are not. */
-    let want = dist2(P.x,P.y,d.x,d.y) < (d.secret ? DOOR_R2_SECRET : DOOR_R2);
+    /* SQUARED distances: the open radius is 1.61u, an unfound secret's 1.10u
+       and a found secret's 2.50u — the literals read like distances and are not. */
+    let want = dist2(P.x,P.y,d.x,d.y) <
+      (!d.secret ? DOOR_R2 : d.found ? DOOR_R2_FOUND : DOOR_R2_SECRET);
     if (want && d.locked && P.keys<=0){
       want = false;
       if (G.doorNag <= 0){ G.doorNag = 3; sfx('denied'); toast('KEYCARD REQUIRED','red',2200); }
@@ -5361,6 +5369,61 @@ function selfTestBody(runSim){
     ok('doors: a locked door stays shut without the keycard and opens with it',
        !!d && !!spot && shut === 0 && opened > 0, 'without ' + shut + ' with ' + opened + (d ? '' : ' (no locked door)'));
     P.keys = 0; P.alive = al0; G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
+  /* ---- a found secret cache never shuts its wall on the agent inside ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, g0 = G.cheats.god, al0 = P.alive;
+    const R = .26, sw = R * .72;
+    /* every spot a .26 body can actually occupy — the corners it cannot reach
+       do not count, and the deepest one that it can is what the radius must hold */
+    const standable = (x, y) => !isSolid(x,y) &&
+      !isSolid(x+R,y) && !isSolid(x-R,y) && !isSolid(x,y+R) && !isSolid(x,y-R) &&
+      !isSolid(x+R,y-sw) && !isSolid(x+R,y+sw) && !isSolid(x-R,y-sw) && !isSolid(x-R,y+sw);
+    let tested = 0, worst = 0, shutAt = null, shutIn = null;
+    for (let li = 0; li < LEVELS.length && !shutAt; li++){
+      loadLevel(li, 1); G.state = 'play'; G.cheats.god = true; P.alive = true; G.deadT = 0; clearInput();
+      const W = G.W, H = G.H;
+      for (const d of G.doors){
+        if (!d.secret || shutAt) continue;
+        d.found = 1; d.open = 1; G.solid[d.c] = 0;
+        /* the pocket is whichever side of the door is the smaller room: the cache */
+        const flood = (sx, sy) => { const seen = new Uint8Array(W*H), q = [idx(sx,sy)];
+          if (G.solid[q[0]]) return [];
+          seen[q[0]] = 1; const cells = [[sx,sy]];
+          for (let i = 0; i < q.length; i++){ const c = q[i], x = c % W, y = (c - x) / W;
+            for (const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
+              if (nx<0||ny<0||nx>=W||ny>=H) continue; const n = idx(nx,ny);
+              if (seen[n] || G.solid[n] || n === d.c) continue;
+              seen[n] = 1; q.push(n); cells.push([nx,ny]); } }
+          return cells; };
+        let pocket = null;
+        for (const [sx,sy] of [[d.x|0,(d.y|0)+1],[d.x|0,(d.y|0)-1],[(d.x|0)+1,d.y|0],[(d.x|0)-1,d.y|0]]){
+          if (sx<0 || sy<0 || sx>=W || sy>=H) continue;
+          const c = flood(sx, sy);
+          if (c.length && (!pocket || c.length < pocket.length)) pocket = c; }
+        if (!pocket) continue;
+        for (const [cx,cy] of pocket){
+          /* stand in the deepest corner of the cell the body can hold */
+          let far = -1, at = null;
+          for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++){
+            const x = cx + i/8, y = cy + j/8;
+            if (!standable(x,y)) continue;
+            const dd = dist2(x, y, d.x, d.y);
+            if (dd > far){ far = dd; at = [x,y]; } }
+          if (!at) continue;
+          tested++; worst = Math.max(worst, Math.sqrt(far));
+          P.x = at[0]; P.y = at[1]; d.open = 1; G.solid[d.c] = 0;
+          for (let i = 0; i < 120 && !shutAt; i++){ step(1/60);
+            if (G.solid[d.c]){ shutAt = LEVELS[li].code + ' cell ' + cx + ',' + cy;
+              shutIn = Math.sqrt(dist2(P.x, P.y, d.x, d.y)).toFixed(2) + 'u'; } }
+        }
+      }
+    }
+    ok('doors: a found secret holds open from every cell of its own cache',
+       tested > 0 && !shutAt,
+       shutAt ? 'shut on the agent in ' + shutAt + ' at ' + shutIn
+              : tested + ' spots, deepest ' + worst.toFixed(2) + 'u of ' +
+                Math.sqrt(DOOR_R2_FOUND).toFixed(2) + 'u');
+    P.alive = al0; G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
   /* ---- what the copy promises is what the tables do ---- */
   { const st0 = G.state, sel0 = selLevel, d0 = G.diff;
