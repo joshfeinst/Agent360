@@ -400,18 +400,18 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
       <div class="grid2 panel">
         <!-- the same slider also scales a DRAG on the view, so on touch it is
              relabelled rather than left promising a mouse nobody has -->
-        <div class="ctl"><span id="lab-sens">Mouse sensitivity</span><span><input type="range" id="o-sens" min="15" max="220" value="70"> <b class="sv" id="v-sens">70</b></span></div>
-        <div class="ctl touch-only"><span>Touch look sensitivity</span><span><input type="range" id="o-tsens" min="30" max="220" value="100"> <b class="sv" id="v-tsens">100</b></span></div>
-        <div class="ctl no-touch"><span>Look mode</span><span><button class="btn ghost" id="o-look" data-act="cyclelook" style="padding:4px 9px;font-size:8px">CAPTURE</button></span></div>
-        <div class="ctl"><span>Invert Y axis</span><span><button class="btn ghost" id="o-inv" data-act="toggleinv" aria-pressed="false" style="padding:4px 9px;font-size:8px">OFF</button></span></div>
-        <div class="ctl"><span>Aim assist</span><span><button class="btn ghost" id="o-aim" data-act="cycleaim" style="padding:4px 9px;font-size:8px">SNAP + PULL</button></span></div>
-        <div class="ctl no-touch"><span>Movement keys</span><span><button class="btn ghost" id="o-keys" data-act="togglekeys" style="padding:4px 9px;font-size:8px">WASD</button></span></div>
-        <div class="ctl"><span>Corner radar</span><span><button class="btn ghost" id="o-radar" data-act="togglemap" aria-pressed="true" style="padding:4px 9px;font-size:8px">ON</button></span></div>
-        <div class="ctl"><span>Soundtrack</span><span><button class="btn ghost" id="o-muson" data-act="togglemus" aria-pressed="true" style="padding:4px 9px;font-size:8px">ON</button></span></div>
-        <div class="ctl"><span>Sound effects</span><span><input type="range" id="o-sfx" min="0" max="100" value="70"> <b class="sv" id="v-sfx">70%</b></span></div>
-        <div class="ctl"><span>Music</span><span><input type="range" id="o-mus" min="0" max="100" value="34"> <b class="sv" id="v-mus">34%</b></span></div>
-        <div class="ctl"><span>Scanlines</span><span><input type="range" id="o-scan" min="0" max="100" value="50"> <b class="sv" id="v-scan">50%</b></span></div>
-        <div class="ctl"><span>Reduce motion</span><span><button class="btn ghost" id="o-rm" data-act="togglerm" aria-pressed="false" style="padding:4px 9px;font-size:8px">OFF</button></span></div>
+        <div class="ctl"><span id="lab-sens">Mouse sensitivity</span><span><input type="range" id="o-sens" aria-label="Mouse sensitivity" min="15" max="220" value="70"> <b class="sv" id="v-sens">70</b></span></div>
+        <div class="ctl touch-only"><span>Touch look sensitivity</span><span><input type="range" id="o-tsens" aria-label="Touch look sensitivity" min="30" max="220" value="100"> <b class="sv" id="v-tsens">100</b></span></div>
+        <div class="ctl no-touch"><span>Look mode</span><span><button class="btn ghost" id="o-look" data-act="cyclelook" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">CAPTURE</button></span></div>
+        <div class="ctl"><span>Invert Y axis</span><span><button class="btn ghost" id="o-inv" data-act="toggleinv" aria-pressed="false" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">OFF</button></span></div>
+        <div class="ctl"><span>Aim assist</span><span><button class="btn ghost" id="o-aim" data-act="cycleaim" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">SNAP + PULL</button></span></div>
+        <div class="ctl no-touch"><span>Movement keys</span><span><button class="btn ghost" id="o-keys" data-act="togglekeys" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">WASD</button></span></div>
+        <div class="ctl"><span>Corner radar</span><span><button class="btn ghost" id="o-radar" data-act="togglemap" aria-pressed="true" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">ON</button></span></div>
+        <div class="ctl"><span>Soundtrack</span><span><button class="btn ghost" id="o-muson" data-act="togglemus" aria-pressed="true" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">ON</button></span></div>
+        <div class="ctl"><span>Sound effects</span><span><input type="range" id="o-sfx" aria-label="Sound effects volume" min="0" max="100" value="70"> <b class="sv" id="v-sfx">70%</b></span></div>
+        <div class="ctl"><span>Music</span><span><input type="range" id="o-mus" aria-label="Music volume" min="0" max="100" value="34"> <b class="sv" id="v-mus">34%</b></span></div>
+        <div class="ctl"><span>Scanlines</span><span><input type="range" id="o-scan" aria-label="Scanline strength" min="0" max="100" value="50"> <b class="sv" id="v-scan">50%</b></span></div>
+        <div class="ctl"><span>Reduce motion</span><span><button class="btn ghost" id="o-rm" data-act="togglerm" aria-pressed="false" style="padding:4px 9px;font-size:clamp(9px,1.15vh,11px)">OFF</button></span></div>
       </div>
       <div class="panel" style="width:min(760px,92vw);text-align:left">
         <div class="eyebrow" style="margin-bottom:8px">enemy face</div>
@@ -422,7 +422,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
                only route to the picker was a pointer. The input must stay a
                SIBLING — nested, its own synthetic click would re-match the
                delegated [data-act] handler and recurse. -->
-          <button class="btn ghost" data-act="facepick">CHOOSE PHOTO</button><input type="file" id="o-face" accept="image/*" hidden>
+          <button class="btn ghost" data-act="facepick">CHOOSE PHOTO</button><input type="file" id="o-face" aria-label="Choose a face photo" accept="image/*" hidden>
           <button class="btn ghost" data-act="facereset">RESET TO DEFAULT</button>
           <canvas id="facePrev" width="48" height="48" style="image-rendering:pixelated;width:48px;height:48px;border:1px solid var(--line)"></canvas>
         </div>
@@ -440,12 +440,13 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
       <div class="row"><button class="btn ghost" data-act="back">◀ BACK</button></div>
     </div>
 
-    <div class="toastwrap" id="toasts"></div>
+    <!-- the toasts are the game's spoken word too: a screen reader hears each one once -->
+    <div class="toastwrap" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
 
     <!-- TOUCH -->
     <div id="touch">
-      <div class="tpad" id="tstick"><div class="nub" id="tnub"></div></div>
-      <div class="tpad" id="tlook" aria-label="Look"><div class="nub" id="tlooknub"></div></div>
+      <div class="tpad" id="tstick" role="button" aria-label="Move"><div class="nub" id="tnub" aria-hidden="true"></div></div>
+      <div class="tpad" id="tlook" role="button" aria-label="Look"><div class="nub" id="tlooknub" aria-hidden="true"></div></div>
       <div class="tbtn" id="tfire">FIRE</div>
       <div class="tbtn" id="tuse">USE</div>
       <div class="tbtn" id="tswap">GUN</div>
@@ -469,7 +470,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.32';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.33';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -2424,7 +2425,12 @@ const BOSSTUNE = {
 /* Hostile aim tracks a MOVING agent imperfectly, GoldenEye-style: sprinting
    and crouching are real evasion, and lower clearances track worst. P.speed is
    1 at a walk, 1.48 at a sprint. */
-const SPAWN_GRACE = 2.5;             // seconds before any hostile fires: the banner's time
+/* No hostile fires while the mission banner is up. The two were separate
+   numbers — 2.5s of grace under a 3.2s banner — and on M03 a phish with a
+   line to the spawn used the 0.7s difference to land a hit the player could
+   not read yet. One constant, so they cannot drift apart again. */
+const MISSION_BANNER_MS = 3200;
+const SPAWN_GRACE = MISSION_BANNER_MS / 1000;
 const MOVE_DODGE = [.35, .30, .12];  // SECRET .30: part of the same cliff-softening pass as DIFFS[1]
 function aimPenalty(){
   return (1 - clamp(P.speed, 0, 1.6) * MOVE_DODGE[G.diff]) * (1 - P.crouch * .25);
@@ -4830,7 +4836,7 @@ function startMission(gesture){
       if (fs && fs.then) fs.then(ori, ori); else ori();
     } catch(_){}
   }
-  toast('MISSION '+G.L.code+' — '+G.L.name, 'gold', 3200);
+  toast('MISSION '+G.L.code+' — '+G.L.name, 'gold', MISSION_BANNER_MS);
 }
 /* M05 checkpoint: dying past shield-down restarts AT the duel, not at the
    door. Same setup the scripted playtest applies — consoles done, shield off,
@@ -5325,8 +5331,14 @@ function selfTestBody(runSim){
     const inGrace = shots;
     for (let i = 0; i < 8*60; i++) step(1/60);
     hitscan = h0;
-    ok('spawn: no hostile fires during the banner\'s grace, and they do after it',
+    ok('spawn: no hostile fires while the mission banner is up, and they do after it',
        inGrace === 0 && shots > 0, 'in the first '+SPAWN_GRACE+'s '+inGrace+' rounds, in the next 8s '+shots);
+    /* ...and the grace IS the banner: two numbers drifted apart once, and the
+       0.7s between them was a hit the player could not read yet */
+    ok('spawn: the grace lasts exactly as long as the banner it exists for',
+       Math.abs(SPAWN_GRACE*1000 - MISSION_BANNER_MS) < 1e-9 &&
+       new RegExp("toast\\('MISSION '\\+G\\.L\\.code\\+' — '\\+G\\.L\\.name, 'gold', MISSION_BANNER_MS\\)").test(startMission.toString()),
+       SPAWN_GRACE+'s grace, '+MISSION_BANNER_MS+'ms banner');
     G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; clearInput(); }
 
   /* ---- the chevron never points through a locked door ---- */
@@ -7331,6 +7343,32 @@ function selfTestBody(runSim){
           ok('watch: ...and Shift+Tab from RESUME lands on the last button, still paused', back,
              'focus '+(document.activeElement.textContent||document.activeElement.tagName).trim().slice(0,8)+' state '+G.state);
           resume(false); clearInput(); }
+
+        /* every control says what it is: five Options sliders and the photo
+           input announced as a bare "slider" with no idea what they moved */
+        { const nameOf = el => (el.getAttribute('aria-label') || el.getAttribute('title') ||
+            (el.labels && el.labels[0] && el.labels[0].textContent) || el.textContent || '').replace(/\s+/g,' ').trim();
+          const nameless = [];
+          for (const id of SCREENS){
+            const sc = document.getElementById(id); if (!sc) continue;
+            show(id);
+            for (const el of sc.querySelectorAll('button, input, [role="button"]')){
+              if (el.closest('[aria-hidden="true"]')) continue;
+              const n = nameOf(el);
+              if (!n || !/[a-z0-9]/i.test(n)) nameless.push(id+' '+(el.id || el.className || el.tagName));
+            }
+          }
+          for (const el of document.querySelectorAll('#touch [role="button"], #touch button')){
+            const n = nameOf(el); if (!n || !/[a-z0-9]/i.test(n)) nameless.push('#touch '+(el.id||el.className));
+          }
+          ok('a11y: every control on every screen has a name a reader can say',
+             nameless.length === 0, nameless.join(' | ') || SCREENS.length+' screens and the cluster');
+          /* ...and the toasts are announced: they are how the game speaks */
+          const tw = document.getElementById('toasts');
+          ok('a11y: mission events are announced once, through the toast column',
+             tw.getAttribute('aria-live') === 'polite' && tw.getAttribute('role') === 'status' && tw.getAttribute('aria-atomic') === 'false',
+             'role '+tw.getAttribute('role')+' live '+tw.getAttribute('aria-live')+' atomic '+tw.getAttribute('aria-atomic'));
+          G.state = 'play'; show(null); }
 
         /* every screen seeds focus on itself, so the first Tab reaches its
            first control; the canvas is out of the tab order so it can never

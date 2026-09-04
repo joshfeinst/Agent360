@@ -195,6 +195,18 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.33
+
+The mission banner promises you a moment to read it, and v1.32's grace was
+seven tenths of a second shorter than the banner itself — long enough for a
+phish on M03 to shoot you under it. The two are one constant now. A screen
+reader met six sliders it could only call "slider", and heard nothing the
+game said out loud; the sliders are named and the toast column announces.
+The Options values were the smallest text you must read to know a setting,
+at a hardcoded 8px. Ledger, including the escape route, the objective orders
+and the reload accounting that were measured and left alone:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.32
 
 A level auditor, a gun nut, a streamer at 1080p, a kid mashing a phone, a
@@ -291,7 +303,7 @@ reported and did not survive:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **455 assertions** (447 in a touch
+- **F4** runs the in-game self-test suite — **458 assertions** (450 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the

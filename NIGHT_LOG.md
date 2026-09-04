@@ -319,9 +319,27 @@ only what a measurement proved. Every claim was re-run here first.
 
 ---
 
+# Night log — the grace, and the controls nobody could name
+
+The round that followed v1.32 was run by hand: four scripted reviewers were
+cut off mid-session by a rate limit and their relaunches never started, so
+their harnesses — which they had left working on disk — were driven from here
+instead. Two of them had already been harvested for v1.32; this is what the
+re-runs and the unfinished ground turned up.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · The grace IS the banner** | `MISSION_BANNER_MS` is one constant: the banner's toast reads it, and `SPAWN_GRACE` is it in seconds | v1.32 gave 2.5 seconds of grace under a **3.2-second banner**, and its comment claimed the two matched. The auditor's re-run found M03 still landing a hit "under the banner" — in the 0.7 seconds between them. Standing still on the spawn through the banner across all fifteen pairs now takes **no hits at all** | An assertion reads both numbers and the toast call itself, so the pair cannot drift again. Mutation-verified: `2.5s grace, 3200ms banner` |
+| **2 · Every control says what it is** | `aria-label` on the five Options sliders and the photo input; the move pad gets a name and both nubs are marked decorative | A reader announced "slider" six times over with no idea what any of them moved — mouse sensitivity, touch sensitivity, effects, music, scanlines, the face upload | An assertion walks every screen and the cluster and fails naming any control whose accessible name has no letters in it. Mutation-verified: `s-options o-sfx` |
+| **3 · The game speaks its events** | The toast column is `role="status" aria-live="polite" aria-atomic="false"` | Nothing the game said out loud — objective complete, keycard acquired, thermal shutdown — reached a screen reader at all | Mutation-verified: `role null live null` |
+| **4 · The smallest text you must read** | The Options row values (CAPTURE, SNAP + PULL, WASD, ON/OFF) were a hardcoded 8px; they now scale like every other control | They were the smallest text on any screen a player must read to know what a setting is; the rest of the UI has scaled with the viewport since v1.10 | The visual sweep and the phone walkthrough stay green |
+| **What did not survive** | Measured, not changed | **The M05 escape is comfortable**: the worst arena cell is 53 grid steps from the exit — 22.6s walking, 15.2s sprinting — against a 35-second fuse on 00 AGENT, with no unreachable cell. **Every objective order completes** on all fifteen pairs; the one exception, killing the rack before the consoles, is the shield doing its job and the HUD says so. **A cancelled reload is exact**: interrupted at every tenth of its duration, by a weapon switch, by death and by the mission ending, the magazine and reserve always sum to what they were. **Crouching does not tighten the spread** — still true, still claimed by nothing. **The balance held** after the grace landed: the playtest bot wins 29 of 30 on AGENT against the documented 93%, and 0 of 20 on SECRET AGENT, the tuned wall. The eyebrow captions and the version stamp remain 8px, and nothing in play depends on reading them |
+
+---
+
 ## Standing numbers
 
-- **Self-tests:** 455 desktop / 447 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 458 desktop / 450 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -336,5 +354,5 @@ only what a measurement proved. Every claim was re-run here first.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.32'` (index.html) ↔ `agent360-v1.32`
+- **Versions:** game `VERSION = '1.33'` (index.html) ↔ `agent360-v1.33`
   (sw.js CACHE), enforced by verify.js
