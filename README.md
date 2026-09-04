@@ -195,6 +195,18 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.42
+
+A player drove the whole game through the accessibility tree with Tab, Enter,
+Space and the arrows. Two things broke. Tabbing the Options panel announced
+"CAPTURE, OFF, SNAP + PULL, WASD, ON, ON, OFF" — two buttons named exactly ON,
+two exactly OFF, and nothing saying which setting any of them was; each control
+now answers to its own row's label. And every menu toast was raised outside the
+dialog that was open, which `aria-modal` tells a screen reader not to render —
+including the warning that your save could not be read. There is now one live
+region, and it travels into whichever screen is open.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.41
 
 v1.40 taught the CONTROLS card to name the keys on the player's own keyboard

@@ -460,11 +460,23 @@ same lie standing in the one place it costs most.
 | **1 · The interact prompt names the key this keyboard prints** | `usePrompt(t)` builds the prompt through `keyName('KeyF')`, from the layout map the card already uses | The green band that appears when you stand at a terminal — the prompt that teaches the whole hack — said **HOLD F** on every keyboard on earth. The game binds the physical key, so on a Dvorak board that key prints **U** and the band was pointing two rows away from the key that does it. After v1.40 the two even disagreed with each other: measured live on a Dvorak layout, the CONTROLS card said `U` while the prompt said `HOLD F`. It is now `HOLD U 1.9s — DEPLOY AGENT`, and where the browser will not name the layout it stays `HOLD F`, as the card does | The prompt became a value rather than a drawing — `objLine()` is in the file for the same reason — so the suite reads it: `QWERTY "HOLD F 1.9s" · Dvorak "HOLD U 1.9s" · no layout "HOLD F 1.9s"`. Mutation-verified, and confirmed end to end in a browser with a live Dvorak `navigator.keyboard`, standing at M01's terminal with the band actually up |
 | **What did not survive** | Measured, not changed | **The duel bot loses at SECRET AGENT and above — and always has.** 28/30 wins on AGENT against 0/30 on both harder rungs looked like a balance cliff until the v1.32 log was checked: `0/20` at diff 1 then too. It is a property of that deliberately imperfect instrument, not a regression, and the objective bot still wins M05 on SECRET. Damage taken roughly doubles across the rung (≈100 → ≈200), which is the difficulty table doing exactly what it says. **No other in-mission text names a layout-dependent key**: every remaining prompt uses Esc, Enter, Tab or the touch button names |
 
+# Night log — the reader hears the settings, and hears them from inside the room
+
+The screen-reader player drove the whole game through Chromium's real
+accessibility tree with nothing but Tab, Enter, Space and the arrows. Most of
+what v1.35 built held up. Two things did not.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · Every settings control says which setting it is** | `nameRowControls()` wires each `.ctl` row's control to its own row label with `aria-labelledby`, generically, so a row added later is named too | A settings row puts its label in one span and its control in the next, so the control's accessible name was only ever its own STATE. Tabbing Options announced **"CAPTURE, OFF, SNAP + PULL, WASD, ON, ON, OFF"** — two buttons named exactly `ON`, two exactly `OFF`, and nothing to say which setting any of them was. v1.35 gave the five sliders `aria-label`s by hand and the seven rows with buttons were left behind. They now read `Corner radar ON`, `Reduce motion OFF`, `Look mode CAPTURE`, and the name re-resolves as the state changes | The existing name guard passed this because it accepted `textContent`, and `"ON"` is not empty — so it also learned to resolve `aria-labelledby` the way a reader does, and gained a second assertion: a name that says only `ON`/`OFF`, or that repeats another name on the same screen, is not a name. Mutation-verified: `s-options "OFF" says only its state` ×4. Confirmed against the real AX tree over CDP |
+| **2 · The game speaks from inside the room it has opened** | One live region, `#say`, and `show()` carries it into whichever screen is open; the toast column is now the picture only | `aria-modal="true"` tells an assistive technology to render **nothing** outside the open dialog. The live region was a sibling of every screen, so every menu toast was raised where nothing was listening — `RADAR OFF`, the look-mode confirmations, and worst, `SAVED PROGRESS COULD NOT BE READ — STARTING FRESH`, which `bootDone()` raises on the line straight after `show('s-title')`, and `COULD NOT SAVE — THIS RESULT WILL NOT BE KEPT` from any Options toggle. Measured: `{"text":["SAVED PROGRESS COULD NOT BE READ…"],"openScreen":"s-title","modal":"true","inside":false}` | An assertion walks every screen and requires exactly one live region, always inside the open one. Mutation-verified: `outside: s-boot → say | s-title → say | s-select → say`. The first attempt appended it as the LAST child and un-pinned RESUME on the watch — the pinned-row assertion from v1.35 caught that on the first run, so it goes in first; nothing selects a screen's first child. `visual.js` learned that `.sr-only` is deliberately one clipped pixel and is not audited for visibility |
+| **What the reader cleared** | Measured, not changed | **Cold load to a running mission in 12 keystrokes**, keyboard only; M03/00 via the briefing in 23. Every screen opens with focus on its own dialog so the first Tab reaches the first control. **The watch's focus trap is real and bidirectional.** Hidden screens are genuinely hidden — the title tree is 11 nodes, not five menus at once — and the canvas is out of the tab order. Clearance rows carry `aria-pressed` and flip on Space; sliders expose min/max/value and move with the arrows. The cheat menu was already the model the Options rows now follow. Briefing and debrief read as coherent documents, not a soup of unlabelled pairs |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 476 desktop / 467 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 478 desktop / 469 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -479,5 +491,5 @@ same lie standing in the one place it costs most.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.41'` (index.html) ↔ `agent360-v1.41`
+- **Versions:** game `VERSION = '1.42'` (index.html) ↔ `agent360-v1.42`
   (sw.js CACHE), enforced by verify.js

@@ -240,6 +240,9 @@ body.touch .touch-only, body.hybrid .touch-only{display:grid}
 body.touch p.touch-only, body.hybrid p.touch-only{display:block}
 body.touch .no-touch{display:none}
 body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
+/* off the picture, still in the accessibility tree — display:none would take
+   it out of the tree and silence it */
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 .screen:focus{outline:none}
 @media (pointer:coarse){ .mi,.btn{min-height:44px} }
 .toastwrap{position:absolute; left:0; right:0; top:17%; display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none}
@@ -453,8 +456,16 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
       <div class="row"><button class="btn ghost" data-act="back">◀ BACK</button></div>
     </div>
 
-    <!-- the toasts are the game's spoken word too: a screen reader hears each one once -->
-    <div class="toastwrap" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+    <!-- The toast column is the picture; #say is the same words for a reader.
+         They are separate because a live region has to be INSIDE the dialog
+         that is open: aria-modal="true" tells an assistive technology to
+         render nothing outside the open dialog, and this column is a sibling
+         of every screen, so a menu toast — SAVED PROGRESS COULD NOT BE READ
+         among them — was raised where nothing was listening. show() carries
+         #say into whichever screen is open, and there is exactly one live
+         region in the file so nothing is ever announced twice. -->
+    <div class="toastwrap" id="toasts" aria-hidden="true"></div>
+    <div id="say" class="sr-only" role="status" aria-live="polite" aria-atomic="false"></div>
 
     <!-- TOUCH -->
     <div id="touch">
@@ -483,7 +494,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.41';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.42';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -4776,13 +4787,37 @@ function toast(text, kind, ms){
   while (wrap.children.length > ((isTouch || TOUCH_SEEN) ? 3 : 6)) wrap.firstChild.remove();
   setTimeout(()=>{ d.style.transition='opacity .35s'; d.style.opacity='0';
     setTimeout(()=>d.remove(), 400); }, ms||2400);
+  say(text, ms);
 }
-function clearToasts(){ const w=document.getElementById('toasts'); if(w) w.textContent=''; }
+/* the same words into the one live region, wherever show() has parked it */
+function say(text, ms){
+  const w = document.getElementById('say'); if (!w) return;
+  const line = document.createElement('div');
+  line.textContent = text;
+  w.appendChild(line);
+  while (w.children.length > 6) w.firstChild.remove();
+  setTimeout(() => line.remove(), (ms || 2400) + 400);
+}
+function clearToasts(){
+  for (const id of ['toasts','say']){ const w = document.getElementById(id); if (w) w.textContent=''; }
+}
 
 /* ------------------------------- screens ------------------------------- */
 const SCREENS = ['s-boot','s-title','s-select','s-brief','s-pause','s-result','s-controls','s-options','s-cheats'];
 function show(id){
   G.screenId = id;
+  /* Carry the live region into the dialog that is about to open. A polite
+     region left outside an aria-modal dialog is a region an assistive
+     technology is told not to render — which is where every menu toast used
+     to be raised, the corrupt-save warning included, on the very next line
+     after show('s-title').
+     It goes in FIRST, never last: the pinned action row is selected as
+     `.row:last-child`, and parking this after it un-pinned RESUME on the
+     watch and ACCEPT on the briefing — the suite caught that on the first
+     run. Nothing selects a screen's first child. */
+  { const sayEl = document.getElementById('say');
+    const host = (id && document.getElementById(id)) || document.getElementById('frame');
+    if (sayEl && host && sayEl.parentNode !== host) host.insertBefore(sayEl, host.firstChild); }
   /* Every screen opens at its own top. A phone scrollport keeps the offset the
      last flick left, so the second pause opened 162px down — title, stats and
      the first objectives already off the top. */
@@ -4920,6 +4955,30 @@ function gotoBrief(){
    Safari do not implement it yet) the card says the same thing. Where it will
    not, the US glyphs stand and the line above the table says the binding is
    positional, which is the part a player actually needs to know. */
+/* A settings row puts its label in one span and its control in the next, so
+   the control's accessible name was only ever its own STATE: tabbing the
+   Options panel announced "CAPTURE, OFF, SNAP + PULL, WASD, ON, ON, OFF" —
+   two buttons named exactly ON, two exactly OFF, and nothing saying which
+   setting any of them was. v1.35 gave the sliders aria-labels by hand and the
+   rows with buttons were left behind. Wire each control to its own row label
+   instead of naming them one at a time, so a row added later is named too.
+   The control's own id goes SECOND, so the name reads "Corner radar ON" and
+   re-resolves as the state changes. */
+function nameRowControls(){
+  let n = 0, named = 0;
+  for (const row of document.querySelectorAll('.ctl')){
+    const lab = row.children[0], ctl = row.querySelector('button, input, [role="button"]');
+    if (!lab || !ctl) continue;                                    // the manual's rows have no controls
+    if (ctl.getAttribute('aria-label') || ctl.getAttribute('aria-labelledby')) continue;
+    if (!(lab.textContent || '').trim()) continue;
+    n++;
+    if (!lab.id) lab.id = 'ctllab-' + n;
+    if (!ctl.id) ctl.id = 'ctlctl-' + n;
+    ctl.setAttribute('aria-labelledby', lab.id + ' ' + ctl.id);
+    named++;
+  }
+  return named;
+}
 function relabelKeys(){
   const kb = navigator.keyboard;
   if (!kb || !kb.getLayoutMap) return;
@@ -7876,7 +7935,14 @@ function selfTestBody(runSim){
 
         /* every control says what it is: five Options sliders and the photo
            input announced as a bare "slider" with no idea what they moved */
-        { const nameOf = el => (el.getAttribute('aria-label') || el.getAttribute('title') ||
+        { /* the order a reader resolves a name in: aria-labelledby wins over
+             aria-label, and both over the element's own text. Without the
+             labelledby leg this test reads a settings button as "OFF" and
+             calls that a name. */
+          const byIds = el => { const ids = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean);
+            if (!ids.length) return '';
+            return ids.map(i => { const t = document.getElementById(i); return t ? t.textContent : ''; }).join(' '); };
+          const nameOf = el => (byIds(el) || el.getAttribute('aria-label') || el.getAttribute('title') ||
             (el.labels && el.labels[0] && el.labels[0].textContent) || el.textContent || '').replace(/\s+/g,' ').trim();
           const nameless = [];
           for (const id of SCREENS){
@@ -7893,11 +7959,54 @@ function selfTestBody(runSim){
           }
           ok('a11y: every control on every screen has a name a reader can say',
              nameless.length === 0, nameless.join(' | ') || SCREENS.length+' screens and the cluster');
+          /* ...and a name that says only what the control's STATE is names
+             nothing. Tabbing Options announced "CAPTURE, OFF, SNAP + PULL,
+             WASD, ON, ON, OFF": two buttons called exactly ON, two exactly
+             OFF, and no way to tell which setting any of them was. A name
+             that repeats another on the same screen fails for the same
+             reason — a reader hearing it twice learns nothing either time. */
+          { const clash = [];
+            for (const id of SCREENS){
+              const sc = document.getElementById(id); if (!sc) continue;
+              show(id);
+              const seen = new Map();
+              for (const el of sc.querySelectorAll('button, input, [role="button"]')){
+                if (el.closest('[aria-hidden="true"]')) continue;
+                if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') continue;
+                const n = nameOf(el).toUpperCase();
+                if (!n) continue;
+                if (/^(ON|OFF|YES|NO)$/.test(n)) clash.push(id+' "'+n+'" says only its state');
+                else if (seen.has(n)) clash.push(id+' "'+n+'" twice');
+                else seen.set(n, el);
+              }
+            }
+            ok('a11y: ...and no control is named only by its own state, or twice on one screen',
+               clash.length === 0, clash.slice(0,4).join(' | ') || 'every name says which control it is'); }
           /* ...and the toasts are announced: they are how the game speaks */
-          const tw = document.getElementById('toasts');
+          const tw = document.getElementById('say');
           ok('a11y: mission events are announced once, through the toast column',
              tw.getAttribute('aria-live') === 'polite' && tw.getAttribute('role') === 'status' && tw.getAttribute('aria-atomic') === 'false',
              'role '+tw.getAttribute('role')+' live '+tw.getAttribute('aria-live')+' atomic '+tw.getAttribute('aria-atomic'));
+          /* ...from INSIDE whatever dialog is open, and from exactly one place.
+             aria-modal="true" tells an assistive technology to render nothing
+             outside the open dialog, and the live region was a sibling of every
+             screen — so a menu toast was raised where nothing was listening,
+             the corrupt-save warning among them, on the line after show(). */
+          { const live = () => [...document.querySelectorAll('[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"]')]
+              .filter(el => !el.closest('[aria-hidden="true"]'));
+            const outside = [];
+            const n = live().length;
+            for (const id of SCREENS){
+              const sc = document.getElementById(id); if (!sc) continue;
+              show(id);
+              for (const r of live()) if (!sc.contains(r)) outside.push(id+' → '+(r.id || r.className));
+            }
+            show(null);
+            const loose = live().filter(r => !document.getElementById('frame').contains(r));
+            ok('a11y: ...and it speaks from inside the dialog that is open, from one place only',
+               n === 1 && outside.length === 0 && loose.length === 0,
+               n + ' live region' + (n === 1 ? '' : 's') +
+               (outside.length ? ' · outside: ' + outside.slice(0,3).join(' | ') : ' · inside every screen')); }
           G.state = 'play'; show(null); }
 
         /* every screen seeds focus on itself, so the first Tab reaches its
@@ -9663,6 +9772,7 @@ function boot(){
   loadLevel(0, G.diff);                 // level 1 doubles as the menu backdrop
   P.x = 3.5; P.y = 2.5;
   resolveLook(); syncOptionsUI();
+  nameRowControls();                    // a settings row's control answers to its row's name
   relabelKeys();                        // name the keys the player's own board prints
   selfTest(false);                      // fail loudly if a level is unwinnable
   /* the suite exercises act('togglemus') twice, and each call toasts — without

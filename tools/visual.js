@@ -50,6 +50,11 @@ async function launch(){ try { return await chromium.launch(); } catch(e){
         return { left:x0, top:y0, right:x1, bottom:y1, w:x1-x0, h:y1-y0 };
       };
       for (const el of document.querySelectorAll('.screen *, .toastwrap *')){
+        /* .sr-only is the live region the game speaks through: it is deliberately
+           one clipped pixel so a reader hears it and the picture never shows it.
+           Auditing it for visibility would be auditing it for the opposite of
+           its job. Nothing else in the file carries the class. */
+        if (el.closest('.sr-only')) continue;
         const own = [...el.childNodes].filter(n => n.nodeType === 3)
                       .map(n => n.textContent.trim()).join('');
         if (own.length < 2) continue;
