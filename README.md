@@ -195,6 +195,19 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.44
+
+A player brought a 16000-dpi mouse with side buttons. Two things broke. The
+captured look path dropped any single event past 3000 raw counts instead of
+clamping it, so the fastest flick turned you least — 2999 counts turned 1.2449
+rad and 3001 turned exactly nothing — and since Chrome coalesces mousemove to
+the frame, one hitched frame arrives as a single event of thousands. The bound
+is now half a turn, in radians, so it scales with the sensitivity. And the
+thumb button, which every mouse maps to browser BACK, was swallowed whole by
+the pointer lock during play — so the first press that ever landed was the one
+on the field watch, where BACK ends the run.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.43
 
 The game had been audited for colour and never for sound. A player with the

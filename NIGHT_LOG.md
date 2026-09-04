@@ -489,11 +489,25 @@ the only notice of their event.
 | **4 · "Every action has a right-hand mirror" is true now** | `Backslash` mirrors aim, beside the `[ ]` the weapon mirror already uses; the card names the one real exception | The card promised a right-hand mirror for **every** action so the mouse can be driven with either hand. **Aim had none, in either layout** — `Z` only — so a player who cannot reach the far left lost the verb outright. Pause is `Tab`/`Esc`, which belong to neither hand, and strafing is right-handed only once Movement keys is set to ARROWS. The sentence now says exactly that | An assertion sweeps every action in both layouts against the right-hand half of the board: `12 actions mirrored · left/right only under the ARROWS layout`. Mutation-verified — dropping the binding fails three assertions at once, including the one that presses every key the manual advertises: `Aim mode (zoom) → Backslash` |
 | **What the audit cleared** | Measured, not changed | **29 of 31 sounds already had a picture in the same frame**: every shot against the magazine count, every hit against the crosshair marker and the directional pain arc, hurt against the HP number, pickups and objectives against toasts, the hack against its 1.9s ring, the boss and meltdown against their plates, footsteps and off-screen gunfire against moving radar blips — of 26 sound frames where the view changed nothing, **not one had a still radar**. The Options route to silence works and sticks: seven shots fired with not one audio source started, saved and surviving a reload. Baseline noise: **825 of 850 frozen frames changed 0 pixels**, so a cue is unmissable when it exists |
 
+# Night log — too much mouse
+
+The last player of the round brought hardware nobody had brought before: a
+16000-dpi mouse with side buttons and a free-spinning wheel. The wheel, both
+buttons at once, every release order, and the accumulation of sixteen events
+inside one frame all came back clean. The two things that did not were the two
+that hardware makes reachable and a trackpad never does.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · The fastest flick no longer turns you least** | A captured event is clamped to **half a turn** (`JUMP_RAD`), a bound in radians that scales itself with the sensitivity — not dropped past a raw count | The guard was `if (Math.abs(dx) > 3000) return` — a **drop**, not a clamp, sized in its own comment for "a 125 Hz mouse … ~750 counts per event". Measured, `movementX 2999` turned **−1.2449 rad** and `movementX 3001` turned **exactly 0.0000**: a cliff, and the handler's own comment two lines above promises "no clamps, no rate caps … a fast flick is a fast flick, not a fault". Two things make it reachable rather than theoretical. Chrome **coalesces** mousemove to the frame, so one hitched frame arrives as a single event of thousands — measured `[2180, 1200, 4000]`, and the turn matched the drop-the-big-one model exactly, so the 4000 was thrown away whole. And a raw count is not a distance: 3000 counts is 1.6× a 180° turn at default sensitivity but only **62°** at the floor, which is the setting a 16000-dpi player uses — 0.19 inch of hand travel | The cap is now **1870 counts at default sensitivity and 8727 at the floor**, which is exactly the 180° turn the player measured at each. An assertion flicks under the cap, forty times over it, and again at the floor: `under the cap 2.827 rad · 40x over 3.142 · at the sensitivity floor 3.142`. Mutation-verified at `40x over 0.000`. The older assertion that asserted the *dropping* was rewritten, not deleted — it now measures the clamp |
+| **2 · The thumb button gets the two steps it is promised** | Button 3 under a captured pointer opens the field watch and re-arms, and owns its own popstate so the press is answered once | v1.31 made BACK open the watch rather than leave the page, and almost every mouse maps buttons 3 and 4 to browser BACK and FORWARD, which players press by reflex from every other app. But **a captured pointer swallows the browser's navigation**: measured in play, `{state:"play", locked:true, pop:0}` — no popstate, so the run-saving branch never ran. The first press that landed was the one on the **watch**, where BACK means go home: `pause → title`, the run gone to an unlabelled button under the thumb, with ABORT TO MENU one row away. In free look the same button behaved correctly, which is what proves the lock is the cause | An assertion presses the button in play and requires the watch, then fires the popstate the browser may or may not also send and requires the watch to survive it, then a second deliberate press for the title: `first press pause rearmed true · its own popstate pause · second press title`. Mutation-verified at `first press play` |
+| **What the hardware cleared** | Measured, not changed | **Both buttons in every release order**, side buttons pressed mid-chord, ~180 presses: no stuck fire, no stuck aim, no stray shot. **The free-spinning wheel**: one hardware notch is one weapon in both directions, `deltaMode 1` is one step, `deltaY 4000` is one step, a 40-notch spin steps per notch and caps at a full cycle per frame — no faster switching than intended. **Sixteen events inside one frame sum exactly**, to four decimal places, and the captured path is frame-rate independent and linear across the whole sensitivity range. **Middle click** is prevented, with no autoscroll. **A real BACK navigation** still goes play → watch → title → leaves, exactly as documented |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 480 desktop / 470 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 482 desktop / 472 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -508,5 +522,5 @@ the only notice of their event.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.43'` (index.html) ↔ `agent360-v1.43`
+- **Versions:** game `VERSION = '1.44'` (index.html) ↔ `agent360-v1.44`
   (sw.js CACHE), enforced by verify.js

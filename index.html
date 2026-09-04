@@ -495,7 +495,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.43';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.44';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -571,8 +571,20 @@ const DRAG_MUL = 1.6;             // dragging covers less ground, so it needs mo
    lockout, so the swap-and-shoot reflex — flick the wheel or hit E, pull the
    trigger in the same movement — ate the shot silently at every frame rate. */
 const FIRE_BUFFER_MS = 200;
-const JUMP_PX  = 3000;            // one captured event past this is a browser glitch, not a hand
-                                  // (a 125 Hz mouse flick is ~750 raw counts per event)
+/* One captured event is worth at most a HALF TURN. This used to be a raw count
+   — 3000, sized in its comment for "a 125 Hz mouse … ~750 counts per event" —
+   and an event past it was DROPPED, not clamped, so the fastest flick turned
+   you least: measured, movementX 2999 turned -1.2449 rad and movementX 3001
+   turned exactly 0.0000. Two things made that reachable rather than
+   theoretical. Chrome COALESCES mousemove to the frame, so one hitched frame
+   arrives as a single event of thousands (measured: [2180, 1200, 4000], and
+   the 4000 was thrown away whole). And a raw count is not a distance: 3000
+   counts is 1.6x a 180-degree turn at default sensitivity but only 62 degrees
+   at the floor, which is the setting a 16000-dpi player uses — 0.19 inch of
+   hand travel. A bound in RADIANS scales itself with the sensitivity, and
+   clamping costs a glitch a bounded turn instead of costing a flick the whole
+   of one. */
+const JUMP_RAD = Math.PI;         // per captured event, before sensitivity
 const MAX_EVENT_PX = 60;          // UNLOCKED deltas only: window re-entry can jump
 const MAX_FRAME_PX = 130;         // UNLOCKED deltas only: one frame of banked-up events
 const MOVE_STALE_MS = 130;        // free look: no events recently => the reticle is idle
@@ -798,6 +810,18 @@ document.addEventListener('mousedown', e => {
   if (touchGhost(e)) return;
   e.preventDefault(); view.focus();
   M.lx = e.clientX; M.ly = e.clientY;
+  /* The thumb button. Almost every mouse maps buttons 3 and 4 to browser BACK
+     and FORWARD, and players press them by reflex from every other app. BACK
+     is supposed to open the field watch and re-arm — that is what v1.31 wrote
+     the popstate handler for — but a captured pointer swallows the button
+     whole, so no popstate ever arrived and the branch never ran. The FIRST
+     press that landed was the one on the watch, where BACK means go home: an
+     unlabelled button under the thumb ended the run in one press, with ABORT
+     TO MENU sitting one row away. Answer it here so the two steps a player is
+     promised are the two steps they get. Unlocked, the real navigation still
+     does this correctly, so this must not double up. */
+  if (e.button === 3 && M.locked){ M.thumbBackAt = performance.now(); pause(); armBack(); return; }
+  if (e.button === 4) return;                 // FORWARD is not a game control
   if (e.button === 2){ M.aim = true; return; }
   if (e.button !== 0) return;
   /* The tap-or-drag record belongs to the LEFT button. It used to be reset by
@@ -858,7 +882,9 @@ addEventListener('mousemove', e => {
     if (M.justLocked > 0){ M.justLocked--; return; }   // first event after lock can be a jump
     dx = e.movementX; dy = e.movementY;
     if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
-    if (Math.abs(dx) > JUMP_PX || Math.abs(dy) > JUMP_PX) return;
+    const lim = JUMP_RAD / Math.max(1e-6, LOOK_PX * M.sens);
+    if (Math.abs(dx) > lim || Math.abs(dy) > lim) M.clamped = (M.clamped || 0) + 1;
+    dx = clamp(dx, -lim, lim); dy = clamp(dy, -lim, lim);
     M.evt++;
     if (Math.abs(dx) > M.rawMax) M.rawMax = Math.abs(dx);
     M.dx += dx; M.dy += dy;
@@ -4817,7 +4843,8 @@ function drawHUD(horizon){
       'SOURCE  ' + (M.locked ? 'POINTER LOCK' + (M.raw ? ' (RAW)' : '') : 'CURSOR DELTAS'),
       'EVENTS  ' + M.evtF + '/frame    DPR ' + (window.devicePixelRatio||1).toFixed(2),
       'RAW MAX ' + Math.round(M.rawMaxF) + 'px/event' +
-                   (M.locked ? '  (glitch >' + JUMP_PX + ')' : '  (clamp ' + MAX_EVENT_PX + ')'),
+                   (M.locked ? '  (cap ' + Math.round(JUMP_RAD / Math.max(1e-6, LOOK_PX * M.sens)) +
+                                 ' px, clamped ' + (M.clamped || 0) + ')' : '  (clamp ' + MAX_EVENT_PX + ')'),
       'FRAME   ' + Math.round(M.sumF) + 'px',
       'YAW     ' + Math.round(M.yawRate*57.3) + ' deg/s',
       'LOCK    ' + (M.locked ? 'HELD' : M.lockPending ? 'PENDING' : 'NONE') +
@@ -5074,6 +5101,10 @@ function armBack(){
 }
 addEventListener('popstate', () => {
   if (typeof G === 'undefined') return;
+  /* the thumb press just above already answered this one: whether the browser
+     also navigates for that button depends on the pointer lock, so the press
+     owns its own popstate rather than being handled twice and going home */
+  if (M.thumbBackAt && performance.now() - M.thumbBackAt < 500){ M.thumbBackAt = 0; armBack(); return; }
   if (G.state === 'play'){ pause(); armBack(); }
   else if (G.state === 'pause' || G.state === 'result'){ sfx('click'); abortToTitle(); }
   /* A sheet is a sheet, and BACK closes a sheet. OPTIONS opened from the
@@ -6518,8 +6549,16 @@ function selfTestBody(runSim){
     const wantFlick = ((want(2400) + Math.PI) % (2*Math.PI)) - Math.PI;
     ok('lock: a fast flick is not rate-capped', Math.abs(got - wantFlick) < 1e-9,
        (got*57.3).toFixed(1)+'deg of '+(wantFlick*57.3).toFixed(1));
+    /* An outsized single event is CLAMPED, not dropped. It used to be dropped,
+       and a 16000-dpi flick — or one hitched frame of coalesced movement — is
+       outsized, so the fastest flick turned the view least: 2999 counts gave
+       1.2449 rad and 3001 gave exactly zero. A bound in radians is a bound on
+       what a frame can be worth, and it scales itself with the sensitivity. */
     a0 = P.ang; mvL(5000,0); step(0.016);
-    ok('lock: a glitch jump is dropped', Math.abs(angDiff(a0,P.ang)) < 1e-12);
+    { const cap = JUMP_RAD / (LOOK_PX * M.sens), turned = Math.abs(angDiff(a0,P.ang));
+      ok('lock: a jump too big for a hand is clamped, not dropped',
+         5000 > cap ? Math.abs(turned - Math.PI) < 1e-6 : Math.abs(turned - want(5000)) < 1e-9,
+         turned.toFixed(4)+' rad, cap '+Math.round(cap)+'px at sens '+M.sens); }
     const pp = P.pitch; mvL(0,-40); step(0.016);
     ok('lock: mouse up looks up', P.pitch > pp, 'pitch='+P.pitch.toFixed(1));
     /* the same stream with the option on must come out flipped */
@@ -7669,6 +7708,35 @@ function selfTestBody(runSim){
         for (let i=0;i<4;i++) step(1/20);
         ok('fire buffer: a cooldown-tail tap fires when the gun frees', P.mag[0] === 5, 'mag='+P.mag[0]);
 
+        /* a fast flick is a fast flick: the captured path CLAMPS an outsized
+           event, it does not throw it away. The old raw-count guard dropped
+           anything past 3000, so movementX 2999 turned 1.2449 rad and 3001
+           turned exactly 0.0000 — and Chrome coalesces mousemove to the frame,
+           so one hitched frame arrives as a single event of thousands. */
+        { const lk0 = M.locked, sn0 = M.sens, a0 = P.ang, jl0 = M.justLocked, cl0 = M.clamped;
+          const flick = counts => { clearInput(); M.locked = true; M.justLocked = 0;
+            dispatchEvent(new MouseEvent('mousemove', { bubbles:true }));   // shape check only
+            M.dx = 0; M.dy = 0;
+            const ev = new MouseEvent('mousemove', { bubbles:true });
+            Object.defineProperty(ev, 'movementX', { value: counts });
+            Object.defineProperty(ev, 'movementY', { value: 0 });
+            dispatchEvent(ev);
+            const a = P.ang; step(1/60); return Math.abs(angDiff(a, P.ang)); };
+          M.sens = .70;
+          const cap = JUMP_RAD / (LOOK_PX * M.sens);
+          const under = flick(Math.round(cap * .9)), over = flick(Math.round(cap * 40));
+          M.sens = .15;                                   // the floor a high-dpi player uses
+          const capLow = JUMP_RAD / (LOOK_PX * M.sens);
+          const lowOver = flick(Math.round(capLow * 40));
+          ok('look: an outsized captured event is clamped to half a turn, never dropped',
+             under > 2.5 && Math.abs(over - Math.PI) < .02 && Math.abs(lowOver - Math.PI) < .02 &&
+             capLow > cap * 4,
+             'under the cap ' + under.toFixed(3) + ' rad · 40x over ' + over.toFixed(3) +
+             ' · at the sensitivity floor ' + lowOver.toFixed(3) + ' (cap ' + Math.round(cap) +
+             ' -> ' + Math.round(capLow) + ' counts)');
+          M.locked = lk0; M.sens = sn0; M.justLocked = jl0; M.clamped = cl0;
+          P.ang = a0; clearInput(); }
+
         /* a banked flick survives a frame hitch — the idle guard no longer eats it */
         { const lm0 = LOOKMODE; LOOKMODE = 'touch';
           clearInput(); const a0 = P.ang;
@@ -7873,6 +7941,29 @@ function selfTestBody(runSim){
              armed && watched && rearmed && G.state === 'title',
              'armed '+armed+' watch '+watched+' rearmed '+rearmed+' then '+G.state);
           G.state = 'play'; show(null); clearInput(); }
+        /* the mouse's thumb button is BACK, and gets the same two steps. A
+           captured pointer swallows the browser's own navigation, so no
+           popstate arrived in play and the first press that landed was the one
+           on the watch — where BACK means go home. An unlabelled button under
+           the thumb ended the run in one press. */
+        { const lk0 = M.locked, tb0 = M.thumbBackAt;
+          G.state = 'play'; show(null); armBack(); M.locked = true;
+          const thumb = () => document.dispatchEvent(new MouseEvent('mousedown',
+            { button:3, buttons:8, bubbles:true, cancelable:true }));
+          thumb();
+          const first = G.state, rearmed = !!(history.state && history.state.a360);
+          /* the navigation the browser may or may not also perform is the SAME
+             press, and must not be answered twice */
+          dispatchEvent(new PopStateEvent('popstate', { state:null }));
+          const stillWatch = G.state;
+          M.thumbBackAt = 0;
+          dispatchEvent(new PopStateEvent('popstate', { state:null }));   // a second, deliberate press
+          ok('back: the mouse thumb button opens the watch first, and once per press',
+             first === 'pause' && rearmed && stillWatch === 'pause' && G.state === 'title',
+             'first press ' + first + ' rearmed ' + rearmed + ' · its own popstate ' + stillWatch +
+             ' · second press ' + G.state);
+          M.locked = lk0; M.thumbBackAt = tb0; G.state = 'play'; show(null); clearInput(); }
+
         /* ...and a sheet opened OVER the watch closes on BACK instead of
            spending the entry on nothing and letting the NEXT one leave with
            the run. OPTIONS from the watch was the reachable one; the other
