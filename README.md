@@ -195,6 +195,26 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.47
+
+A stylus on a Windows or ChromeOS tablet sends pointer events and compat
+mouse events and no TouchEvents, and a touch-profile game threw the lot away:
+a pen could tap its way into a mission and then do nothing — no shot, no turn,
+no pause — under a HUD saying TAP TO SHOOT. A pen's contact is now re-issued
+as the touch events a finger would have sent, so every rule the finger has
+applies to it; in hybrid, ❚❚ under a pen pauses instead of firing.
+
+Also: every run in this project's history had the web font failing to load. A
+player who made it load found RELOADING drawn centred on x=10 — reading
+"OADING" even with the fallback — a magazine that ran into a three-digit
+reserve with a 0px gap, and the F2 plate and F4 report sized to the narrower
+face. A colour-blind audit across all three dichromacies found no colour-only
+collapse; the one near miss, the amber cue against the red pain arc under
+deuteranopia, now has a different stroke as well as a different radius. And
+the economy is sound — no mission can be starved — but a crate refused a
+player whose cannon was dry, in silence, and "dry" was never said.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.46
 
 Two seams between the last three releases, found before the round's players
