@@ -291,9 +291,37 @@ reader holding every string the game shows to what the game does.
 
 ---
 
+# Night log — the fifth player-session round
+
+Six angles nothing had covered: a level auditor sweeping every cell of every
+map, a gun nut measuring every weapon and the ammo economy, a streamer on a
+1080p fullscreen desktop, a kid mashing a phone, a low-vision player asking
+what the HUD says without colour, and a performance reviewer allowed to change
+only what a measurement proved. Every claim was re-run here first.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · A chord is the browser's** | `onKey` ignores any key with Ctrl, Alt or Meta held (Shift is the sprint key and stays) | The streamer: **Ctrl+P turned the scanlines off and saved it** — every later session streamed without them — while the print dialog opened over the fight; Alt+F4 opened the self-test report over the mission | Mutation-verified: `scanlines 50->0 report true` |
+| **2 · The unlock's Esc is not a resume** | The watch ignores an Esc within 300ms of the lock being dropped | An engine that delivers the Esc keydown after the `pointerlockchange` paused the mission and then **un-paused it in the same breath**: hostiles moving under a CLICK THE VIEW band | Mutation-verified |
+| **3 · Toasts grow with the picture** | `toastPx` caps at 16px, not 10 | At 1920x1080 the toasts were 10px type under 40px HUD glyphs — the smallest text on a stream | Mutation-verified: `1080->10.00 want 13.82` |
+| **4 · A released thumb stays released** | A finger a re-fit let go of is dead to the pads until it lifts | The kid: the v1.30 release was undone by the adoption rule — Blink targets every touchmove at the touchstart element, so the thumb's next 1px twitch took the moved pad back against its new centre, and **forward became a hard-left sprint after all** | Mutation-verified: `move=73 ty=-0.76` |
+| **5 · An empty glass holds nothing** | Any touchend or touchcancel with no fingers left releases every owner, axis and hold (the AIM/CROUCH toggles stay) | A finger whose end event the OS never delivered left **FIRE lit and dead, the stick sprinting and a terminal hacking itself**, and a phone has no Backspace | Mutation-verified: `freed false` |
+| **6 · The first moments answer no tap** | A tap on the view within 600ms of a mission's start is the finger that started it | A RETRY mash landed on the view once the debrief hid: **seven rounds into the spawn wall** and a guard alerted | Mutation-verified: `at start mag=6` |
+| **7 · The boot swallow re-arms** | A click inside the 400ms window is swallowed and re-arms the window | Nothing happens for the splash's first 400ms, so a thumb taps again and again, and one of those taps pressed CONTROLS; the 24x machine's late ghost click is covered too | Mutation-verified: `ghost landed`; the phone walkthrough still taps CONTROLS 500ms after the skip and lands |
+| **8 · ABORT asks twice on a phone** | On a touch profile ABORT TO MENU becomes TAP AGAIN TO ABORT for 2.5s; a mouse and BACK go at once | ABORT sits at (490–592, 315–359), where the FIRE thumb rests: one graze of ❚❚ and the next FIRE tap **threw the run away** | Mutation-verified: `first title` |
+| **9 · The CFO is a body** | A round into the unrescued CFO stops, is not a hit, and toasts HOLD FIRE once per 3s | The gun nut: 40 rounds through him at 1.3u, 4 hits credited on things behind him, nothing said, the escort completed | Mutation-verified: `said false` |
+| **10 · A crate gives what fits and names it** | The crate stays on the floor when it would give under a quarter of what it carries; the toast names each gun's gain | At 299/300 SMG a 99-round crate **vanished for one round** under a toast reading AMMUNITION | Mutation-verified: `left false … +1` |
+| **11 · Dry insurance off any hostile** | The empty-handed crate drops off anything but the rack | The finale's arena holds only drones, which dropped nothing; a dry player had the floor's five crates and then nothing | Mutation-verified |
+| **12 · The crosshair gap follows the zoom** | The drawn gap is the cone at 260 px/rad divided by the zoom | Zoomed, the Klobb's rounds landed **134% of the drawn gap outside the ticks**; hip fire was 99% inside | Mutation-verified: `ratio 0.380` |
+| **13 · The banner's grace** | No hostile fires in a mission's first 2.5s | The auditor: on M03 a phish with a line to the spawn fired at 0.5s and **landed a hit inside the 3.2s the banner takes to clear**, on every clearance | Mutation-verified: `in the first 2.5s 2 rounds` |
+| **14 · Health is a number** | The HP label reads `HP 37` | The low-vision player's one fail among nineteen colour checks: the bar and its colour were the only readout | Mutation-verified |
+| **What did not survive** | Reported, re-run, not changed | **Crouching does not tighten the spread** — nor does anything claim it does. **The performance reviewer's combined variant** (a wall-row mask so the floor caster skips covered pixels, and more) measured *slower*: render 8.0 → 11.0ms at 8x, 18.1 → 21.3ms at 24x; nothing shipped. Its profile stands: at 8x the floor caster is 4.4ms of an 8.5ms frame, the HUD 2.2, the radar 1.4, the walls 1.1. **The auditor's wall sweep**: 0 in-wall events and 0 stuck spots across every wall, corner and jamb; M02 has two sealed pockets and its credential case sits in the secret cache by design (the watch letters it). **The low-vision pass**: every colour-only signal has a shape, a word or a position beside it. **The streamer**: 5x snap exact, scanlines one per row, bfcache restore sane, Ctrl+A selects nothing |
+
+---
+
 ## Standing numbers
 
-- **Self-tests:** 441 desktop / 433 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 455 desktop / 447 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -308,5 +336,5 @@ reader holding every string the game shows to what the game does.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.31'` (index.html) ↔ `agent360-v1.31`
+- **Versions:** game `VERSION = '1.32'` (index.html) ↔ `agent360-v1.32`
   (sw.js CACHE), enforced by verify.js

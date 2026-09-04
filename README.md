@@ -195,6 +195,19 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.32
+
+A level auditor, a gun nut, a streamer at 1080p, a kid mashing a phone, a
+low-vision player and a performance reviewer. Ctrl+P turned the scanlines
+off and saved it; a thumb a re-fit had let go of was taken back by the moved
+pad on its next twitch; a finger the OS never lifted held FIRE forever; a
+RETRY mash emptied the pistol into the spawn wall; ABORT sat under the FIRE
+thumb; rounds passed through the CFO in silence; a near-full crate vanished
+for one round; the aimed crosshair lied about its cone; a phish fired at the
+spawn during the mission banner; health had no number. The performance
+reviewer's variant measured slower and did not ship. Ledger:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.31
 
 Two reviewers on ground nobody had audited — the self-test suite itself and
@@ -278,7 +291,7 @@ reported and did not survive:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **441 assertions** (433 in a touch
+- **F4** runs the in-game self-test suite — **455 assertions** (447 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the
