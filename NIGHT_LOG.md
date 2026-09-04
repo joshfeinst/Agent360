@@ -383,11 +383,24 @@ the player, changes the rules.
 | **4 · A screen says what it is** | Every screen is a named `role="dialog" aria-modal="true"`, labelled by its own heading where it has one | v1.33 made the toast column a live region and it behaves — one announcement per toast, none for expiry, nothing twice — but the debrief itself is a `tabindex="-1"` div with no role and no name, so focus landing on it announced nothing at all | Mutation-verified: `s-result` |
 | **What did not survive** | Measured, not changed | **Browser zoom cannot enlarge the game** — the frame is 1152×648 device pixels at 100%, 150%, 200% and 250%, three device pixels per game pixel every time. That is `fit()` doing its job: the picture already fills the window, so there is nothing for zoom to add. Menus do grow (an eyebrow 8.3px → 14.0px). Making the HUD itself bigger would be a scale option, not a bug fix. **Text under 12 CSS px**: 193 strings at 1280×720, none of them in the canvas HUD (18px there); on a landscape phone the HUD joins them at 10px and toasts sit at their 6px floor. Contrast is not the problem — a toast is 10.3:1 normally and 21:1 in forced colours — size is, and size is the picture's. **`prefers-contrast: more` is ignored** by every rule in the file. **A full mission win at 200% zoom is unproved**: the reviewer's own driver managed 1 of 4 objectives at 100% and 0 of 4 at 200%, timing out rather than dying even with INVULNERABLE, so the limiter is its path-following, not the zoom |
 
+# Night log — the wall that shut on the agent
+
+The level auditor's last report carried one anomaly, and it was the oldest
+open note in the file: a round back, a player found a secret cache whose wall
+slid shut behind them, and it was deferred with "add hysteresis once found."
+The auditor measured it properly this time, in four caches across three
+missions, and the cause turned out to need no hysteresis at all.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · A cache you have opened stays open** | A **found** secret door holds on a 2.50u radius (`DOOR_R2_FOUND`), not the 1.10u that hid it | The tight radius is there to keep a secret secret: the ordinary 1.61u would pop a disguised wall open from the next aisle. Once the door is `found` that disguise is spent, and the radius becomes a trap. The caches behind these doors are 1 to 3 cells deep, and the deepest spot a `.26` body can actually stand in one is **2.21u** from the door (M03's far corner) — well outside 1.10u, so the wall slid shut with the agent inside it. Measured shut for 100% of a 2s stand in M04 `[24,9]` d=1.17 and `[26,9]` d=1.24, M02 `[14,16]` d=1.19, M05 `[25,12]` d=1.21; M03 `[21,13]` at d=1.73 for 15%. Never a hard trap — the neighbouring cell reopened it — but the closet you just opened closing on you reads as a bug every time | The assertion floods each secret door's own pocket, stands the player at the deepest reachable point of **every** cell of **every** cache in the game, and steps 2s demanding the cell never goes solid: 10 spots, deepest 2.13u of 2.50u. Mutation-verified against the old line: `shut on the agent in M01 cell 24,4 at 1.13u` |
+| **What the auditor cleared** | Measured, not changed | The v1.33 spawn grace holds — first hostile shot lands at **3.22s** on every mission and clearance, zero rounds fired inside the 3.2s banner. Objective order strands nobody. The M05 escape is winnable **walking** from the worst cell on every clearance: 59 steps, 26.0s against a 35s fuse. Entity crowding never puts a hostile in a solid cell, and no prop corpse blocks a doorway |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 465 desktop / 457 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 466 desktop / 458 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -402,5 +415,5 @@ the player, changes the rules.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.35'` (index.html) ↔ `agent360-v1.35`
+- **Versions:** game `VERSION = '1.36'` (index.html) ↔ `agent360-v1.36`
   (sw.js CACHE), enforced by verify.js

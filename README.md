@@ -195,6 +195,15 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.36
+
+A secret cache's wall could slide shut with the agent still inside it. The
+tight hold radius that keeps a hidden door disguised — 1.10u, against an
+ordinary door's 1.61u — stayed tight after the door was found, and the caches
+behind those doors run deeper than that: 2.21u to the far corner of M03's. A
+found secret now holds on 2.50u, which covers every cache in the game.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.35
 
 In Windows High Contrast every menu floated over the live mission, because the
