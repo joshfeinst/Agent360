@@ -5871,10 +5871,13 @@ function selfTestBody(runSim){
     /* a mouseless player who resumed with Esc needs a KEY that captures: the
        band names Enter, so Enter has to ask */
     if (!isTouch){ const l0 = M.locked, f0 = M.lockFails, p0 = M.lockPending, a0 = M.lockAt, u0 = M.unlockAt;
+      /* the request is stubbed: a REAL lock taken and released by the suite
+         left headless Chromium's mouse dead for the rest of the page */
+      const rpl = view.requestPointerLock; let asked = 0; view.requestPointerLock = () => { asked++; return Promise.resolve(); };
       M.locked = false; M.lockFails = 0; M.lockPending = false; M.lockAt = 0; M.unlockAt = 0; G.state = 'play';
       dispatchEvent(new KeyboardEvent('keydown', { code:'Enter', key:'Enter', bubbles:true, cancelable:true }));
-      ok('lock: Enter asks for the capture in play', M.lockPending || M.locked, 'pending '+M.lockPending+' locked '+M.locked);
-      clearTimeout(M.lockTimer); try { document.exitPointerLock(); } catch(_){}
+      ok('lock: Enter asks for the capture in play', asked === 1 && M.lockPending, 'asked '+asked+' pending '+M.lockPending);
+      clearTimeout(M.lockTimer); view.requestPointerLock = rpl;
       M.locked = l0; M.lockFails = f0; M.lockPending = p0; M.lockAt = a0; M.unlockAt = u0; }
     /* ...and a refusal inside the Esc cooldown is not even a strike */
     M.unlockAt = performance.now(); M.lockPending = true;
@@ -6451,6 +6454,7 @@ function selfTestBody(runSim){
           /* a tap on the view is the "click the view" the capture band asks
              for, not a shot */
           { const l0 = M.locked, f0 = M.lockFails, p0 = M.lockPending, lm0 = LOOKMODE, a0 = M.lockAt;
+            const rpl = view.requestPointerLock; let asked = 0; view.requestPointerLock = () => { asked++; return Promise.resolve(); };
             const LK0 = LOOK; LOOK = 'capture'; LOOKMODE = 'capture'; M.locked = false; M.lockFails = 0; M.lockPending = false; M.lockAt = 0;
             P.w = 0; P.mag[0] = 7; P.fireCd = 0; P.alive = true;
             const vr = view.getBoundingClientRect(), fx = vr.left + vr.width*.5, fy = vr.top + vr.height*.5;
@@ -6458,8 +6462,8 @@ function selfTestBody(runSim){
             tev('touchend', null, [{ identifier:72, clientX:fx, clientY:fy }]);
             step(1/60);
             ok('hybrid: a finger tap takes the capture the band asks for, and fires nothing',
-               (M.lockPending || M.locked) && P.mag[0] === 7, 'pending '+M.lockPending+' locked '+M.locked+' mag '+P.mag[0]);
-            clearTimeout(M.lockTimer); try { document.exitPointerLock(); } catch(_){}
+               asked === 1 && M.lockPending && P.mag[0] === 7, 'asked '+asked+' pending '+M.lockPending+' mag '+P.mag[0]);
+            clearTimeout(M.lockTimer); view.requestPointerLock = rpl;
             M.locked = l0; M.lockFails = f0; M.lockPending = p0; M.lockAt = a0; LOOKMODE = lm0; LOOK = LK0; }
         }
         /* a quick still touch on the world is a shot; a drag is a look */
