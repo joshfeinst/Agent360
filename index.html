@@ -499,7 +499,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.45';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.46';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -740,6 +740,8 @@ addEventListener('keydown', e => {
     shifted.add(e.code); held.run = true;
   }
   if (a) { held[a] = (HOLD_LATCH && LATCHED[a]) ? !held[a] : true; e.preventDefault();
+    /* a keyboard latch is the same latch the touch AIM / CRCH buttons show */
+    if (HOLD_LATCH && (a === 'aim' || a === 'crouch')){ M[a] = held[a]; if (window.syncTouchLamps) syncTouchLamps(); }
     /* Space/X get the same press buffer a click does: a tap that lands during
        the weapon's cool-down deserves the next available shot, not nothing. */
     if (a === 'fire'){ M.fireEdge = performance.now(); M.pressNew = true; } }
@@ -1268,8 +1270,16 @@ function unlock(){
      bindings drive, so step() cannot tell the difference. */
   const setTog = (el,on) => { el.classList.toggle('on', on); el.setAttribute('aria-pressed', String(on)); };
   const taim = document.getElementById('taim'), tcr = document.getElementById('tcrouch');
-  bind('taim',   ()=>setTog(taim, M.aim = !M.aim));
-  bind('tcrouch',()=>setTog(tcr, M.crouch = !M.crouch));
+  /* One latch, two ways to flip it. With Options set to TOGGLE the keyboard
+     latches held.aim / held.crouch, and step() reads the OR of that and the
+     touch flag — so on a hybrid device a Z tap and an AIM tap-off left the
+     view fully zoomed (P.aim 1.00) under a lamp that said off. The lamp reads
+     the OR, and either input flips the whole thing. In HOLD mode held.aim is a
+     physical key and its own keyup owns it, so the thumb leaves it alone. */
+  window.syncTouchLamps = () => { setTog(taim, !!(M.aim || held.aim)); setTog(tcr, !!(M.crouch || held.crouch)); };
+  const flip = (flag, act) => { const on = !(M[flag] || held[act]); M[flag] = on; if (HOLD_LATCH) held[act] = on; syncTouchLamps(); };
+  bind('taim',   ()=>flip('aim', 'aim'));
+  bind('tcrouch',()=>flip('crouch', 'crouch'));
   /* keep: an in-window pause. The thumbs are still on the glass, so the AIM /
      CROUCH latches and any held button survive it and the buttons keep saying
      so; only the view's drag ends, since the watch is drawn over the canvas
@@ -1289,7 +1299,7 @@ function unlock(){
   };
   window.resetTouchUI = keep => {
     T.look = null; T.tap = null;
-    if (keep){ setTog(taim, !!M.aim); setTog(tcr, !!M.crouch); return; }
+    if (keep){ syncTouchLamps(); return; }
     setTog(taim,false); setTog(tcr,false);
     T.move = T.aimpad = null;
     nub.style.transform = ''; lnub.style.transform = '';
@@ -4908,9 +4918,11 @@ function say(text, ms){
   while (w.children.length > 6) w.firstChild.remove();
   setTimeout(() => line.remove(), (ms || 2400) + 400);
 }
-function clearToasts(){
-  for (const id of ['toasts','say']){ const w = document.getElementById(id); if (w) w.textContent=''; }
-}
+/* Clears the PICTURE only. The reader's copy in #say is left to expire on its
+   own timer: every reason this is called — a banner over the watch's header,
+   a mission starting, an abort — is about what is painted, and wiping the
+   live region threw away an announcement the instant the watch opened. */
+function clearToasts(){ const w = document.getElementById('toasts'); if (w) w.textContent=''; }
 
 /* ------------------------------- screens ------------------------------- */
 const SCREENS = ['s-boot','s-title','s-select','s-brief','s-pause','s-result','s-controls','s-options','s-cheats'];
@@ -7765,6 +7777,33 @@ function selfTestBody(runSim){
              ' · tapped off ' + offAim.toFixed(2) + '/' + offCrouch.toFixed(2) + '/' + offRun.toFixed(2));
           G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
+        /* ...and it is ONE latch with the touch AIM / CRCH buttons, so a hybrid
+           player's thumb and keyboard agree. First shape of this shipped with
+           the row: a Z tap then an AIM tap-off left P.aim at 1.00 under a lamp
+           that said off, because the lamp read only the touch flag. */
+        { const hl0 = HOLD_LATCH, st0 = G.state, sel0 = selLevel, d0 = G.diff, g0 = G.cheats.god;
+          selLevel = 0; G.diff = 1; startMission(false); G.state = 'play'; G.cheats.god = true;
+          HOLD_LATCH = true; clearInput(); M.aim = false;
+          const taim = document.getElementById('taim');
+          const kd = c => dispatchEvent(new KeyboardEvent('keydown', { code:c, bubbles:true, cancelable:true }));
+          const ku = c => dispatchEvent(new KeyboardEvent('keyup',   { code:c, bubbles:true }));
+          const thumb = () => { const r = taim.getBoundingClientRect();
+            const t = new Touch({ identifier:91, target:taim, clientX:r.left + r.width/2, clientY:r.top + r.height/2 });
+            taim.dispatchEvent(new TouchEvent('touchstart', { touches:[t], changedTouches:[t], targetTouches:[t], bubbles:true, cancelable:true }));
+            taim.dispatchEvent(new TouchEvent('touchend',   { touches:[],  changedTouches:[t], targetTouches:[],  bubbles:true, cancelable:true })); };
+          const state = () => (M.aim || held.aim ? 'on' : 'off') + '/lamp ' + (taim.classList.contains('on') ? 'on' : 'off');
+          kd('KeyZ'); ku('KeyZ'); const afterKey = state();          // the keyboard lights the lamp
+          thumb();                  const afterThumb = state();      // the thumb turns the SAME latch off
+          for (let i = 0; i < 40; i++) step(1/60);
+          const zoomOff = P.aim < .1;
+          thumb();                  const again = state();
+          ok('options: the keyboard latch and the touch AIM button are one latch',
+             afterKey === 'on/lamp on' && afterThumb === 'off/lamp off' && zoomOff && again === 'on/lamp on',
+             'key ' + afterKey + ' · thumb ' + afterThumb + ' zoom ' + P.aim.toFixed(2) + ' · thumb again ' + again);
+          M.aim = false; HOLD_LATCH = hl0; clearInput(); for (const k in LATCHED) held[k] = false;
+          if (window.syncTouchLamps) syncTouchLamps();
+          G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
         /* a fast flick is a fast flick: the captured path CLAMPS an outsized
            event, it does not throw it away. The old raw-count guard dropped
            anything past 3000, so movementX 2999 turned 1.2449 rad and 3001
@@ -8268,6 +8307,18 @@ function selfTestBody(runSim){
             }
             show(null);
             const loose = live().filter(r => !document.getElementById('frame').contains(r));
+            /* ...and opening the watch does not swallow what it was saying. pause()
+               clears the toast column because a banner covers the watch's header;
+               that reason is about paint, and the reader's copy expires by itself. */
+            { const st1 = G.state; G.state = 'play'; show(null);
+              say('OBJECTIVE A COMPLETE', 3000);
+              const had = document.getElementById('say').textContent;
+              clearToasts();
+              const kept = document.getElementById('say').textContent === had;
+              document.getElementById('say').textContent = '';
+              ok('a11y: clearing the picture leaves the reader its line', kept && /OBJECTIVE A/.test(had),
+                 kept ? 'kept "' + had.slice(0, 24) + '"' : 'wiped');
+              G.state = st1; }
             ok('a11y: ...and it speaks from inside the dialog that is open, from one place only',
                n === 1 && outside.length === 0 && loose.length === 0,
                n + ' live region' + (n === 1 ? '' : 's') +

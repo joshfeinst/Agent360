@@ -195,6 +195,16 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.46
+
+Two seams between the last three releases, found before the round's players
+reported. Opening the field watch wiped the screen reader's live region along
+with the toast column, though every reason for that clear is about paint; and
+the hold/toggle row's keyboard latch and the touch AIM button were two latches
+over one zoom, so on a touchscreen laptop a Z tap and an AIM tap-off left the
+view fully zoomed under a lamp that said off. Both are one latch now.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.45
 
 Options gains **Aim / crouch / sprint · HOLD · TOGGLE**. On a keyboard these
