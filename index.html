@@ -483,7 +483,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.40';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.41';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -2854,6 +2854,28 @@ function bump(kind, n=1){
     return;
   }
 }
+/* The interact prompt is the one place a KEY is named while the player is
+   playing, and it said HOLD F on every keyboard on earth. The game binds the
+   physical key, so on Dvorak that key prints U and the prompt was pointing at
+   a keycap two rows away — the same lie the CONTROLS card told until v1.40,
+   in the place it costs most, because this prompt is how the hack is learned.
+   A value rather than a drawing, so the suite can read it (objLine() below is
+   here for the same reason). */
+let KB_LAYOUT = null;   // the keyboard layout in force, once the browser has told us
+function keyName(code, fallback){
+  if (!KB_LAYOUT || !KB_LAYOUT.get) return fallback;   // the browser will not say: US it is
+  const g = KB_LAYOUT.get(code);
+  return g ? (g.length === 1 ? g.toUpperCase() : g) : fallback;
+}
+function usePrompt(t){
+  const hf = isTouch ? 'HOLD USE' : 'HOLD ' + keyName('KeyF', 'F');
+  return t.sub==='npc' ? hf+' 1.9s — ESCORT THE CFO'
+    : t.sub==='console' ? hf+' 1.9s — APPLY PATCH'
+    : t.sub==='audit' ? hf+' 1.9s — PULL AUDIT LOG'
+    /* the terminal's job is whatever its objective says — M04's stairwell
+       terminal is a hack, and the prompt used to sell it as a deployment */
+    : hf+' 1.9s — '+(G.objs.some(o => o.kind==='term' && /^hack/i.test(o.text)) ? 'HACK TERMINAL' : 'DEPLOY AGENT');
+}
 const objsLeft = () => G.objs.filter(o => !o.done && o.kind!=='exit');
 /* The HUD's objective line, as a value so it can be asserted rather than read
    back off a canvas. It counts what the briefing, the watch and the debrief
@@ -4646,13 +4668,7 @@ function drawHUD(horizon){
      input, so the ring is drawn from first contact and the prompt says how
      long it takes. */
   if (P.useTarget){
-    const hf = isTouch ? 'HOLD USE' : 'HOLD F';
-    const label = P.useTarget.sub==='npc' ? hf+' 1.9s — ESCORT THE CFO'
-      : P.useTarget.sub==='console' ? hf+' 1.9s — APPLY PATCH'
-      : P.useTarget.sub==='audit' ? hf+' 1.9s — PULL AUDIT LOG'
-      /* the terminal's job is whatever its objective says — M04's stairwell
-         terminal is a hack, and the prompt used to sell it as a deployment */
-      : hf+' 1.9s — '+(G.objs.some(o => o.kind==='term' && /^hack/i.test(o.text)) ? 'HACK TERMINAL' : 'DEPLOY AGENT');
+    const label = usePrompt(P.useTarget);
     txtP(label, RW>>1, RH-57, '#4ade80', 7);
     bar((RW>>1)-50, RH-54, 100, 5, P.useTarget.prog, '#4ade80');
   } else if (P.shootTarget){
@@ -4904,7 +4920,6 @@ function gotoBrief(){
    Safari do not implement it yet) the card says the same thing. Where it will
    not, the US glyphs stand and the line above the table says the binding is
    positional, which is the part a player actually needs to know. */
-let KB_LAYOUT = null;                       // the layout the card is currently labelled for
 function relabelKeys(){
   const kb = navigator.keyboard;
   if (!kb || !kb.getLayoutMap) return;
@@ -5446,6 +5461,22 @@ function selfTestBody(runSim){
     ok('doors: a locked door stays shut without the keycard and opens with it',
        !!d && !!spot && shut === 0 && opened > 0, 'without ' + shut + ' with ' + opened + (d ? '' : ' (no locked door)'));
     P.keys = 0; P.alive = al0; G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
+  /* ---- the interact prompt names the key on the player's own keyboard ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, kb0 = KB_LAYOUT;
+    loadLevel(0, 1); G.state = 'play';
+    const t = G.ents.find(e => e.kind === 'prop' && e.sub === 'term');
+    /* the same physical key prints F on QWERTY and U on Dvorak; the prompt
+       must follow the keycap, because it is telling the player what to hold */
+    KB_LAYOUT = new Map([['KeyF', 'f']]); const qwerty = t ? usePrompt(t) : '';
+    KB_LAYOUT = new Map([['KeyF', 'u']]); const dvorak = t ? usePrompt(t) : '';
+    KB_LAYOUT = null;                     const unknown = t ? usePrompt(t) : '';
+    const named = k => isTouch ? 'HOLD USE' : 'HOLD ' + k;
+    ok('prompt: the interact prompt names the key this keyboard prints',
+       !!t && qwerty.indexOf(named('F')) === 0 && dvorak.indexOf(named('U')) === 0 &&
+       unknown.indexOf(named('F')) === 0 && /1\.9s/.test(qwerty),
+       'QWERTY "' + qwerty + '" · Dvorak "' + dvorak + '" · no layout "' + unknown + '"');
+    KB_LAYOUT = kb0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
   /* ---- a found secret cache never shuts its wall on the agent inside ---- */
   { const st0 = G.state, sel0 = selLevel, d0 = G.diff, g0 = G.cheats.god, al0 = P.alive;

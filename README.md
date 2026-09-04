@@ -195,6 +195,15 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.41
+
+v1.40 taught the CONTROLS card to name the keys on the player's own keyboard
+and left the same lie in the place it costs most: the green band at a terminal,
+the prompt that teaches the whole hack, said HOLD F on every keyboard on earth.
+On Dvorak that physical key prints U, so after v1.40 the card and the prompt
+disagreed with each other on the same board. The prompt now reads the layout
+too. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.40
 
 The field manual named every key by the glyph a US keyboard prints on it,

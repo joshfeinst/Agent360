@@ -450,11 +450,21 @@ It turns out the browser will simply tell you what each physical key prints.
 | **2 · The card says whose keyboard it is speaking** | A line above the table: keys are bound by **position**, not by letter, and the names below follow *your keyboard* — or *a US keyboard* where the browser will not say | Firefox and Safari do not implement `KeyboardLayoutMap`, so for those players the glyphs really are the US ones and the card should admit it rather than quietly mislabel. The positional sentence is the part that helps every player on every browser: it is the reason a non-US layout is playable at all, and nothing on the screen had ever said it | Measured on a browser with `navigator.keyboard` removed: `{"move":"W A S D…","aim":"Right click · Z","note":"a US keyboard"}`, no page errors |
 | **3 · The manual's own test reads the promise, not the print** | The assertion that presses every key the card advertises takes the code from `data-code` where it is given, and strips those glyphs out of its prose scan | The existing guard turned each printed glyph into a code through a fixed table — a fact about US keyboards. Left alone it would have failed on an AZERTY board for a card that was finally telling the truth, and passed a `Z` relabelled from `KeyW` as though it were the US Z. It still parses **37 keys from 18 rows** and presses every one for real | The whole battery, plus the unchanged detail line `37 keys, all live` |
 
+# Night log — the other place a key is named
+
+v1.40 taught the CONTROLS card to read the player's keyboard, and left the
+same lie standing in the one place it costs most.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · The interact prompt names the key this keyboard prints** | `usePrompt(t)` builds the prompt through `keyName('KeyF')`, from the layout map the card already uses | The green band that appears when you stand at a terminal — the prompt that teaches the whole hack — said **HOLD F** on every keyboard on earth. The game binds the physical key, so on a Dvorak board that key prints **U** and the band was pointing two rows away from the key that does it. After v1.40 the two even disagreed with each other: measured live on a Dvorak layout, the CONTROLS card said `U` while the prompt said `HOLD F`. It is now `HOLD U 1.9s — DEPLOY AGENT`, and where the browser will not name the layout it stays `HOLD F`, as the card does | The prompt became a value rather than a drawing — `objLine()` is in the file for the same reason — so the suite reads it: `QWERTY "HOLD F 1.9s" · Dvorak "HOLD U 1.9s" · no layout "HOLD F 1.9s"`. Mutation-verified, and confirmed end to end in a browser with a live Dvorak `navigator.keyboard`, standing at M01's terminal with the band actually up |
+| **What did not survive** | Measured, not changed | **The duel bot loses at SECRET AGENT and above — and always has.** 28/30 wins on AGENT against 0/30 on both harder rungs looked like a balance cliff until the v1.32 log was checked: `0/20` at diff 1 then too. It is a property of that deliberately imperfect instrument, not a regression, and the objective bot still wins M05 on SECRET. Damage taken roughly doubles across the rung (≈100 → ≈200), which is the difficulty table doing exactly what it says. **No other in-mission text names a layout-dependent key**: every remaining prompt uses Esc, Enter, Tab or the touch button names |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 475 desktop / 466 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 476 desktop / 467 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -469,5 +479,5 @@ It turns out the browser will simply tell you what each physical key prints.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.40'` (index.html) ↔ `agent360-v1.40`
+- **Versions:** game `VERSION = '1.41'` (index.html) ↔ `agent360-v1.41`
   (sw.js CACHE), enforced by verify.js
