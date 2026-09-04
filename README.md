@@ -195,6 +195,19 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.34
+
+The frame got 27% cheaper without a pixel moving. The floor caster looked its
+map cell up once per pixel where the cell only changes where the walk crosses
+a grid line, and the chevron's reachability fill — added in v1.31 — rebuilt
+itself from scratch every frame, allocating some 2500 arrays to do it. Both
+are proved byte-identical across 745 rendered poses. The memo shipped with an
+exact key rather than the proposed hash, because the hash collided and drew
+the chevron somewhere else in 20 of those poses. Ledger, including the earlier
+performance verdict that turned out to be measurement noise, and the five
+candidate optimisations that lose:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.33
 
 The mission banner promises you a moment to read it, and v1.32's grace was
@@ -305,7 +318,7 @@ reported and did not survive:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **460 assertions** (452 in a touch
+- **F4** runs the in-game self-test suite — **461 assertions** (453 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the
