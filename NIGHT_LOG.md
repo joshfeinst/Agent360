@@ -339,9 +339,36 @@ re-runs and the unfinished ground turned up.
 
 ---
 
+# Night log — the render round, and the measurement that was noise
+
+The performance reviewer came back to say its own earlier verdict had been
+wrong. The Round-5 conclusion — that a floor-caster change made the frame
+*slower* — was measured on a four-core box with another agent's Chromium
+fleet running beside it, through `setCPUThrottlingRate`, which is a busy-stall
+and amplifies whatever else the machine is doing. Its harness's own null was
+**22% at 8x**, and the 8.0 → 11.0ms it reported was one run each against a
+base file whose own spread was 23%. Nothing that round measured under about
+50% meant anything.
+
+It rebuilt the harness — one page, one process, A and B alternating inside a
+burst — and got a null floor of ±1.5% at 1x. Then the two changes it proposed
+were checked here, and one of them was wrong in a way its own pixel sweep
+could not see.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · The floor caster looks its cell up once per run** | The floor/ceiling walk computes how many pixels until it crosses a grid line and spends the rest of the run on the texture fetch alone. Every pixel's arithmetic and the `wx`/`wy` accumulation are copied verbatim | `G.zoned` is true for all five levels, so every frame took the per-pixel cell path; the cell only changes where the walk crosses a grid line | **Byte-identical across 745 poses** — every mission on two clearances, fifteen cells apiece, five angle-and-pitch combinations, plus five out-of-bounds edge poses. Isolated on its own it changes nothing that is drawn |
+| **2 · The flood fill is remembered, and the memo is exact** | `reachable()` compares the cell, the keycard, the level and every door's lock, secret, found **and open** state field by field | The fill I added in v1.31 for the chevron allocated five arrays per visited cell — about 2500 a frame. Memoised it costs **0.15µs against 19.15µs**. The reviewer's version keyed on a rolling 32-bit hash of those inputs; two different states collided and handed back each other's grid, and **20 of the same 745 poses drew the chevron somewhere else**. Compared field by field there is nothing to collide, and a door held open by a guard now counts even though its lock has not changed | Byte-identical across all 745 poses once exact. An assertion walks every walkable cell of every mission with and without the keycard and requires the remembered grid to equal a fresh one, then holds a locked door open and requires the answer to move. Mutation-verified both ways |
+| **The measurement** | render(), 240-pose tour, medians of nine runs, three alternating repetitions | reference **0.928 / 0.938 / 0.949** ms per frame · optimised **0.691 / 0.682 / 0.681** — a **27% cut**, with the two distributions not overlapping (optimised worst 0.85, reference best 0.892) | The battery, the runthrough (14/15), the visual sweep and the phone walkthrough are all green on it |
+| **What did not survive** | Measured, not changed | **Incremental u/v accumulators** (+1.6%, inside noise), **an allocation-free BFS without the memo** (+2.4% at 1x, −5% at 8x — the win was the memo, not the garbage), **a sprite scratch array** (−1.6%: `drawSprites` allocates ~25 arrays a frame against `reachable`'s 2500), **replacing putImageData** (deleting it entirely buys 5.1%, and any real blit still moves 384×216 pixels), and **caching the HUD on a second canvas** (the radar is player-centred and rotated to `P.ang` and the objective ring pulses with `G.time`, so it differs every frame the player exists) |
+
+A note for the next round: the textures bake with `Math.random()`, so two page loads of the *same file* differ in 731 of 745 poses. Any pixel comparison has to seed the generator before the page's own scripts run — `scratchpad/a360seed.js` does, and its null is exact.
+
+---
+
 ## Standing numbers
 
-- **Self-tests:** 460 desktop / 452 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 461 desktop / 453 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -356,5 +383,5 @@ re-runs and the unfinished ground turned up.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.33'` (index.html) ↔ `agent360-v1.33`
+- **Versions:** game `VERSION = '1.34'` (index.html) ↔ `agent360-v1.34`
   (sw.js CACHE), enforced by verify.js

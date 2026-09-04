@@ -470,7 +470,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.33';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.34';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -2497,6 +2497,7 @@ function loadLevel(li, di){
                Math.min(255,sk[1]*(1.25-.5*t))|0,
                Math.min(255,sk[2]*(1.25-.5*t))|0); } }
   G.time=0; G.kills=0; G.shots=0; G.hits=0; G.dmgTaken=0; G.heat=0; G.cfoNagT=0;
+  G.reachVal = null; G.reachDoor = null;     // the last map's flood fill is not this map's
   G.meltdown=-1; G.meltMax=0; G.bossAlive=false; G.shieldDown = true; G.doorNag=0; G.shake=0;
   G.deadT=0; G.ckpt=null; G.ckptRun=false; G.bossSeen=false; A.hbT=0;
   /* the footstep index is a phase counter derived from P.bob, and P.bob is
@@ -3841,13 +3842,28 @@ function render(){
     }
     let lastTi = -1, t = null;
     const sky = SKYROW ? SKYROW[clamp(y - horizon + RH, 0, RH-1)] : FOGPX;
-    for (let x=0;x<RW;x++){
+    /* The cell only changes where the walk crosses a grid line, and a near
+       row crosses one every few dozen pixels: look the cell up once per RUN
+       and spend the rest of the row on the texture fetch alone. Every pixel's
+       arithmetic and the wx/wy accumulation are untouched, so the buffer comes
+       out byte-identical — which is asserted, not assumed. */
+    let x = 0;
+    while (x < RW){
       const mx = wx|0, my = wy|0;
       const ti = (wx>=0 && wy>=0 && mx<gw && my<gh) ? tmap[my*gw+mx] : dflt;
-      if (ti === 255){ buf[o++] = sky; wx += sx; wy += sy; continue; }
+      let run = RW - x;
+      if (sx > 0){ const k = ((mx+1) - wx)/sx; if (k < run) run = k; }
+      else if (sx < 0){ const k = (wx - mx)/(-sx); if (k < run) run = k; }
+      if (sy > 0){ const k = ((my+1) - wy)/sy; if (k < run) run = k; }
+      else if (sy < 0){ const k = (wy - my)/(-sy); if (k < run) run = k; }
+      run = run|0; if (run < 1) run = 1; if (x + run > RW) run = RW - x;
+      if (ti === 255){ for (let i=0;i<run;i++){ buf[o++] = sky; wx += sx; wy += sy; } x += run; continue; }
       if (ti !== lastTi){ t = TEXL[ti][sl]; lastTi = ti; }
-      buf[o++] = t[((((wy*64)|0)&63)<<6) + (((wx*64)|0)&63)];
-      wx += sx; wy += sy;
+      for (let i=0;i<run;i++){
+        buf[o++] = t[((((wy*64)|0)&63)<<6) + (((wx*64)|0)&63)];
+        wx += sx; wy += sy;
+      }
+      x += run;
     }
   }
 
@@ -4054,7 +4070,29 @@ const OBJ_ENT = {
    distance alone aimed the chevron at the audit terminal sealed inside M03's
    loading bay from 181 of the 356 cells on the key's side of it, when the
    keycard that opens the bay was the one thing to go and get. */
+/* The fill answers the same for every frame the agent stands in the same cell
+   with the same keys and the same doors — and it walks the whole floor plan
+   allocating five arrays a cell to do it. So remember the answer, and the
+   inputs it came from, EXACTLY: a rolling hash of those inputs collided, and
+   two different states handed back each other's grid (twenty of 745 rendered
+   poses drew the chevron somewhere else). Compared field by field there is
+   nothing to collide. A door's OPEN state counts too — a guard holding a
+   locked door makes its cell walkable without touching the lock. */
 function reachable(){
+  const cell = (P.y|0)*G.W + (P.x|0), keys = P.keys > 0 ? 1 : 0, n = G.doors.length;
+  const st = i => { const d = G.doors[i];
+    return (d.locked?4:0)|(d.secret?2:0)|(d.found?1:0)|(G.solid[d.c]?0:8); };
+  let same = !!G.reachVal && G.reachCell === cell && G.reachKeys === keys &&
+             G.reachLevel === G.level && !!G.reachDoor && G.reachDoor.length === n;
+  if (same) for (let i=0;i<n;i++) if (G.reachDoor[i] !== st(i)){ same = false; break; }
+  if (same) return G.reachVal;
+  G.reachCell = cell; G.reachKeys = keys; G.reachLevel = G.level;
+  if (!G.reachDoor || G.reachDoor.length !== n) G.reachDoor = new Uint8Array(n);
+  for (let i=0;i<n;i++) G.reachDoor[i] = st(i);
+  G.reachVal = reachableScan();
+  return G.reachVal;
+}
+function reachableScan(){
   const W = G.W, H = G.H, seen = new Uint8Array(W*H);
   const doorAt = new Map(); for (const d of G.doors) doorAt.set(d.c, d);
   const walk = c => { if (!G.solid[c]) return true; const d = doorAt.get(c); if (!d) return false;
@@ -5367,6 +5405,37 @@ function selfTestBody(runSim){
        new RegExp("toast\\('MISSION '\\+G\\.L\\.code\\+' — '\\+G\\.L\\.name, 'gold', MISSION_BANNER_MS\\)").test(startMission.toString()),
        SPAWN_GRACE+'s grace, '+MISSION_BANNER_MS+'ms banner');
     G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; clearInput(); }
+
+  /* ---- the remembered flood fill is never wrong ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, px0 = P.x, py0 = P.y, k0 = P.keys;
+    const wrong = [];
+    for (let li = 0; li < LEVELS.length && wrong.length < 3; li++){
+      loadLevel(li, 2); G.state = 'play';
+      for (let y = 1; y < G.H-1 && wrong.length < 3; y++) for (let x = 1; x < G.W-1; x++){
+        if (G.solid[idx(x,y)]) continue;
+        for (const keys of [0, 1]){
+          P.x = x + .5; P.y = y + .5; P.keys = keys;
+          const memo = reachable(), fresh = reachableScan();
+          if (memo.length !== fresh.length){ wrong.push(LEVELS[li].code+' '+x+','+y+' length'); break; }
+          for (let c = 0; c < fresh.length; c++)
+            if (memo[c] !== fresh[c]){ wrong.push(LEVELS[li].code+' keys'+keys+' at '+x+','+y+' cell '+c); break; }
+        }
+        if (wrong.length >= 3) break;
+      }
+    }
+    /* ...and an open door counts even when its lock has not changed */
+    loadLevel(LEVELS.findIndex(L => L.map.some(r => r.indexOf('L') >= 0)), 1); G.state = 'play';
+    const d = G.doors.find(q => q.locked);
+    let openMatters = 'no locked door';
+    if (d){ P.keys = 0; P.x = (d.x|0) + 1.5; P.y = (d.y|0) + .5;
+      G.solid[d.c] = 1; const shut = reachable().slice();
+      G.solid[d.c] = 0; const held = reachable();
+      let differs = false; for (let c = 0; c < shut.length; c++) if (shut[c] !== held[c]){ differs = true; break; }
+      openMatters = differs ? 'ok' : 'the memo ignored a door being held open';
+      G.solid[d.c] = 1; }
+    ok('reachability: the remembered fill always equals a fresh one',
+       wrong.length === 0 && openMatters === 'ok', wrong.join(' | ') || openMatters);
+    P.x = px0; P.y = py0; P.keys = k0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
   /* ---- the chevron never points through a locked door ---- */
   { const st0 = G.state, sel0 = selLevel, d0 = G.diff, px0 = P.x, py0 = P.y, k0 = P.keys;
