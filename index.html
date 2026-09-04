@@ -5347,7 +5347,7 @@ function selfTestBody(runSim){
 
   /* ---- toasts are sized by the picture: 1.15vh read the phone's tall axis in
      portrait and stacked 31px lines across a 216px frame ---- */
-  { const want = [[216,6],[360,6],[648,8.29],[2000,10]];
+  { const want = [[216,6],[360,6],[648,8.29],[1080,13.82],[2000,16]];
     const off = want.filter(([h,px]) => Math.abs(toastPx(h) - px) > .02).map(([h,px]) => h+'->'+toastPx(h).toFixed(2)+' want '+px);
     const fh = view.getBoundingClientRect().height;
     const varPx = parseFloat(getComputedStyle(document.getElementById('frame')).getPropertyValue('--toastpx'));
@@ -5355,7 +5355,7 @@ function selfTestBody(runSim){
     const t = document.getElementById('toasts').lastChild;
     const live = t ? parseFloat(getComputedStyle(t).fontSize) : NaN;
     clearToasts();
-    ok('toasts: type size follows the frame height', off.length === 0, off.join(' ') || '216/360/648/2000 → 6/6/8.29/10');
+    ok('toasts: type size follows the frame height', off.length === 0, off.join(' ') || '216/360/648/1080/2000 → 6/6/8.29/13.82/16');
     ok('toasts: ...and the live toast wears it',
        Math.abs(varPx - toastPx(fh)) < .05 && Math.abs(live - toastPx(fh)) < .05,
        'frame '+fh.toFixed(0)+'px var '+varPx+' toast '+live); }
@@ -7127,6 +7127,28 @@ function selfTestBody(runSim){
              'armed '+armed+' watch '+watched+' rearmed '+rearmed+' then '+G.state);
           G.state = 'play'; show(null); clearInput(); }
 
+        /* a chord is the browser's: Ctrl+P must not touch the scanlines, Alt+F4
+           must not open the report */
+        { const sc0 = SCANOP, st0 = G.state; G.state = 'play'; show(null);
+          dispatchEvent(new KeyboardEvent('keydown', { code:'KeyP', key:'p', ctrlKey:true, bubbles:true, cancelable:true }));
+          const scanHeld = SCANOP === sc0;
+          dispatchEvent(new KeyboardEvent('keydown', { code:'F4', key:'F4', altKey:true, bubbles:true, cancelable:true }));
+          const noReport = !G.showTests;
+          if (G.showTests){ G.showTests = false; G.testReturn = null; }
+          ok('keys: a chord with Ctrl, Alt or Meta is the browser\'s, not a game key',
+             scanHeld && noReport, 'scanlines '+sc0+'->'+SCANOP+' report '+!noReport);
+          SCANOP = sc0; G.state = st0; show(null); }
+        /* the Esc that dropped the lock and opened the watch is not the Esc
+           that closes it */
+        { G.state = 'play'; pause(); M.unlockAt = performance.now();
+          dispatchEvent(new KeyboardEvent('keydown', { code:'Escape', key:'Escape', bubbles:true, cancelable:true }));
+          const stayed = G.state === 'pause';
+          M.unlockAt = performance.now() - 1000;
+          dispatchEvent(new KeyboardEvent('keydown', { code:'Escape', key:'Escape', bubbles:true, cancelable:true }));
+          ok('watch: the Esc that just dropped the lock does not resume; a later Esc does',
+             stayed && G.state === 'play', 'after the unlock Esc '+(stayed ? 'pause' : G.state)+', a second later '+G.state);
+          M.unlockAt = 0; G.state = 'play'; show(null); clearInput(); }
+
         /* Tab on the watch walks the watch and never leaves it: the browser
            used to walk focus off the panel onto the canvas, and the next Tab
            read as "close the watch" — the mission resumed with the clock
@@ -8655,6 +8677,11 @@ let TAP_ACT = false;
 })();
 function onKey(e){
   audioInit();
+  /* A chord is the browser's, not the game's: Ctrl+P used to turn the
+     scanlines off and SAVE it (every later session streamed without them)
+     while the print dialog opened over the fight; Alt+F4 opened the report.
+     Shift stays — it is the sprint key. */
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
   /* Only swallow Tab in-mission, or the menus become keyboard-inaccessible.
      On the watch, Tab walks the watch: RESUME, RESTART, OPTIONS, ABORT and
      round again, Shift+Tab the other way. It used to belong to the browser
@@ -8741,7 +8768,13 @@ function onKey(e){
     if (n >= 0) pickWeapon(n);
     return;
   }
-  if (G.state==='pause' && e.code==='Escape'){ resume(false); return; }   // Esc is not an activating key
+  /* Esc is not an activating key. And the Esc that made the browser drop the
+     lock — which paused the mission a moment ago — is not a resume either:
+     an engine that delivers that keydown after the lock change un-paused the
+     watch it had just opened, hostiles moving under a CLICK THE VIEW band. */
+  if (G.state==='pause' && e.code==='Escape'){
+    if (M.unlockAt && performance.now() - M.unlockAt < 300) return;
+    resume(false); return; }
   if (e.code==='Enter' && !(e.target && e.target.tagName==='BUTTON')){   // a focused button clicks itself
     if (G.state==='title'){ act('missions'); }
     else if (G.state==='select'){ sfx('click'); gotoBrief(); }
@@ -8916,8 +8949,10 @@ function loop(t){
    measurement zoom-invariant, so the stuck state cannot form. vv.scale is 1 in
    an embedded frame, so the case this clamp was written for is untouched. */
 /* toast type for a picture h CSS-px tall: the desktop size at 648px, the 6px
-   floor from a landscape phone up, never past 10 */
-function toastPx(h){ return Math.max(6, Math.min(10, h * .0128)); }
+   floor from a landscape phone up, and it keeps growing with the picture —
+   capped at 10 it was the smallest text on a 1080p stream, a quarter of the
+   HUD's glyphs */
+function toastPx(h){ return Math.max(6, Math.min(16, h * .0128)); }
 function fitClamp(win, cli, vv, scale){
   return Math.min(win || 1e9, cli || 1e9, (vv ? vv * (scale || 1) : 0) || 1e9);
 }
