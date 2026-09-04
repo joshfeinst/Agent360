@@ -203,8 +203,10 @@ phish on M03 to shoot you under it. The two are one constant now. A screen
 reader met six sliders it could only call "slider", and heard nothing the
 game said out loud; the sliders are named and the toast column announces.
 The Options values were the smallest text you must read to know a setting,
-at a hardcoded 8px. Ledger, including the escape route, the objective orders
-and the reload accounting that were measured and left alone:
+at a hardcoded 8px. And now that rounds stop on the CFO, the aim assist was
+still locking through him and feeding every round into his back. Ledger,
+including the escape route, the objective orders, the ammo economy and the
+duel that were measured and left alone:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
 ## v1.32
@@ -303,7 +305,7 @@ reported and did not survive:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **458 assertions** (450 in a touch
+- **F4** runs the in-game self-test suite — **460 assertions** (452 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the

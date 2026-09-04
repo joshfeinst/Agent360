@@ -2431,6 +2431,7 @@ const BOSSTUNE = {
    not read yet. One constant, so they cannot drift apart again. */
 const MISSION_BANNER_MS = 3200;
 const SPAWN_GRACE = MISSION_BANNER_MS / 1000;
+const DOOR_R2 = 2.6, DOOR_R2_SECRET = 1.2;   // SQUARED: 1.61u and 1.10u of reach
 const MOVE_DODGE = [.35, .30, .12];  // SECRET .30: part of the same cliff-softening pass as DIFFS[1]
 function aimPenalty(){
   return (1 - clamp(P.speed, 0, 1.6) * MOVE_DODGE[G.diff]) * (1 - P.crouch * .25);
@@ -3002,6 +3003,20 @@ const AIM_SWEEP_MAX = .26;              // ...bounded, so one stalled frame is n
    both branches on a machine that only has one of them. */
 const aimCone = (swept, touch) => AIM_CONE +
   (touch ? Math.min(Math.abs(swept) || 0, AIM_SWEEP_MAX) * AIM_SWEEP / FOV_N : 0);
+/* Is the CFO standing on the line from the agent to (bx,by)? He is a body,
+   not a wall, so los() cannot see him — but a round will stop on him. */
+function bodyInLine(bx, by){
+  for (const n of G.ents){
+    if (n.kind!=='prop' || n.sub!=='npc' || n.dead2 || n.rescued) continue;
+    const dx = bx-P.x, dy = by-P.y, L2 = dx*dx + dy*dy;
+    if (L2 < 1e-6) continue;
+    const t = ((n.x-P.x)*dx + (n.y-P.y)*dy) / L2;
+    if (t <= 0 || t >= 1) continue;                 // behind the agent, or past the target
+    const px = P.x + dx*t, py = P.y + dy*t;
+    if (dist2(n.x, n.y, px, py) < n.r*n.r) return true;
+  }
+  return false;
+}
 function acquireTarget(){
   const prev = P.lockT;
   P.lockT = null;
@@ -3034,6 +3049,11 @@ function acquireTarget(){
     const off = sx - P.aimU;                         // measured from the reticle
     if (Math.abs(off) > cone || Math.abs(sx) > 1) continue;   // centre must be on screen
     if (!los(P.x,P.y,e.x,e.y)) continue;
+    /* ...and not through the CFO. Since rounds stop on him (v1.32) a lock
+       whose line runs through his body centred every round into his back:
+       ten rounds, no hits, no damage, four HOLD FIRE toasts, and the amber
+       brackets saying the shot was good the whole time. */
+    if (bodyInLine(e.x, e.y)) continue;
     const score = Math.abs(off) + ty*.004;           // nearest the reticle, then nearest
     if (e === prev){
       prevScore = score;
@@ -3507,7 +3527,9 @@ function step(dt, scored){
   /* doors. A secret door holds its disguise until the player is nearly
      touching it — the normal radius would pop it open from the next aisle. */
   for (const d of G.doors){
-    let want = dist2(P.x,P.y,d.x,d.y) < (d.secret ? 1.2 : 2.6);
+    /* SQUARED distances: the open radius is 1.61u, and a secret's 1.10u —
+       the literals read like distances and are not. */
+    let want = dist2(P.x,P.y,d.x,d.y) < (d.secret ? DOOR_R2_SECRET : DOOR_R2);
     if (want && d.locked && P.keys<=0){
       want = false;
       if (G.doorNag <= 0){ G.doorNag = 3; sfx('denied'); toast('KEYCARD REQUIRED','red',2200); }
@@ -5282,6 +5304,11 @@ function selfTestBody(runSim){
       P.keys = 1;
       for (let i = 0; i < 40; i++) step(1/60); opened = d.open;
     }
+    /* the open radius is a SQUARED literal: read as a distance it would be
+       2.6u and every door in the game would open from the next aisle */
+    ok('doors: the open radius is 1.61u, and a secret door\'s 1.10u',
+       Math.abs(Math.sqrt(DOOR_R2) - 1.612) < .01 && Math.abs(Math.sqrt(DOOR_R2_SECRET) - 1.095) < .01,
+       Math.sqrt(DOOR_R2).toFixed(3)+'u / '+Math.sqrt(DOOR_R2_SECRET).toFixed(3)+'u');
     ok('doors: a locked door stays shut without the keycard and opens with it',
        !!d && !!spot && shut === 0 && opened > 0, 'without ' + shut + ' with ' + opened + (d ? '' : ' (no locked door)'));
     P.keys = 0; P.alive = al0; G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
@@ -5411,6 +5438,23 @@ function selfTestBody(runSim){
   }
 
   if (runSim){   // loads a level: only where nothing is in progress
+  /* ---- the assist never aims through the CFO ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, aa0 = AIM_ASSIST, px0 = P.x, py0 = P.y, a0 = P.ang;
+    const li = LEVELS.findIndex(L => L.objectives.some(o => o.kind === 'npc'));
+    loadLevel(li, 1); G.state = 'play'; AIM_ASSIST = 2;
+    const n = G.ents.find(e => e.sub === 'npc');
+    /* the agent, the CFO and a hostile on one line, the CFO in the middle */
+    const ang = 0; P.x = n.x - 2.5; P.y = n.y; P.ang = ang; P.rx = 0; P.aimU = 0;
+    const foe = spawnEnemy('goon', n.x + 2.5, n.y); foe.alert = 1; foe.state = 'chase';
+    acquireTarget(); const throughHim = P.lockT;
+    n.rescued = true;                                  // he is out of the way
+    acquireTarget(); const clear = P.lockT;
+    n.rescued = false;
+    ok('assist: the lock never runs through the man you are escorting',
+       throughHim === null && clear === foe, 'with him in the line '+(throughHim ? 'locked' : 'no lock')+', with him clear '+(clear === foe ? 'locked' : 'no lock'));
+    foe.dead2 = true; G.ents = G.ents.filter(o => o !== foe); P.lockT = null;
+    AIM_ASSIST = aa0; P.x = px0; P.y = py0; P.ang = a0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
   /* ---- the CFO stops a round and says so; the crate gives what fits ---- */
   { const st0 = G.state, sel0 = selLevel, d0 = G.diff, px0 = P.x, py0 = P.y;
     const li = LEVELS.findIndex(L => L.objectives.some(o => o.kind === 'npc'));
