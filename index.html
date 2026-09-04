@@ -499,7 +499,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.46';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.47';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -627,6 +627,67 @@ function enableHybrid(){
    used to fire the gun and silently unlatch a lit AIM toggle. */
 let SIMGHOSTS = false;   // F4 drives desktop look modes with synthetic mouse events on phones
 const touchGhost = e => !SIMGHOSTS && !!(isTouch || (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents));
+/* A PEN is a finger the cluster can see. On a Windows or ChromeOS tablet a
+   stylus sends pointer events with pointerType "pen" and the compatibility
+   mouse events — and no TouchEvents at all. The cluster and the view bind
+   only touchstart/touchend, and on a touch profile touchGhost() throws every
+   mouse event away, so a pen could tap its way through the menus into a
+   mission and then do nothing: no shot, no turn, no pause, under a HUD saying
+   LEFT PAD MOVES · RIGHT PAD LOOKS · TAP TO SHOOT. Measured on that profile,
+   the whole sequence left mag 7→7, P.ang 0→0, 0.000u moved. In hybrid the
+   compat mousedown fell through to the document handler instead, so ❚❚, USE,
+   AIM and CROUCH all FIRED.
+   The pen's contact is re-issued here as the touchstart/touchmove/touchend a
+   finger would have sent, to the element under it, so every rule the finger
+   has — one owner per pad, drag look, tap to shoot, the 600ms swallow, an
+   empty glass clearing every hold — applies to the pen without a second
+   model. Cancelling the pointerdown suppresses the compat mouse events (the
+   spec's rule, and measured). Android pens fire native TouchEvents as well,
+   so the re-issue waits one task and stands down if a real touchstart landed
+   in between. Only where the game is already in its touch model: a pen on a
+   desk beside a mouse stays a mouse, which is what a pen display wants. */
+let PEN_SEEN = 0;   // pen contacts re-issued as touches, for the diagnostics and the suite
+(() => {
+  if (typeof Touch !== 'function' || typeof TouchEvent !== 'function') return;   // Safari: iPad pens are touches already
+  const active = new Map();                     // pointerId -> the touch it is standing in for
+  const pending = new Map();                    // ...and the ones still waiting out the one-task deferral
+  const native = new Set(); let lastNative = -1e9;
+  addEventListener('touchstart', e => { lastNative = performance.now(); for (const t of e.changedTouches) native.add(t.identifier); }, true);
+  const gone = e => { for (const t of e.changedTouches) native.delete(t.identifier); };
+  addEventListener('touchend', gone, true); addEventListener('touchcancel', gone, true);
+  const mk = (id, target, x, y) => new Touch({ identifier:id, target, clientX:x, clientY:y, pageX:x, pageY:y, screenX:x, screenY:y });
+  const others = () => [...native].map(i => mk(i, document.body, 0, 0));   // real fingers still down keep the glass from reading empty
+  const send = (type, r, x, y) => {
+    const t = mk(r.id, r.target, x, y);
+    const down = (type === 'touchend' || type === 'touchcancel') ? others() : [...others(), t];
+    r.target.dispatchEvent(new TouchEvent(type, { touches:down, targetTouches:down.filter(q => q.target === r.target),
+                                                  changedTouches:[t], bubbles:true, cancelable:true }));
+  };
+  const wanted = e => e.pointerType === 'pen' && (isTouch || TOUCH_SEEN) && !SIMGHOSTS;
+  addEventListener('pointerdown', e => {
+    if (!wanted(e)) return;
+    e.preventDefault();
+    const stamp = performance.now();
+    const r = { id: -(e.pointerId + 1000), target: e.target, x: e.clientX, y: e.clientY, lifted: null };   // never a real touch's id
+    pending.set(e.pointerId, r);
+    setTimeout(() => {
+      pending.delete(e.pointerId);
+      if (lastNative >= stamp) return;                       // a native touch came: the browser did this itself
+      PEN_SEEN++; send('touchstart', r, r.x, r.y);
+      /* a lift that beat the deferral is a tap: start and end in one task,
+         the way a finger's would have arrived, rather than a start with no end */
+      if (r.lifted) send(r.lifted.type, r, r.lifted.x, r.lifted.y); else active.set(e.pointerId, r);
+    }, 0);
+  }, { passive:false, capture:true });
+  addEventListener('pointermove', e => { const r = active.get(e.pointerId) || pending.get(e.pointerId); if (!r) return;
+    r.x = e.clientX; r.y = e.clientY; if (active.has(e.pointerId)) send('touchmove', r, r.x, r.y); }, true);
+  const lift = type => e => {
+    const w = pending.get(e.pointerId); if (w){ w.lifted = { type, x: e.clientX, y: e.clientY }; return; }
+    const r = active.get(e.pointerId); if (!r) return;
+    active.delete(e.pointerId); send(type, r, e.clientX, e.clientY); };
+  addEventListener('pointerup', lift('touchend'), true);
+  addEventListener('pointercancel', lift('touchcancel'), true);
+})();
 /* Reduced motion is honoured where the game shakes or strobes the whole frame:
    camera shake is capped to a nudge, the meltdown wash to a faint tint, and the
    countdown plate stops blinking. The CSS .blink rule above handles the DOM
@@ -825,6 +886,9 @@ document.addEventListener('contextmenu', e => {
 document.addEventListener('mousedown', e => {
   if (typeof G === 'undefined' || G.state !== 'play') return;
   if (touchGhost(e)) return;
+  /* a press on the cluster is the cluster's, whatever pointer made it: a pen's
+     compat mousedown on ❚❚ used to fall through here and fire the gun */
+  if (e.target && e.target.closest && e.target.closest('#touch')) return;
   e.preventDefault(); view.focus();
   M.lx = e.clientX; M.ly = e.clientY;
   /* The thumb button. Almost every mouse maps buttons 3 and 4 to browser BACK
@@ -3285,7 +3349,12 @@ function playerFire(){
 function startReload(){
   const w=WEAPS[P.w];
   if (P.reload>0 || P.mag[P.w]>=w.mag || !P.alive) return;
-  if (!G.cheats.ammo && P.ammo[w.ammo] <= 0) return;
+  if (!G.cheats.ammo && P.ammo[w.ammo] <= 0){
+    /* "dry" was never SAID: R did nothing, the reserve stayed grey, only the
+       click played — and the deaf audit had already noted the click */
+    if (!(G.dryNagT > G.time)){ G.dryNagT = G.time + 3; toast('OUT OF AMMUNITION — SWITCH WEAPON', 'red', 2200); }
+    return;
+  }
   P.reload = w.rel; sfx('reload');
 }
 function finishReload(){
@@ -3880,7 +3949,13 @@ function pickup(e){
         const g = Math.min(AMMOCAP[a], P.ammo[a]+add) - P.ammo[a];
         if (g > 0){ got.push({ i, a, g }); gain += g; }
       }
-      if (!offer || gain < offer*.25) return;
+      /* ...unless a calibre you carry is EMPTY. The quarter rule was written
+         for the near-full top-up, and it refused a player whose cannon was dry
+         because the PP7 and the shotgun were at cap: 3 slugs of a 9.75 offer,
+         crate left on the floor, not a word — the hoarder saving the cannon
+         for the rack, exactly the player it should serve. */
+      const dry = got.some(x => P.ammo[x.a] <= 0);
+      if (!offer || (gain < offer*.25 && !dry)) return;
       for (const x of got) P.ammo[x.a] += x.g;
       toast('AMMO ' + got.map(x => w[x.i].hud + ' +' + x.g).join(' · '), 'cyan', 1600); break;
     }
@@ -4654,6 +4729,11 @@ function drawHUD(horizon){
     const f = reducedMotion() ? .8 : clamp(c.t / c.life, 0, 1) * .5 + .45;
     ctx.strokeStyle = (c.kind === 'windup' ? 'rgba(255,176,46,' : 'rgba(255,214,90,') + f.toFixed(2) + ')';
     ctx.lineWidth = c.kind === 'windup' ? 4 : 3;
+    /* dashed, where the pain arc is solid: simulated deuteranopia puts the
+       amber of this arc and the red of that one 8 ΔE apart on the same ring —
+       one hue. Radius already separates them (70 vs 82); a different STROKE
+       makes them different marks in any eye */
+    ctx.setLineDash([3, 2]);
     const half = c.kind === 'windup' ? .30 : .22;
     for (let a = rel-half; a < rel+half; a += .095){
       const b = Math.min(a+.095, rel+half), m = (a+b)/2;
@@ -4661,6 +4741,7 @@ function drawHUD(horizon){
       if (wp && px >= wp[0]-3 && px <= wp[2]+3 && py >= wp[1]-3 && py <= wp[3]+3) continue;
       ctx.beginPath(); ctx.arc(RW/2, RH/2, 82, a, b); ctx.stroke();
     }
+    ctx.setLineDash([]);
   }
 
   /* crosshair */
@@ -4718,7 +4799,10 @@ function drawHUD(horizon){
   /* On a plate, like the bars above them: bare over M03's white mist and M04's
      dusk sky these three read as nothing at all. */
   if (P.keys>0) txtP('KEY', 10, 40, '#8be6ff', 6, 'left');
-  if (G.cheats.god) txtP('INVULNERABLE', 10, (isTouch || TOUCH_SEEN) ? 62 : RH-46, '#4ade80', 6);
+  /* left-ANCHORED: txtP centres by default, and centred on x=10 this read
+     "LNERABLE" — two letters off the frame with the fallback face, four with
+     the real one. The same slip cut RELOADING to "OADING" below. */
+  if (G.cheats.god) txtP('INVULNERABLE', 10, (isTouch || TOUCH_SEEN) ? 62 : RH-46, '#4ade80', 6, 'left');
 
   /* radar top right; clock sits left, clear of both. The waypoint is its own
      feature — hiding the radar with N must not take the objective chevron with
@@ -4773,13 +4857,19 @@ function drawHUD(horizon){
   const mag = G.cheats.ammo ? '∞' : String(P.mag[P.w]);
   const res = G.cheats.ammo ? '∞' : String(P.ammo[w.ammo]);
   ctx.textAlign='right';
-  txt(mag, RW-52, RH-12, P.mag[P.w]>0?'#ffb02e':'#ff3b30', 16, 'right');
-  txt('/ '+res, RW-12, RH-12, '#8fa8c0', 8, 'right');
+  /* the magazine sits a measured 6px left of the reserve, not at a fixed
+     RW-52: with the real square face a three-digit reserve ("/ 120", "/ 300")
+     is 40px wide and the two ran together with a 0px gap */
+  ctx.font = '8px "Press Start 2P", monospace';
+  const resW = Math.ceil(ctx.measureText('/ '+res).width);
+  txt(mag, RW-12-resW-6, RH-12, P.mag[P.w]>0?'#ffb02e':'#ff3b30', 16, 'right');
+  txt('/ '+res, RW-12, RH-12, (!G.cheats.ammo && P.ammo[w.ammo] <= 0) ? '#ff3b30' : '#8fa8c0', 8, 'right');   // "/ 0" read exactly like "/ 42"
   if (P.reload>0){
     /* on a phone the move pad covers the bottom-left corner: the readout
        moves up to the prompt row, where nothing else draws while reloading */
     const ry = (isTouch || TOUCH_SEEN) ? RH-57 : RH-22;
-    txtP('RELOADING', (isTouch || TOUCH_SEEN) ? (RW>>1)-40 : 10, ry, '#35d0ff', 7);
+    if (isTouch || TOUCH_SEEN) txtP('RELOADING', (RW>>1)-40, ry, '#35d0ff', 7);
+    else txtP('RELOADING', 10, ry, '#35d0ff', 7, 'left');   // left-anchored beside the bar, like the clock
     bar((isTouch || TOUCH_SEEN) ? (RW>>1)-40 : 10, ry+4, 70, 4, 1-P.reload/WEAPS[P.w].rel, '#35d0ff');
   }
 
@@ -4876,7 +4966,11 @@ function drawHUD(horizon){
                    '   FAILS ' + M.lockFails,
       'ERR     ' + (M.lockErr ? M.lockErr.slice(0, 30) : 'none')
     ];
-    const w2 = 232, y2 = M.diag ? 132 : 70;      // stack below F3 when both are up
+    /* as wide as its widest line: a fixed 232 was sized to the fallback face,
+       and the RAW MAX line ran 26px past the frame edge with the real one */
+    ctx.font = '6px "Press Start 2P", monospace';
+    const w2 = Math.min(RW - 12, 8 + Math.ceil(Math.max(...L2.map(l => ctx.measureText(l).width)))),
+          y2 = M.diag ? 132 : 70;                   // stack below F3 when both are up
     ctx.fillStyle = 'rgba(6,10,16,.86)'; ctx.fillRect(RW-w2-6, y2, w2, 10+L2.length*9);
     ctx.strokeStyle = '#2f7f9c'; ctx.lineWidth = 1;
     ctx.strokeRect(RW-w2-5.5, y2+.5, w2-1, 9+L2.length*9);
@@ -5907,8 +6001,23 @@ function selfTestBody(runSim){
     seen.length = 0; G.testPage = 2; drawTestReport(); const p2 = seen.filter(x => /^FAIL probe/.test(x)), foot = seen.find(x => /^PAGE/.test(x));
     txt = t0; G.tests = R0; G.testPage = pg0;
     ok('report: fifty failures page rather than vanish into the console',
-       p0 === 21 && p2.length === 8 && /^FAIL probe 42/.test(p2[0]) && /PAGE 3\/3/.test(foot || ''),
-       'page 1 rows '+p0+' page 3 rows '+p2.length+' footer "'+foot+'"'); }
+       p0 === 20 && p2.length === 10 && /^FAIL probe 40/.test(p2[0]) && /PAGE 3\/3/.test(foot || ''),
+       'page 1 rows '+p0+' page 3 rows '+p2.length+' footer "'+foot+'"');
+    /* ...and a row is cut to the frame with an ellipsis rather than run off it.
+       With the real square face 208 of 485 rows ran past the right edge — the
+       detail is the useful half of a FAIL row, and there is no sideways paging.
+       Twenty rows a page, not 21: the 21st printed through the PAGE footer. */
+    { const R1 = G.tests, pg1 = G.testPage;
+      G.tests = [{ name: 'probe', pass: false, detail: 'x'.repeat(400) }];
+      const drawn = []; const t1 = txt; txt = (str, ...r) => { drawn.push(String(str)); return t1(str, ...r); };
+      G.testPage = 0; drawTestReport(); txt = t1;
+      const row = drawn.find(x => /^FAIL probe/.test(x)) || '';
+      ctx.font = '6px "Press Start 2P", monospace';
+      const w = ctx.measureText(row).width, lastBase = 24 + 19*9, footBase = RH - 8;
+      ok('report: a long row is cut to the frame, and the last row clears the footer',
+         /…$/.test(row) && w <= RW - 16 && lastBase + 6 < footBase,
+         'row ' + row.length + ' chars, ' + Math.round(w) + 'px of ' + (RW-16) + ' · last baseline ' + lastBase + ' vs footer ' + footBase);
+      G.tests = R1; G.testPage = pg1; } }
 
   /* ---- the finale's music meets the boss when the player does ---- */
   { const st0 = G.state, sel0 = selLevel;
@@ -6037,6 +6146,23 @@ function selfTestBody(runSim){
     const named = [...document.getElementById('toasts').children].map(t => t.textContent).find(t => /^AMMO /.test(t)) || '';
     ok('crate: one that would give a round stays on the floor; one that gives names the amount',
        left && P.ammo.smg === 260 && /KB-KLOBB \+60/.test(named), 'left '+left+' smg '+P.ammo.smg+' toast "'+named+'"');
+    /* ...and a crate that would fill an EMPTY calibre is taken however small
+       the total: two guns at cap and a dry cannon used to leave it on the
+       floor without a word */
+    clearToasts();
+    P.ammo = { p9:AMMOCAP.p9, smg:AMMOCAP.smg, sh:AMMOCAP.sh, pt:0 };
+    const dryC = { kind:'item', sub:'ammo', x:P.x, y:P.y, dead2:false };
+    pickup(dryC);
+    const dryNamed = [...document.getElementById('toasts').children].map(t => t.textContent).find(t => /^AMMO /.test(t)) || '';
+    ok('crate: a dry calibre takes the crate whatever the rest is holding',
+       dryC.dead2 && P.ammo.pt === 3 && /PATCH CANNON \+3/.test(dryNamed), 'taken '+dryC.dead2+' pt '+P.ammo.pt+' toast "'+dryNamed+'"');
+    /* ...and reloading with nothing to load is SAID, once */
+    clearToasts(); { const w0 = P.w, m0 = P.mag.slice(), r0 = P.reload, t0 = G.dryNagT, al0 = P.alive;
+      P.w = 0; P.mag[0] = 0; P.ammo.p9 = 0; P.reload = 0; G.dryNagT = 0; P.alive = true;
+      startReload(); startReload();
+      const said = [...document.getElementById('toasts').children].filter(t => /OUT OF AMMUNITION/.test(t.textContent)).length;
+      ok('reload: an empty gun with an empty reserve says so, once', said === 1 && P.reload === 0, 'said '+said+' reload '+P.reload);
+      P.w = w0; P.mag = m0; P.reload = r0; G.dryNagT = t0; P.alive = al0; }
     clearToasts(); P.has = has0; P.ammo = am0; P.x = px0; P.y = py0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
   }
@@ -7804,6 +7930,42 @@ function selfTestBody(runSim){
           if (window.syncTouchLamps) syncTouchLamps();
           G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
+        /* The HUD's words fit the frame whatever face the browser resolves.
+           Every run in this project's history had the web font FAILING to load
+           and the fallback monospace in its place — 0.6em glyphs where the
+           real "Press Start 2P" is square (1.0em, measured 1.66x wider). Two
+           words were cut even with the fallback: txtP centres by default, and
+           RELOADING and INVULNERABLE were centred on x=10, so they read
+           "OADING" and "LNERABLE". The rest broke only with the real face.
+           Measured with whatever face is live, so this holds under both. */
+        { const st0 = G.state, rl0 = P.reload, g0 = G.cheats.god, am0 = P.ammo[WEAPS[P.w].ammo], mg0 = P.mag[P.w];
+          const probe = () => {
+            /* wrap ctx.fillText to record where each string lands; render one HUD */
+            const seen = []; const real = ctx.fillText;
+            ctx.fillText = function(str, x, y){ const w = ctx.measureText(str).width;
+              const l = ctx.textAlign === 'right' ? x - w : ctx.textAlign === 'center' ? x - w/2 : x;
+              seen.push({ str:String(str), l, r: l + w, col: String(ctx.fillStyle) }); return real.apply(this, arguments); };
+            try { drawHUD(); } finally { ctx.fillText = real; }
+            return seen; };
+          G.state = 'play'; P.reload = 1; G.cheats.god = true;
+          P.ammo[WEAPS[P.w].ammo] = AMMOCAP[WEAPS[P.w].ammo]; P.mag[P.w] = 0;   // "0/ 300": the widest readout
+          const seen = probe();
+          const at = re => seen.find(s => re.test(s.str));
+          const rel = at(/RELOADING/), inv = at(/INVULNERABLE/), mag = at(/^0$/), res = at(/^\/ /);
+          /* the reserve reads RED at zero, like the magazine digit — "/ 0" used
+             to sit in the same grey as "/ 42", and dry was never said */
+          const seenDry = (() => { const a0 = P.ammo[WEAPS[P.w].ammo]; P.ammo[WEAPS[P.w].ammo] = 0;
+            const s2 = probe(); P.ammo[WEAPS[P.w].ammo] = a0;
+            return s2.find(x => /^\/ 0$/.test(x.str) && !/^#000|rgb\(0, 0, 0\)/.test(x.col)); })();   // skip txt()'s shadow pass
+          const onFrame = s => s && s.l >= 0 && s.r <= RW;
+          const gap = mag && res ? Math.round(res.l - mag.r) : -1;
+          ok('hud: RELOADING and INVULNERABLE start on the frame, and the magazine keeps clear of the reserve',
+             onFrame(rel) && onFrame(inv) && gap >= 4,
+             'RELOADING x ' + (rel ? Math.round(rel.l) : '?') + ' · INVULNERABLE x ' + (inv ? Math.round(inv.l) : '?') +
+             ' · magazine→reserve gap ' + gap + 'px · face ' + (ctx.measureText('M').width >= 7.5 ? 'square' : 'fallback'));
+          ok('hud: an empty reserve reads red', !!seenDry && /ff3b30/i.test(seenDry.col), seenDry ? seenDry.col : 'no "/ 0" drawn');
+          P.reload = rl0; G.cheats.god = g0; P.ammo[WEAPS[P.w].ammo] = am0; P.mag[P.w] = mg0; G.state = st0; }
+
         /* a fast flick is a fast flick: the captured path CLAMPS an outsized
            event, it does not throw it away. The old raw-count guard dropped
            anything past 3000, so movementX 2999 turned 1.2449 rad and 3001
@@ -9546,12 +9708,20 @@ function drawTestReport(){
   const show = fails ? R.filter(r => !r.pass) : R;
   /* 21 rows fit; the rest used to be "+399 more in console" — with forty
      failures, nineteen were invisible on the canvas. Arrow keys page. */
-  const PER = 21, pages = Math.max(1, Math.ceil(show.length / PER));
+  /* 20 rows, not 21: the 21st's baseline (204) sat 4px above the footer's
+     (208) and the glyphs are 6px tall, so it printed through PAGE 1/24. And
+     each row is cut to the frame with an ellipsis rather than run off it —
+     208 of 485 did with the real face, 61 with the fallback. */
+  const PER = 20, pages = Math.max(1, Math.ceil(show.length / PER));
   G.testPage = clamp(G.testPage|0, 0, pages-1);
   const from = G.testPage*PER, max = Math.min(show.length - from, PER);
+  ctx.font = '6px "Press Start 2P", monospace';
+  const fit = str => { if (ctx.measureText(str).width <= RW-16) return str;
+    let lo = 0, hi = str.length; while (lo < hi){ const m = (lo+hi+1)>>1; if (ctx.measureText(str.slice(0,m)+'…').width <= RW-16) lo = m; else hi = m-1; }
+    return str.slice(0,lo)+'…'; };
   for (let i=0;i<max;i++){
     const r = show[from+i];
-    txt((r.pass?'OK  ':'FAIL') + ' ' + r.name + (r.detail ? '  '+r.detail : ''),
+    txt(fit((r.pass?'OK  ':'FAIL') + ' ' + r.name + (r.detail ? '  '+r.detail : '')),
         8, 24+i*9, r.pass ? '#8fa8c0' : '#ff8a7d', 5);
   }
   if (pages > 1) txt('PAGE '+(G.testPage+1)+'/'+pages+' · ↑↓ PGUP PGDN', 8, RH-8, '#7d93ab', 6);

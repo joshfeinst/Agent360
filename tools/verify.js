@@ -292,6 +292,40 @@ async function runSoak(page, frames, label, dts) {
 
 /* Touch cluster, driven the way a finger drives it: TouchEvents constructed at
    the buttons' live client rects, through the same listeners a phone fires. */
+/* A stylus on a Windows / ChromeOS tablet sends pointer events (pointerType
+   "pen") and compat mouse events and NO TouchEvents, and a touch-profile game
+   discarded the lot: a pen could reach a mission and then do nothing. The
+   game now re-issues a pen's contact as the finger's touch events, one task
+   later (Android pens also fire native touches). That deferral is why this
+   lives here and not in the synchronous F4 suite: real CDP pen events on the
+   phone page, and the game's own state read afterwards. */
+async function runPenDrive(page) {
+  const cdp = await page.context().newCDPSession(page);
+  const pen = async (type, x, y, buttons) => cdp.send('Input.dispatchMouseEvent',
+    { type, x, y, button: 'left', buttons, clickCount: 1, pointerType: 'pen', force: .5 });
+  const tap = async (x, y) => { await pen('mousePressed', x, y, 1); await pen('mouseReleased', x, y, 0); await page.waitForTimeout(80); };
+  const setup = await page.evaluate(() => {
+    selLevel = 0; G.diff = 1; startMission(false); G.state = 'play'; G.cheats.god = true;
+    G.startAt = performance.now() - 2000;          // past the tap swallow
+    P.mag[P.w] = 7; clearInput();
+    const mid = el => { const b = el.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; };
+    const v = view.getBoundingClientRect();
+    return { view: [v.left + v.width / 2, v.top + v.height * .35], pause: mid(document.getElementById('tpause')),
+             fire: mid(document.getElementById('tfire')), pen0: PEN_SEEN };
+  });
+  await tap(...setup.view);                          // a quick still touch on the world is a shot
+  const afterView = await page.evaluate(() => ({ mag: P.mag[P.w], state: G.state, pen: PEN_SEEN }));
+  await tap(...setup.pause);                         // ❚❚ is a button, not the gun
+  const afterPause = await page.evaluate(() => ({ mag: P.mag[P.w], state: G.state, pen: PEN_SEEN, press: document.getElementById('tpause').classList.contains('press') }));
+  await page.evaluate(() => { resume(true); G.state = 'play'; show(null); clearInput(); });
+  const shot = afterView.mag === 6 && afterView.state === 'play';
+  const paused = afterPause.state === 'pause' && afterPause.mag === 6 && !afterPause.press;
+  const seen = afterPause.pen - setup.pen0 === 2;
+  const ok = shot && paused && seen;
+  console.log('PEN DRIVE a stylus tap on the view shoots ' + (shot ? 'yes' : 'NO') + ' · on ❚❚ pauses without firing ' +
+              (paused ? 'yes' : 'NO') + ' · contacts re-issued as touches ' + (afterPause.pen - setup.pen0) + '/2' + (ok ? '' : ' — FAILED'));
+  return ok ? 0 : 1;
+}
 async function runTouchDrive(page) {
   const r = await page.evaluate(() => {
     const fails = [];
@@ -371,6 +405,7 @@ async function runTouchDrive(page) {
   const mpage = await mctx.newPage();
   await wirePage(mpage, errors, resourceErrs);
   bad += await runTouchDrive(mpage);
+  bad += await runPenDrive(mpage);
   bad += await runSelfTest(mpage, 'mobile');
   bad += await runSoak(mpage, Math.min(SOAK_FRAMES, 600), 'mobile 60Hz', [1 / 60]);
   await mctx.close();
