@@ -351,8 +351,9 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     <div class="screen" id="s-controls" role="dialog" aria-modal="true" aria-label="CONTROLS" hidden>
       <div class="eyebrow">field manual</div>
       <h2 class="ttl">CONTROLS</h2>
-      <p class="hint no-touch" style="margin:0">Every action has a right-hand mirror, so you can drive the mouse with either hand.
-      Switch the arrow keys between turning and strafing under <b>Movement keys</b> in Options.
+      <p class="hint no-touch" style="margin:0">Every action but the pause has a right-hand mirror, so you can drive the mouse with either hand —
+      the floor plan is <b>Tab</b> or <b>Esc</b>, which belong to neither. Strafing is the one that needs the arrow keys:
+      switch them between turning and strafing under <b>Movement keys</b> in Options.
       Keys are bound by <b>position</b>, not by letter: the movement cluster is the same four keys under your left
       hand on every layout, and the names below follow <span id="ctl-layout">a US keyboard</span>.</p>
       <div class="grid2 panel touch-only" id="ctl-touch">
@@ -376,7 +377,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
         <div class="ctl"><span>Move / strafe</span><span><span class="kb-wasd"><b data-code="KeyW">W</b> <b data-code="KeyA">A</b> <b data-code="KeyS">S</b> <b data-code="KeyD">D</b> · ↑ ↓</span> <span class="kb-arrows">↑ ↓ ← →</span></span></div>
         <div class="ctl"><span>Turn</span><span>Mouse · <b data-code="Comma">,</b> and <b data-code="Period">.</b> <span class="kb-wasd">· ← →</span></span></div>
         <div class="ctl"><span>Fire</span><span>Click · Space · <b data-code="KeyX">X</b></span></div>
-        <div class="ctl"><span>Aim mode (zoom)</span><span>Right click · <b data-code="KeyZ">Z</b></span></div>
+        <div class="ctl"><span>Aim mode (zoom)</span><span>Right click · <b data-code="KeyZ">Z</b> · <b data-code="Backslash">\</b></span></div>
         <div class="ctl"><span>Aim assist</span><span>Options · auto-aim, GoldenEye style</span></div>
         <div class="ctl"><span>Reload</span><span><b data-code="KeyR">R</b> · <b data-code="Slash">/</b></span></div>
         <div class="ctl"><span>Interact &amp; hack</span><span>Hold <b data-code="KeyF">F</b> · hold <b data-code="Quote">'</b></span></div>
@@ -494,10 +495,14 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.42';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.43';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
+/* half the picture, in radians, derived from the plane rather than written
+   down twice: what is on screen and what earns an off-screen cue are the
+   same edge, and they must not be able to drift apart */
+const FOV_H = Math.atan(FOV_N);    // 0.583 rad
 const MAXDIST = 22;                // fog cut-off in world units
 const LV = 24;                     // wall shade levels
 const SLV = 12;                    // sprite shade levels
@@ -643,7 +648,11 @@ function applyLayout(){
     KeyC:'crouch',  Semicolon:'crouch',
     KeyF:'use',     Quote:'use',
     KeyR:'reload',  Slash:'reload',
-    KeyZ:'aim',
+    /* Aim had no right-hand mirror at all, in either layout, while the card
+       promised one for every action — so a player who cannot reach the far
+       left lost the verb outright. Backslash sits beside the [ ] the weapon
+       mirror already uses, and nothing else in the game binds it. */
+    KeyZ:'aim',     Backslash:'aim',
     Space:'fire', KeyX:'fire',          // never Ctrl: Ctrl+W / Ctrl+Shift+W close the tab/window
     Comma:'turnL', Period:'turnR'
   });
@@ -658,6 +667,8 @@ function applyLayout(){
 }
 applyLayout();
 const held = Object.create(null);
+/* codes pressed while a Sticky-Keys Shift was latched; each one is a live sprint */
+const shifted = new Set();
 /* Three inputs have two sources. FIRE and AIM were always read as the OR of a
    touch flag and a keyboard flag (`M.fire || held.fire`); use, crouch and
    sprint each shared ONE boolean, so whichever device wrote last won — a
@@ -691,6 +702,17 @@ addEventListener('keydown', e => {
          nowhere until it was let go and pressed again. */
       if (!held[a]){ held[a] = true; keys.add(e.code); } }
     return; }
+  /* Sticky Keys — the OS accessibility feature a one-handed player leans on —
+     LATCHES a modifier instead of holding it: the physical Shift sends its own
+     keydown and keyup, and the NEXT keydown simply carries shiftKey:true. The
+     game only ever read the ShiftLeft keydown, so sprint was the one verb
+     Sticky Keys could not reach: measured P.speed 1.000 latched against 1.480
+     held. A latched Shift is a held Shift as far as every other application is
+     concerned, and now as far as this one is. The latch is spent when that key
+     comes up, which is exactly what the OS means by it. */
+  if (a && a !== 'run' && e.shiftKey && !keys.has('ShiftLeft') && !keys.has('ShiftRight')){
+    shifted.add(e.code); held.run = true;
+  }
   if (a) { held[a] = true; e.preventDefault();
     /* Space/X get the same press buffer a click does: a tap that lands during
        the weapon's cool-down deserves the next available shot, not nothing. */
@@ -703,11 +725,16 @@ addEventListener('keydown', e => {
    physically down. */
 addEventListener('keyup', e => {
   keys.delete(e.code);
+  const spent = shifted.delete(e.code);
   const a = KEYMAP[e.code];
-  if (!a) return;
+  if (!a){ if (spent) held.run = keys.has('ShiftLeft') || keys.has('ShiftRight') || shifted.size > 0; return; }
   let stillHeld = false;
   for (const c of keys) if (KEYMAP[c] === a){ stillHeld = true; break; }
   held[a] = stillHeld;
+  /* a spent latch, or a real Shift going up: re-derive the sprint from what is
+     still down, physical keys and live latches together */
+  if (spent || a === 'run')
+    held.run = keys.has('ShiftLeft') || keys.has('ShiftRight') || shifted.size > 0;
 });
 /* Anything that can strand a key or a mouse button in the "down" state has to
    funnel through here, or the agent walks into a wall forever.
@@ -720,7 +747,7 @@ addEventListener('keyup', e => {
 function clearInput(keepHeld){
   if (!keepHeld){
     for (const k in held) held[k] = false;
-    keys.clear();
+    keys.clear(); shifted.clear();
     M.fire = false; M.aim = false; M.crouch = false;
     if (TIN){ TIN.use = false; TIN.run = false; }
   }
@@ -2408,7 +2435,7 @@ const P = {
   mag:[7,0,0,0], ammo:{p9:24,smg:0,sh:0,pt:0},
   fireCd:0, reload:0, aim:0, recoil:0, muzzle:0, crouch:0,
   useHold:0, useTarget:null, shootTarget:null, useDenied:null, hurt:0, alive:true, aimU:0, rx:0,
-  hitT:0, killT:0, dmgDir:[], lastFireT:-9,
+  hitT:0, killT:0, dmgDir:[], cues:[], lastFireT:-9,
   lockT:null, lockSX:0, lockSY:0
 };
 const AMMOCAP = { p9:120, smg:300, sh:48, pt:14 };
@@ -2631,7 +2658,7 @@ function loadLevel(li, di){
      and rode into the next mission, which opened with the camera 28% low and
      stood up over half a second — and made P.camZ=.5 above mean nothing. */
   P.fireCd=0; P.reload=0; P.aim=0; P.crouch=0; P.recoil=0; P.muzzle=0; P.useHold=0; P.hurt=0;
-  P.hitT=0; P.killT=0; P.dmgDir.length=0; P.lastFireT=-9;
+  P.hitT=0; P.killT=0; P.dmgDir.length=0; P.cues.length=0; P.lastFireT=-9;
   /* The rest of P, and why each one matters rather than being tidiness:
      bob is the walk cycle the gun sways on, so a new mission opened mid-stride;
      useTarget/shootTarget/useDenied each held a live reference to an entity in
@@ -3227,11 +3254,26 @@ function pickWeapon(n){ if (P.has[n] && n!==P.w){ P.w=n; P.reload=0; P.fireCd=Ma
 
 /* ----------------------------------- AI --------------------------------- */
 /* Guards need a beat to react, or a doorway becomes an instant death sentence. */
+/* A positional sound is the game telling you WHERE something is, and a player
+   with the sound off gets none of it. Two of these were the only notice of
+   their event: a hostile waking (measured at 0 of 82,944 pixels changed, from
+   up to 17.1u away — outside the 12.5u radar entirely), and the legacy
+   tower's 0.4s wind-up, which the source itself calls the counterplay. Both
+   are answered here in the vocabulary the game already uses for pain: a short
+   arc on the reticle ring, pointing where the noise came from. Only for a
+   source OUTSIDE the picture — on screen the hostile's own movement is the
+   notice, and a marker over a thing you can see is clutter, not information. */
+function cue(kind, x, y, secs){
+  if (Math.abs(angDiff(P.ang, Math.atan2(y - P.y, x - P.x))) <= FOV_H) return;
+  if (P.cues.length >= 4) P.cues.shift();
+  P.cues.push({ ang: Math.atan2(y - P.y, x - P.x), t: secs, life: secs, kind });
+}
 function wake(e){
   if (e.alert || e.state==='dead') return;
   e.alert = 1; e.state = 'chase';
   e.cd = Math.max(e.cd, rr(.55, 1.05) * (G.diff===2 ? .7 : 1));
   sfxAt('alert', e.x, e.y);
+  cue('wake', e.x, e.y, .9);
 }
 
 function updateEnemy(e, dt){
@@ -3309,6 +3351,7 @@ function updateEnemy(e, dt){
         /* .4s tell before the burst: whining caps, sparks off the barrel arm,
            the fire pose held early — reuses existing fx/sfx, no new audio */
         e.pending = .4; e.fireFlash = .45; sfxAt('hack', e.x, e.y);
+        cue('windup', e.x, e.y, .4);
         fx('spark', e.x+Math.cos(e.ang)*.55, e.y+Math.sin(e.ang)*.55, .5);
       } else {
         const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)) * aimPenalty(), .06, .95);
@@ -3402,6 +3445,9 @@ function step(dt, scored){
   } else A.hbT = 0;
   if (P.hitT > 0) P.hitT -= dt;
   if (P.killT > 0) P.killT -= dt;
+  for (let i=P.cues.length-1; i>=0; i--){
+    P.cues[i].t -= dt; if (P.cues[i].t <= 0) P.cues.splice(i,1);
+  }
   for (let i=P.dmgDir.length-1; i>=0; i--){
     P.dmgDir[i].t -= dt; if (P.dmgDir[i].t <= 0) P.dmgDir.splice(i,1);
   }
@@ -4544,6 +4590,28 @@ function drawHUD(horizon){
     }
   }
 
+  /* ...and the same ring carries what the SOUND would have told you, for the
+     two events that had no picture at all: a hostile waking behind you, and
+     the legacy tower's wind-up. Amber, not the pain arc's red — this is a
+     warning, not a wound — and drawn OUTSIDE the pain radius so the two can
+     never be read as one mark. The wind-up's arc is the length of the tell it
+     is telling you about, so it dies exactly as the burst lands. */
+  for (const c of P.cues){
+    const rel = angDiff(P.ang, c.ang) - Math.PI/2;
+    /* fades over its own life, whatever that life is; steady under reduce
+       motion, where a 0.4s pulse is the thing the setting exists to stop */
+    const f = reducedMotion() ? .8 : clamp(c.t / c.life, 0, 1) * .5 + .45;
+    ctx.strokeStyle = (c.kind === 'windup' ? 'rgba(255,176,46,' : 'rgba(255,214,90,') + f.toFixed(2) + ')';
+    ctx.lineWidth = c.kind === 'windup' ? 4 : 3;
+    const half = c.kind === 'windup' ? .30 : .22;
+    for (let a = rel-half; a < rel+half; a += .095){
+      const b = Math.min(a+.095, rel+half), m = (a+b)/2;
+      const px = RW/2 + Math.cos(m)*82, py = RH/2 + Math.sin(m)*82;
+      if (wp && px >= wp[0]-3 && px <= wp[2]+3 && py >= wp[1]-3 && py <= wp[3]+3) continue;
+      ctx.beginPath(); ctx.arc(RW/2, RH/2, 82, a, b); ctx.stroke();
+    }
+  }
+
   /* crosshair */
   const spread = w.spread*(1-P.aim*.62)*(1+P.speed*.28);
   /* the cone in screen pixels grows with the zoom: at 260 px/rad flat, the
@@ -5520,6 +5588,55 @@ function selfTestBody(runSim){
     ok('doors: a locked door stays shut without the keycard and opens with it',
        !!d && !!spot && shut === 0 && opened > 0, 'without ' + shut + ' with ' + opened + (d ? '' : ' (no locked door)'));
     P.keys = 0; P.alive = al0; G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
+  /* ---- what you cannot hear, you can see ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, g0 = G.cheats.god, al0 = P.alive;
+    const shot = () => { render(); return ctx.getImageData(0, 0, RW, RH).data; };
+    const diff = (a, b) => { let n = 0;
+      for (let i = 0; i < a.length; i += 4) if (a[i]!==b[i] || a[i+1]!==b[i+1] || a[i+2]!==b[i+2]) n++;
+      return n; };
+    const openAll = () => { for (const d of G.doors){ d.open = 1; G.solid[d.c] = 0; } };
+    const setup = () => { loadLevel(0, 1); G.state = 'play'; G.cheats.god = true;
+      P.alive = true; G.deadT = 0; clearInput();
+      G.time = Math.max(G.time, SPAWN_GRACE + 1);
+      P.cues.length = 0; P.dmgDir.length = 0; };
+    /* a hostile waking BEHIND the agent, through the real wake() */
+    setup();
+    let e = G.ents.find(x => x.kind === 'enemy');
+    P.ang = 0; e.x = P.x - 1; e.y = P.y + 4; e.alert = 0; e.state = 'idle';
+    const behindBearing = Math.atan2(e.y - P.y, e.x - P.x);
+    const b1 = shot(); wake(e); const a1 = shot();
+    const behindPx = diff(b1, a1), behindCues = P.cues.length;
+    /* the control: the same wake IN the picture must add no mark — a hostile
+       you can see announces itself by moving, and a badge over it is clutter */
+    setup(); e = G.ents.find(x => x.kind === 'enemy');
+    P.ang = 0; e.x = P.x + 4; e.y = P.y; e.alert = 0; e.state = 'idle';
+    const b2 = shot(); wake(e); const a2 = shot();
+    const aheadPx = diff(b2, a2), aheadCues = P.cues.length;
+    /* the legacy tower's wind-up, behind the agent, through step() */
+    setup();
+    for (const x of G.ents.filter(x => x.kind === 'enemy')) x.dead2 = true;
+    G.ents = G.ents.filter(x => !x.dead2);
+    for (let i = 0; i < G.solid.length; i++) G.solid[i] = 0;
+    openAll();
+    P.x = 16.5; P.y = 11.5; P.ang = 0;             // open floor, and clear of the map edge
+    const t = spawnEnemy('legacy', P.x - 6, P.y);
+    t.alert = 1; t.state = 'chase'; t.cd = 0;
+    for (let i = 0; i < 3; i++){ step(1/60); openAll(); }
+    t.cd = 0; t.pending = 0; P.cues.length = 0;
+    const b3 = shot();
+    for (let i = 0; i < 30 && !t.pending; i++){ step(1/60); openAll(); }
+    const a3 = shot(), windPx = diff(b3, a3), windCues = P.cues.length, pend = t.pending;
+    for (let i = 0; i < 90; i++){ step(1/60); openAll(); }
+    const gone = P.cues.length;
+    ok('cues: a hostile waking behind you, and the tower winding up, change the picture',
+       Math.abs(angDiff(P.ang, behindBearing)) > FOV_H &&
+       behindCues === 1 && behindPx > 50 && aheadCues === 0 && aheadPx === 0 &&
+       pend > 0 && windCues === 1 && windPx > 50 && gone === 0,
+       'wake behind ' + behindPx + 'px/' + behindCues + ' cue · wake ahead ' + aheadPx + 'px/' +
+       aheadCues + ' · wind-up ' + windPx + 'px/' + windCues + ' · after it passes ' + gone);
+    P.cues.length = 0; P.alive = al0; G.cheats.god = g0;
+    selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
   /* ---- the interact prompt names the key on the player's own keyboard ---- */
   { const st0 = G.state, sel0 = selLevel, d0 = G.diff, kb0 = KB_LAYOUT;
@@ -8763,6 +8880,34 @@ function selfTestBody(runSim){
           }
           ok('controls: every token in the manual is a key this test can press',
              unknown.length === 0, unknown.join(' | ') || 'no unrecognised tokens');
+          /* ...and every action the movement map binds can be reached from the
+             RIGHT of the keyboard, which is what the line above the table
+             promises a player driving the mouse left-handed — or one with a
+             single hand. Aim was the gap: Z only, in both layouts, so the verb
+             was simply unavailable. Pause is the stated exception, and it is
+             Tab or Esc, which belong to no hand. */
+          { const RIGHT = new Set(['Semicolon','Quote','Slash','Backslash','BracketLeft','BracketRight',
+              'Comma','Period','ShiftRight','Enter','Backspace','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+              'KeyY','KeyU','KeyI','KeyO','KeyP','KeyH','KeyJ','KeyK','KeyL','KeyN','KeyM',
+              'Space',   // the bar spans the board: either thumb reaches it
+              'Digit7','Digit8','Digit9','Digit0','Minus','Equal']);
+            const lay0 = KEYS_LAYOUT, served = {}, all = new Set();
+            for (const lay of ['wasd','arrows']){
+              KEYS_LAYOUT = lay; applyLayout();
+              const byAction = {};
+              for (const code in KEYMAP) (byAction[KEYMAP[code]] = byAction[KEYMAP[code]] || []).push(code);
+              for (const act in byAction){ all.add(act);
+                if (byAction[act].some(c => RIGHT.has(c)) && !served[act]) served[act] = lay; }
+            }
+            KEYS_LAYOUT = lay0; applyLayout();
+            /* a gap only where NEITHER layout offers one: strafe is right-handed
+               once Movement keys is set to ARROWS, which the card points at */
+            const gaps = [...all].filter(a => !served[a]);
+            ok('controls: every bound action can be reached from the right of the keyboard',
+               gaps.length === 0,
+               gaps.join(' ') || (() => { const late = [...all].filter(a => served[a] === 'arrows');
+                 return all.size + ' actions mirrored' +
+                   (late.length ? ' · ' + late.join('/') + ' only under the ARROWS layout' : ''); })()); }
           /* ...and the glyphs follow the player's KEYBOARD, not a US one. The
              game binds physical keys, so on AZERTY the card used to name W for
              the key that types z and Z for the key that walks you forward —
@@ -8778,15 +8923,21 @@ function selfTestBody(runSim){
               ['Semicolon','m'],['KeyM',','],['Comma',';'],['Period',':'],['Slash','!'],
               ['Quote','ù'],['BracketLeft','^'],['BracketRight','$'],
               ['Digit1','&'],['Digit2','é'],['Digit3','"'],['Digit4',"'"]]);
+            /* read the GLYPHS, not the row string: a row gains keys over time
+               (aim grew a right-hand mirror) and a regex anchored to the end of
+               it fails for a card that is still perfectly correct */
+            const glyph = code => { const el = document.querySelector('#s-controls [data-code="' + code + '"]');
+              return el ? el.textContent : ''; };
+            const cluster = () => ['KeyW','KeyA','KeyS','KeyD'].map(glyph).join(' ');
             const moved = applyKeyLabels(fr);
-            const azerty = row('Move / strafe'), aimFR = row('Aim mode (zoom)');
+            const azerty = cluster(), aimFR = glyph('KeyZ');
             applyKeyLabels(us);
-            const back = row('Move / strafe'), aimUS = row('Aim mode (zoom)');
+            const back = cluster(), aimUS = glyph('KeyZ');
             cells.forEach((c, i) => { c.textContent = was[i]; });
             KB_LAYOUT = kb0;
             ok('controls: the manual names the keys on the player\'s own keyboard',
-               moved >= 10 && /^Z Q S D/.test(azerty) && /W$/.test(aimFR) &&
-               /^W A S D/.test(back) && /Z$/.test(aimUS),
+               moved >= 10 && azerty === 'Z Q S D' && aimFR === 'W' &&
+               back === 'W A S D' && aimUS === 'Z',
                moved + ' relabelled · AZERTY "' + azerty + '" aim "' + aimFR +
                '" · US "' + back + '" aim "' + aimUS + '"'); }
           /* Arm the agent so each key has something to do: a full magazine

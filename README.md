@@ -195,6 +195,19 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.43
+
+The game had been audited for colour and never for sound. A player with the
+volume at zero enumerated all 31 sounds and found two that were the only notice
+of their event: a hostile waking behind you — which changed 0 of 82,944 pixels,
+from as far as 17.1u, outside the radar entirely — and the legacy tower's 0.4s
+wind-up, which the source itself calls the counterplay. Both now put a short
+amber arc on the reticle ring, pointing where the noise came from, and only
+when the source is off screen. A player with one hand found two more: Sticky
+Keys could not reach sprint (1.000 against 1.480), and the promise that every
+action has a right-hand mirror was false for aim.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.42
 
 A player drove the whole game through the accessibility tree with Tab, Enter,
