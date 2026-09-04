@@ -513,11 +513,23 @@ was a feature rather than a repair. Asked for, so built.
 | **1 · Aim, crouch and sprint tap on and tap off** | An Options row, **Aim / crouch / sprint · HOLD · TOGGLE**, persisted beside the other settings. In TOGGLE the keydown flips the latch, the keyup does nothing, and a second press lets go | On a keyboard these three have always been holds, which asks for two keys at once — aim *and* fire, crouch *and* walk, sprint *and* walk. A player who can only ever have one key down loses three of the game's verbs outright: measured, a tap-then-press gives **`P.aim` 0.01** where an aimed shot needs 0.5, **`P.crouch` 0.00**, **`P.speed` 1.00**. This is not a new idea in this game — the touch build has latched AIM and CRCH since v1.20, and the suite already asserts *"touch: second CROUCH tap stands up"*. It is the same offer made to a keyboard. HOLD stays the default, because it is what a two-handed player expects | An assertion presses each key ONE AT A TIME — press, release, step, never two down — and measures each verb on its own with nothing else latched: HOLD gives `0.00 / 0.00 / 1.00`, TOGGLE gives `1.00 / 1.00 / 1.48`, and a second tap returns `0.00 / 0.00 / 1.00`. Mutation-verified: without the flip a second tap cannot let go, `tapped off 1.00/1.00/0.32`. Driven end to end in a browser too — a real click on the row, a real keypress, and the setting still TOGGLE after a reload |
 | **Care taken** | Where a latch could have leaked | Switching back to HOLD **drops whatever was latched**, so the setting can never leave the agent permanently crouched or sprinting. The OS key-repeat path and `resume()`'s re-derive from physically-held keys both skip the latched three, or a repeat would flip the latch on and off many times a second and a pause would set it from a key that happens to be down. The Sticky-Keys sprint from v1.43 stands down in TOGGLE, where tapping Shift already reaches sprint. Only `aim`, `crouch` and `run` can latch — the table says so, so no future binding joins them by accident |
 
+# Night log — two seams in my own work
+
+Before the round's players reported, a look at where the last three releases
+touch each other — the live region, the hold/toggle row, the touch cluster —
+found two seams. Both are corrections to things this file shipped in v1.42 and
+v1.45, and both are recorded as such.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · Opening the watch no longer swallows what the reader was being told** | `clearToasts()` clears the picture only; the reader's copy in `#say` expires on its own timer | v1.42 gave the game one live region and had `clearToasts()` wipe it along with the toast column. But every caller of `clearToasts()` — `pause()`, a mission start, an abort — has a reason that is about *paint*: a banner covering the watch's header. Measured: `OBJECTIVE A COMPLETE` in the region, `pause()`, region empty. A player opening the watch to read their objectives lost the line that had just told them one was done | Assertion: a line said, the picture cleared, the line still there. Mutation-verified at `wiped` |
+| **2 · The keyboard latch and the touch AIM button are one latch** | The touch AIM / CRCH buttons flip the OR of the touch flag and the keyboard latch, write both, and their lamps read the OR; a keyboard latch mirrors into the touch flag and relights the lamp | v1.45's TOGGLE latched `held.aim` on the keyboard; the touch button latched `M.aim`; `step()` reads the OR. On a hybrid device — a touchscreen laptop, the first-finger case v1.32 built for — a Z tap and then an AIM tap-off left **`P.aim` at 1.00 under a lamp that said off**, because the lamp read only the touch flag and the tap-off cleared only that. In HOLD mode `held.aim` is a physical key whose own keyup owns it, so the thumb leaves it alone there | Assertion drives a Z tap then a real thumb tap on the button: `key on/lamp on · thumb off/lamp off zoom 0.00 · thumb again on/lamp on`. Mutation-verified at `key on/lamp off`. Plus 6,000 frames of real key chaos with TOGGLE on — latches survive a pause, drop on a restart, always flip — and a 60,000-frame invariant soak, both clean |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 483 desktop / 473 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 485 desktop / 475 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -532,5 +544,5 @@ was a feature rather than a repair. Asked for, so built.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.45'` (index.html) ↔ `agent360-v1.45`
+- **Versions:** game `VERSION = '1.46'` (index.html) ↔ `agent360-v1.46`
   (sw.js CACHE), enforced by verify.js
