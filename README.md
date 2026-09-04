@@ -195,6 +195,18 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.35
+
+In Windows High Contrast every menu floated over the live mission, because the
+backdrop was a gradient and forced-colors drops background images; the worst
+text run measured 1.68 to 1. The pinned action row's transparent top half was
+swallowing the clicks meant for the controls visible through it, so at 200%
+zoom the Music and Scanlines sliders could be seen and not pressed. The
+Reduce Motion row said OFF while the operating system was forcing it on. And
+the debrief, which takes focus when it opens, had no role and no name to
+announce. Ledger, including what browser zoom can and cannot do for a
+low-vision player: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.34
 
 The frame got 27% cheaper without a pixel moving. The floor caster looked its
@@ -318,7 +330,7 @@ reported and did not survive:
 
 ## Development
 
-- **F4** runs the in-game self-test suite — **461 assertions** (453 in a touch
+- **F4** runs the in-game self-test suite — **465 assertions** (457 in a touch
   context): level reachability audits, input
   model invariants (pointer-lock linearity, free-look symmetry, aim-assist
   never fighting the player's turn), movement isotropy and collision, the
