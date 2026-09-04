@@ -2424,6 +2424,7 @@ const BOSSTUNE = {
 /* Hostile aim tracks a MOVING agent imperfectly, GoldenEye-style: sprinting
    and crouching are real evasion, and lower clearances track worst. P.speed is
    1 at a walk, 1.48 at a sprint. */
+const SPAWN_GRACE = 2.5;             // seconds before any hostile fires: the banner's time
 const MOVE_DODGE = [.35, .30, .12];  // SECRET .30: part of the same cliff-softening pass as DIFFS[1]
 function aimPenalty(){
   return (1 - clamp(P.speed, 0, 1.6) * MOVE_DODGE[G.diff]) * (1 - P.crouch * .25);
@@ -2488,7 +2489,7 @@ function loadLevel(li, di){
         : pack(Math.min(255,sk[0]*(1.25-.5*t))|0,
                Math.min(255,sk[1]*(1.25-.5*t))|0,
                Math.min(255,sk[2]*(1.25-.5*t))|0); } }
-  G.time=0; G.kills=0; G.shots=0; G.hits=0; G.dmgTaken=0; G.heat=0;
+  G.time=0; G.kills=0; G.shots=0; G.hits=0; G.dmgTaken=0; G.heat=0; G.cfoNagT=0;
   G.meltdown=-1; G.meltMax=0; G.bossAlive=false; G.shieldDown = true; G.doorNag=0; G.shake=0;
   G.deadT=0; G.ckpt=null; G.ckptRun=false; G.bossSeen=false; A.hbT=0;
   /* the footstep index is a phase counter derived from P.bob, and P.bob is
@@ -2882,7 +2883,9 @@ function hurtEnemy(e, dmg, splash, fromPlayer){
     /* Dry-agent insurance: every reserve empty, and the mission has no vending
        machine — a downed phish or goon always coughs up a crate (24 p9 minimum
        via the pickup, since the PP7 is always carried). */
-    if ((e.sub==='phish' || e.sub==='goon') && !G.cheats.ammo &&
+    /* ...off ANY hostile but the rack: the finale's arena has only drones,
+       and a player who arrived dry had the floor's crates and then nothing */
+    if (e.sub!=='boss' && !G.cheats.ammo &&
         P.ammo.p9<=0 && P.ammo.smg<=0 && P.ammo.sh<=0 && P.ammo.pt<=0)
       ent({kind:'item', sub:'ammo', x:e.x, y:e.y, size:.38, r:.5});
   }
@@ -2935,6 +2938,13 @@ function hitscan(ox,oy,ang,range,dmg,fromPlayer,pock=1){
             fx(G.cheats.paint?'paint':'spark', x, y, .3+rnd(.3)); return true; }
         } else if (e.kind==='prop' && e.hp>0){
           if (dist2(e.x,e.y,x,y) < e.r*e.r){ hurtProp(e, dmg); G.hits++; return true; }
+        } else if (e.kind==='prop' && e.sub==='npc' && !e.rescued){
+          /* the CFO is a body, not a window: rounds used to pass through him
+             in silence and hit whatever stood behind — and the escort still
+             completed. The round stops, it is not a hit, and the agent is told. */
+          if (dist2(e.x,e.y,x,y) < e.r*e.r){
+            if (!(G.cfoNagT > G.time)){ G.cfoNagT = G.time + 3; toast('HOLD FIRE — THAT IS THE CFO','red',2200); }
+            fx('puff', x, y, .5); return false; }
         }
       }
     } else {
@@ -3201,7 +3211,10 @@ function updateEnemy(e, dt){
       }
     }
     e.cd -= dt;
-    if (see && e.cd <= 0 && dd < s.sight){
+    /* the first moments belong to the mission banner: on M03 a phish with a
+       line to the spawn fired at 0.5s and landed a hit inside the 3.2s the
+       banner takes to clear */
+    if (see && e.cd <= 0 && dd < s.sight && G.time >= SPAWN_GRACE){
       e.cd = s.rof * rr(.8,1.3);
       e.fireFlash = .12;
       if (e.sub==='legacy'){
@@ -3656,12 +3669,19 @@ function pickup(e){
   const w=WEAPS;
   switch(e.sub){
     case 'ammo': {
-      let got=false;
+      /* A crate used to vanish whole for the one round a near-full reserve
+         could take, with a toast that named no amount. It now gives what
+         fits, names it, and stays on the floor when it would give under a
+         quarter of what it carries for the guns in hand. */
+      let offer = 0, gain = 0; const got = [];
       for (let i=0;i<4;i++) if (P.has[i]){
-        const a=w[i].ammo, add=[24,60,12,3][i];
-        if (P.ammo[a] < AMMOCAP[a]){ P.ammo[a]=Math.min(AMMOCAP[a],P.ammo[a]+add); got=true; }
+        const a=w[i].ammo, add=[24,60,12,3][i]; offer += add;
+        const g = Math.min(AMMOCAP[a], P.ammo[a]+add) - P.ammo[a];
+        if (g > 0){ got.push({ i, a, g }); gain += g; }
       }
-      if (!got) return; toast('AMMUNITION','cyan',1400); break;
+      if (!offer || gain < offer*.25) return;
+      for (const x of got) P.ammo[x.a] += x.g;
+      toast('AMMO ' + got.map(x => w[x.i].hud + ' +' + x.g).join(' · '), 'cyan', 1600); break;
     }
     /* the toast names what was GAINED: the second vest of a mission took
        armour 60 to the 100 cap and still promised +60 */
@@ -4385,7 +4405,10 @@ function drawHUD(horizon){
 
   /* crosshair */
   const spread = w.spread*(1-P.aim*.62)*(1+P.speed*.28);
-  const gap = 3 + spread*260 + P.recoil*7;
+  /* the cone in screen pixels grows with the zoom: at 260 px/rad flat, the
+     aimed Klobb landed 134% of the drawn gap outside the ticks */
+  const gap = 3 + spread*260/(1 - P.aim*.42) + P.recoil*7;
+  G.hudGap = gap;
   /* Re-project the lock target against THIS frame's camera and horizon so the
      amber crosshair rides the sprite through recoil, bob and shake instead of
      the stale pre-move point acquireTarget stored. */
@@ -4431,7 +4454,7 @@ function drawHUD(horizon){
   bar(10, 10, 92, 6, P.armor/100, '#35d0ff');
   bar(10, 20, 92, 8, P.hp/100, P.hp>35?'#ffb02e':'#ff3b30');
   txt('AR', 106, 17, '#35d0ff', 6);
-  txtP('HP', 106, 28, P.hp>35?'#ffb02e':'#ff3b30', 6);
+  txtP('HP '+Math.max(0, Math.round(P.hp)), 106, 28, P.hp>35?'#ffb02e':'#ff3b30', 6);   // a number, not only a bar and a colour
   /* On a plate, like the bars above them: bare over M03's white mist and M04's
      dusk sky these three read as nothing at all. */
   if (P.keys>0) txtP('KEY', 10, 40, '#8be6ff', 6, 'left');
@@ -5293,6 +5316,19 @@ function selfTestBody(runSim){
        /HACK TERMINAL/.test(prompt), 'prompt "' + prompt + '"' + (term ? '' : ' (no terminal found)'));
     P.useTarget = null; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
+  /* ---- the first moments belong to the banner: no hostile fires ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, g0 = G.cheats.god;
+    const li = LEVELS.findIndex(L => L.code === 'M03');
+    loadLevel(li, 2); G.state = 'play'; G.cheats.god = true; clearInput();
+    let shots = 0; const h0 = hitscan; hitscan = (...a) => { if (!a[5]) shots++; return h0(...a); };
+    for (let i = 0; i < Math.round(SPAWN_GRACE*60) - 2; i++) step(1/60);
+    const inGrace = shots;
+    for (let i = 0; i < 8*60; i++) step(1/60);
+    hitscan = h0;
+    ok('spawn: no hostile fires during the banner\'s grace, and they do after it',
+       inGrace === 0 && shots > 0, 'in the first '+SPAWN_GRACE+'s '+inGrace+' rounds, in the next 8s '+shots);
+    G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; clearInput(); }
+
   /* ---- the chevron never points through a locked door ---- */
   { const st0 = G.state, sel0 = selLevel, d0 = G.diff, px0 = P.x, py0 = P.y, k0 = P.keys;
     const li = LEVELS.findIndex(L => L.objectives.some(o => o.kind === 'audit') && L.map.some(r => r.indexOf('L') >= 0));
@@ -5361,6 +5397,42 @@ function selfTestBody(runSim){
     selLevel = sel0; loadLevel(0, 1); G.state = st0; }
 
   }
+
+  /* ---- the CFO stops a round and says so; the crate gives what fits ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, px0 = P.x, py0 = P.y;
+    const li = LEVELS.findIndex(L => L.objectives.some(o => o.kind === 'npc'));
+    loadLevel(li, 1); G.state = 'play';
+    const n = G.ents.find(e => e.sub === 'npc');
+    P.x = n.x - 1.2; P.y = n.y; clearToasts(); const h0 = G.hits;
+    const stopped = hitscan(P.x, P.y, Math.atan2(n.y - P.y, n.x - P.x), 20, 10, true) === false;
+    const said = [...document.getElementById('toasts').children].some(t => /CFO/.test(t.textContent));
+    ok('CFO: a round into the CFO stops, is not a hit, and the agent is told',
+       stopped && said && G.hits === h0 && !n.dead2 && !n.rescued, 'stopped '+stopped+' said '+said+' hits +'+(G.hits-h0));
+    clearToasts();
+    /* the crate */
+    const has0 = P.has.slice(), am0 = Object.assign({}, P.ammo);
+    P.has = [true, true, true, true];
+    P.ammo = { p9:AMMOCAP.p9, smg:AMMOCAP.smg-1, sh:AMMOCAP.sh, pt:AMMOCAP.pt };
+    const little = { kind:'item', sub:'ammo', x:P.x, y:P.y, dead2:false };
+    pickup(little); const left = !little.dead2 && P.ammo.smg === AMMOCAP.smg-1;
+    P.ammo = { p9:AMMOCAP.p9, smg:200, sh:AMMOCAP.sh, pt:AMMOCAP.pt };
+    const some = { kind:'item', sub:'ammo', x:P.x, y:P.y, dead2:false };
+    pickup(some);
+    const named = [...document.getElementById('toasts').children].map(t => t.textContent).find(t => /^AMMO /.test(t)) || '';
+    ok('crate: one that would give a round stays on the floor; one that gives names the amount',
+       left && P.ammo.smg === 260 && /KB-KLOBB \+60/.test(named), 'left '+left+' smg '+P.ammo.smg+' toast "'+named+'"');
+    clearToasts(); P.has = has0; P.ammo = am0; P.x = px0; P.y = py0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
+  /* ---- the crosshair gap follows the zoom; health has a number ---- */
+  { const a0 = P.aim, r0 = P.recoil, hp0 = P.hp; P.recoil = 0;
+    P.aim = 0; drawHUD(HALFH); const hip = G.hudGap - 3;
+    P.aim = 1; drawHUD(HALFH); const zoomed = G.hudGap - 3;
+    ok('crosshair: the aimed gap is the hip gap widened by the zoom, so rounds land inside the ticks',
+       hip > 0 && Math.abs(zoomed / hip - (1 - .62) / (1 - .42)) < .02, 'hip '+hip.toFixed(2)+' aimed '+zoomed.toFixed(2)+' ratio '+(zoomed/hip).toFixed(3));
+    P.hp = 37; const seen = []; const t0 = txtP; txtP = (str, ...r) => { seen.push(String(str)); return t0(str, ...r); };
+    drawHUD(HALFH); txtP = t0;
+    ok('HUD: health is a number as well as a bar', seen.some(x => x === 'HP 37'), seen.filter(x => /^HP/.test(x)).join(' | ') || 'no HP text');
+    P.aim = a0; P.recoil = r0; P.hp = hp0; }
 
   /* ---- a pickup toast names what was gained, not the item's face value ---- */
   { const hp0 = P.hp, ar0 = P.armor;
@@ -6792,7 +6864,13 @@ function selfTestBody(runSim){
       hurtEnemy(e2, 1e5, false, true);
       ok('dry insurance: an empty-handed kill always drops ammo',
          G.ents.filter(o=>o.kind==='item'&&o.sub==='ammo').length === crates0+1);
-      P.ammo = am0; G.ents = G.ents.filter(o => o !== e2);
+      /* ...off a drone too: the finale's arena has nothing else to kill */
+      P.ammo = { p9:0, smg:0, sh:0, pt:0 };
+      const e3 = spawnEnemy('drone', P.x+1.2, P.y-.5); const crates1 = G.ents.filter(o=>o.kind==='item'&&o.sub==='ammo').length;
+      hurtEnemy(e3, 1e5, false, true);
+      ok('dry insurance: ...and off a drone, the only thing to kill in the duel',
+         G.ents.filter(o=>o.kind==='item'&&o.sub==='ammo').length === crates1+1);
+      P.ammo = am0; G.ents = G.ents.filter(o => o !== e2 && o !== e3);
       P.hitT = 0; P.killT = 0;
 
       /* legacy tower: the 5-pellet burst is telegraphed, never instant */
@@ -6806,6 +6884,7 @@ function selfTestBody(runSim){
                   ok('legacy telegraph fires: (no open floor to test on)', true); }
         else {
           const e3 = spawnEnemy('legacy', ls.x, ls.y);
+          const gt0 = G.time; G.time = Math.max(G.time, SPAWN_GRACE);   // past the banner's grace
           e3.alert = 1; e3.state = 'chase'; e3.cd = 0;
           e3.ang = Math.atan2(P.y-e3.y, P.x-e3.x);
           updateEnemy(e3, .016);
