@@ -195,6 +195,53 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.44
+
+A player brought a 16000-dpi mouse with side buttons. Two things broke. The
+captured look path dropped any single event past 3000 raw counts instead of
+clamping it, so the fastest flick turned you least — 2999 counts turned 1.2449
+rad and 3001 turned exactly nothing — and since Chrome coalesces mousemove to
+the frame, one hitched frame arrives as a single event of thousands. The bound
+is now half a turn, in radians, so it scales with the sensitivity. And the
+thumb button, which every mouse maps to browser BACK, was swallowed whole by
+the pointer lock during play — so the first press that ever landed was the one
+on the field watch, where BACK ends the run.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
+## v1.43
+
+The game had been audited for colour and never for sound. A player with the
+volume at zero enumerated all 31 sounds and found two that were the only notice
+of their event: a hostile waking behind you — which changed 0 of 82,944 pixels,
+from as far as 17.1u, outside the radar entirely — and the legacy tower's 0.4s
+wind-up, which the source itself calls the counterplay. Both now put a short
+amber arc on the reticle ring, pointing where the noise came from, and only
+when the source is off screen. A player with one hand found two more: Sticky
+Keys could not reach sprint (1.000 against 1.480), and the promise that every
+action has a right-hand mirror was false for aim.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
+## v1.42
+
+A player drove the whole game through the accessibility tree with Tab, Enter,
+Space and the arrows. Two things broke. Tabbing the Options panel announced
+"CAPTURE, OFF, SNAP + PULL, WASD, ON, ON, OFF" — two buttons named exactly ON,
+two exactly OFF, and nothing saying which setting any of them was; each control
+now answers to its own row's label. And every menu toast was raised outside the
+dialog that was open, which `aria-modal` tells a screen reader not to render —
+including the warning that your save could not be read. There is now one live
+region, and it travels into whichever screen is open.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
+## v1.41
+
+v1.40 taught the CONTROLS card to name the keys on the player's own keyboard
+and left the same lie in the place it costs most: the green band at a terminal,
+the prompt that teaches the whole hack, said HOLD F on every keyboard on earth.
+On Dvorak that physical key prints U, so after v1.40 the card and the prompt
+disagreed with each other on the same board. The prompt now reads the layout
+too. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.40
 
 The field manual named every key by the glyph a US keyboard prints on it,

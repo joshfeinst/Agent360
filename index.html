@@ -240,6 +240,9 @@ body.touch .touch-only, body.hybrid .touch-only{display:grid}
 body.touch p.touch-only, body.hybrid p.touch-only{display:block}
 body.touch .no-touch{display:none}
 body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
+/* off the picture, still in the accessibility tree — display:none would take
+   it out of the tree and silence it */
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 .screen:focus{outline:none}
 @media (pointer:coarse){ .mi,.btn{min-height:44px} }
 .toastwrap{position:absolute; left:0; right:0; top:17%; display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none}
@@ -348,8 +351,9 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     <div class="screen" id="s-controls" role="dialog" aria-modal="true" aria-label="CONTROLS" hidden>
       <div class="eyebrow">field manual</div>
       <h2 class="ttl">CONTROLS</h2>
-      <p class="hint no-touch" style="margin:0">Every action has a right-hand mirror, so you can drive the mouse with either hand.
-      Switch the arrow keys between turning and strafing under <b>Movement keys</b> in Options.
+      <p class="hint no-touch" style="margin:0">Every action but the pause has a right-hand mirror, so you can drive the mouse with either hand —
+      the floor plan is <b>Tab</b> or <b>Esc</b>, which belong to neither. Strafing is the one that needs the arrow keys:
+      switch them between turning and strafing under <b>Movement keys</b> in Options.
       Keys are bound by <b>position</b>, not by letter: the movement cluster is the same four keys under your left
       hand on every layout, and the names below follow <span id="ctl-layout">a US keyboard</span>.</p>
       <div class="grid2 panel touch-only" id="ctl-touch">
@@ -373,7 +377,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
         <div class="ctl"><span>Move / strafe</span><span><span class="kb-wasd"><b data-code="KeyW">W</b> <b data-code="KeyA">A</b> <b data-code="KeyS">S</b> <b data-code="KeyD">D</b> · ↑ ↓</span> <span class="kb-arrows">↑ ↓ ← →</span></span></div>
         <div class="ctl"><span>Turn</span><span>Mouse · <b data-code="Comma">,</b> and <b data-code="Period">.</b> <span class="kb-wasd">· ← →</span></span></div>
         <div class="ctl"><span>Fire</span><span>Click · Space · <b data-code="KeyX">X</b></span></div>
-        <div class="ctl"><span>Aim mode (zoom)</span><span>Right click · <b data-code="KeyZ">Z</b></span></div>
+        <div class="ctl"><span>Aim mode (zoom)</span><span>Right click · <b data-code="KeyZ">Z</b> · <b data-code="Backslash">\</b></span></div>
         <div class="ctl"><span>Aim assist</span><span>Options · auto-aim, GoldenEye style</span></div>
         <div class="ctl"><span>Reload</span><span><b data-code="KeyR">R</b> · <b data-code="Slash">/</b></span></div>
         <div class="ctl"><span>Interact &amp; hack</span><span>Hold <b data-code="KeyF">F</b> · hold <b data-code="Quote">'</b></span></div>
@@ -453,8 +457,16 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
       <div class="row"><button class="btn ghost" data-act="back">◀ BACK</button></div>
     </div>
 
-    <!-- the toasts are the game's spoken word too: a screen reader hears each one once -->
-    <div class="toastwrap" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+    <!-- The toast column is the picture; #say is the same words for a reader.
+         They are separate because a live region has to be INSIDE the dialog
+         that is open: aria-modal="true" tells an assistive technology to
+         render nothing outside the open dialog, and this column is a sibling
+         of every screen, so a menu toast — SAVED PROGRESS COULD NOT BE READ
+         among them — was raised where nothing was listening. show() carries
+         #say into whichever screen is open, and there is exactly one live
+         region in the file so nothing is ever announced twice. -->
+    <div class="toastwrap" id="toasts" aria-hidden="true"></div>
+    <div id="say" class="sr-only" role="status" aria-live="polite" aria-atomic="false"></div>
 
     <!-- TOUCH -->
     <div id="touch">
@@ -483,10 +495,14 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.40';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.44';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
+/* half the picture, in radians, derived from the plane rather than written
+   down twice: what is on screen and what earns an off-screen cue are the
+   same edge, and they must not be able to drift apart */
+const FOV_H = Math.atan(FOV_N);    // 0.583 rad
 const MAXDIST = 22;                // fog cut-off in world units
 const LV = 24;                     // wall shade levels
 const SLV = 12;                    // sprite shade levels
@@ -555,8 +571,20 @@ const DRAG_MUL = 1.6;             // dragging covers less ground, so it needs mo
    lockout, so the swap-and-shoot reflex — flick the wheel or hit E, pull the
    trigger in the same movement — ate the shot silently at every frame rate. */
 const FIRE_BUFFER_MS = 200;
-const JUMP_PX  = 3000;            // one captured event past this is a browser glitch, not a hand
-                                  // (a 125 Hz mouse flick is ~750 raw counts per event)
+/* One captured event is worth at most a HALF TURN. This used to be a raw count
+   — 3000, sized in its comment for "a 125 Hz mouse … ~750 counts per event" —
+   and an event past it was DROPPED, not clamped, so the fastest flick turned
+   you least: measured, movementX 2999 turned -1.2449 rad and movementX 3001
+   turned exactly 0.0000. Two things made that reachable rather than
+   theoretical. Chrome COALESCES mousemove to the frame, so one hitched frame
+   arrives as a single event of thousands (measured: [2180, 1200, 4000], and
+   the 4000 was thrown away whole). And a raw count is not a distance: 3000
+   counts is 1.6x a 180-degree turn at default sensitivity but only 62 degrees
+   at the floor, which is the setting a 16000-dpi player uses — 0.19 inch of
+   hand travel. A bound in RADIANS scales itself with the sensitivity, and
+   clamping costs a glitch a bounded turn instead of costing a flick the whole
+   of one. */
+const JUMP_RAD = Math.PI;         // per captured event, before sensitivity
 const MAX_EVENT_PX = 60;          // UNLOCKED deltas only: window re-entry can jump
 const MAX_FRAME_PX = 130;         // UNLOCKED deltas only: one frame of banked-up events
 const MOVE_STALE_MS = 130;        // free look: no events recently => the reticle is idle
@@ -632,7 +660,11 @@ function applyLayout(){
     KeyC:'crouch',  Semicolon:'crouch',
     KeyF:'use',     Quote:'use',
     KeyR:'reload',  Slash:'reload',
-    KeyZ:'aim',
+    /* Aim had no right-hand mirror at all, in either layout, while the card
+       promised one for every action — so a player who cannot reach the far
+       left lost the verb outright. Backslash sits beside the [ ] the weapon
+       mirror already uses, and nothing else in the game binds it. */
+    KeyZ:'aim',     Backslash:'aim',
     Space:'fire', KeyX:'fire',          // never Ctrl: Ctrl+W / Ctrl+Shift+W close the tab/window
     Comma:'turnL', Period:'turnR'
   });
@@ -647,6 +679,8 @@ function applyLayout(){
 }
 applyLayout();
 const held = Object.create(null);
+/* codes pressed while a Sticky-Keys Shift was latched; each one is a live sprint */
+const shifted = new Set();
 /* Three inputs have two sources. FIRE and AIM were always read as the OR of a
    touch flag and a keyboard flag (`M.fire || held.fire`); use, crouch and
    sprint each shared ONE boolean, so whichever device wrote last won — a
@@ -680,6 +714,17 @@ addEventListener('keydown', e => {
          nowhere until it was let go and pressed again. */
       if (!held[a]){ held[a] = true; keys.add(e.code); } }
     return; }
+  /* Sticky Keys — the OS accessibility feature a one-handed player leans on —
+     LATCHES a modifier instead of holding it: the physical Shift sends its own
+     keydown and keyup, and the NEXT keydown simply carries shiftKey:true. The
+     game only ever read the ShiftLeft keydown, so sprint was the one verb
+     Sticky Keys could not reach: measured P.speed 1.000 latched against 1.480
+     held. A latched Shift is a held Shift as far as every other application is
+     concerned, and now as far as this one is. The latch is spent when that key
+     comes up, which is exactly what the OS means by it. */
+  if (a && a !== 'run' && e.shiftKey && !keys.has('ShiftLeft') && !keys.has('ShiftRight')){
+    shifted.add(e.code); held.run = true;
+  }
   if (a) { held[a] = true; e.preventDefault();
     /* Space/X get the same press buffer a click does: a tap that lands during
        the weapon's cool-down deserves the next available shot, not nothing. */
@@ -692,11 +737,16 @@ addEventListener('keydown', e => {
    physically down. */
 addEventListener('keyup', e => {
   keys.delete(e.code);
+  const spent = shifted.delete(e.code);
   const a = KEYMAP[e.code];
-  if (!a) return;
+  if (!a){ if (spent) held.run = keys.has('ShiftLeft') || keys.has('ShiftRight') || shifted.size > 0; return; }
   let stillHeld = false;
   for (const c of keys) if (KEYMAP[c] === a){ stillHeld = true; break; }
   held[a] = stillHeld;
+  /* a spent latch, or a real Shift going up: re-derive the sprint from what is
+     still down, physical keys and live latches together */
+  if (spent || a === 'run')
+    held.run = keys.has('ShiftLeft') || keys.has('ShiftRight') || shifted.size > 0;
 });
 /* Anything that can strand a key or a mouse button in the "down" state has to
    funnel through here, or the agent walks into a wall forever.
@@ -709,7 +759,7 @@ addEventListener('keyup', e => {
 function clearInput(keepHeld){
   if (!keepHeld){
     for (const k in held) held[k] = false;
-    keys.clear();
+    keys.clear(); shifted.clear();
     M.fire = false; M.aim = false; M.crouch = false;
     if (TIN){ TIN.use = false; TIN.run = false; }
   }
@@ -760,6 +810,18 @@ document.addEventListener('mousedown', e => {
   if (touchGhost(e)) return;
   e.preventDefault(); view.focus();
   M.lx = e.clientX; M.ly = e.clientY;
+  /* The thumb button. Almost every mouse maps buttons 3 and 4 to browser BACK
+     and FORWARD, and players press them by reflex from every other app. BACK
+     is supposed to open the field watch and re-arm — that is what v1.31 wrote
+     the popstate handler for — but a captured pointer swallows the button
+     whole, so no popstate ever arrived and the branch never ran. The FIRST
+     press that landed was the one on the watch, where BACK means go home: an
+     unlabelled button under the thumb ended the run in one press, with ABORT
+     TO MENU sitting one row away. Answer it here so the two steps a player is
+     promised are the two steps they get. Unlocked, the real navigation still
+     does this correctly, so this must not double up. */
+  if (e.button === 3 && M.locked){ M.thumbBackAt = performance.now(); pause(); armBack(); return; }
+  if (e.button === 4) return;                 // FORWARD is not a game control
   if (e.button === 2){ M.aim = true; return; }
   if (e.button !== 0) return;
   /* The tap-or-drag record belongs to the LEFT button. It used to be reset by
@@ -820,7 +882,9 @@ addEventListener('mousemove', e => {
     if (M.justLocked > 0){ M.justLocked--; return; }   // first event after lock can be a jump
     dx = e.movementX; dy = e.movementY;
     if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
-    if (Math.abs(dx) > JUMP_PX || Math.abs(dy) > JUMP_PX) return;
+    const lim = JUMP_RAD / Math.max(1e-6, LOOK_PX * M.sens);
+    if (Math.abs(dx) > lim || Math.abs(dy) > lim) M.clamped = (M.clamped || 0) + 1;
+    dx = clamp(dx, -lim, lim); dy = clamp(dy, -lim, lim);
     M.evt++;
     if (Math.abs(dx) > M.rawMax) M.rawMax = Math.abs(dx);
     M.dx += dx; M.dy += dy;
@@ -2397,7 +2461,7 @@ const P = {
   mag:[7,0,0,0], ammo:{p9:24,smg:0,sh:0,pt:0},
   fireCd:0, reload:0, aim:0, recoil:0, muzzle:0, crouch:0,
   useHold:0, useTarget:null, shootTarget:null, useDenied:null, hurt:0, alive:true, aimU:0, rx:0,
-  hitT:0, killT:0, dmgDir:[], lastFireT:-9,
+  hitT:0, killT:0, dmgDir:[], cues:[], lastFireT:-9,
   lockT:null, lockSX:0, lockSY:0
 };
 const AMMOCAP = { p9:120, smg:300, sh:48, pt:14 };
@@ -2620,7 +2684,7 @@ function loadLevel(li, di){
      and rode into the next mission, which opened with the camera 28% low and
      stood up over half a second — and made P.camZ=.5 above mean nothing. */
   P.fireCd=0; P.reload=0; P.aim=0; P.crouch=0; P.recoil=0; P.muzzle=0; P.useHold=0; P.hurt=0;
-  P.hitT=0; P.killT=0; P.dmgDir.length=0; P.lastFireT=-9;
+  P.hitT=0; P.killT=0; P.dmgDir.length=0; P.cues.length=0; P.lastFireT=-9;
   /* The rest of P, and why each one matters rather than being tidiness:
      bob is the walk cycle the gun sways on, so a new mission opened mid-stride;
      useTarget/shootTarget/useDenied each held a live reference to an entity in
@@ -2853,6 +2917,28 @@ function bump(kind, n=1){
     }
     return;
   }
+}
+/* The interact prompt is the one place a KEY is named while the player is
+   playing, and it said HOLD F on every keyboard on earth. The game binds the
+   physical key, so on Dvorak that key prints U and the prompt was pointing at
+   a keycap two rows away — the same lie the CONTROLS card told until v1.40,
+   in the place it costs most, because this prompt is how the hack is learned.
+   A value rather than a drawing, so the suite can read it (objLine() below is
+   here for the same reason). */
+let KB_LAYOUT = null;   // the keyboard layout in force, once the browser has told us
+function keyName(code, fallback){
+  if (!KB_LAYOUT || !KB_LAYOUT.get) return fallback;   // the browser will not say: US it is
+  const g = KB_LAYOUT.get(code);
+  return g ? (g.length === 1 ? g.toUpperCase() : g) : fallback;
+}
+function usePrompt(t){
+  const hf = isTouch ? 'HOLD USE' : 'HOLD ' + keyName('KeyF', 'F');
+  return t.sub==='npc' ? hf+' 1.9s — ESCORT THE CFO'
+    : t.sub==='console' ? hf+' 1.9s — APPLY PATCH'
+    : t.sub==='audit' ? hf+' 1.9s — PULL AUDIT LOG'
+    /* the terminal's job is whatever its objective says — M04's stairwell
+       terminal is a hack, and the prompt used to sell it as a deployment */
+    : hf+' 1.9s — '+(G.objs.some(o => o.kind==='term' && /^hack/i.test(o.text)) ? 'HACK TERMINAL' : 'DEPLOY AGENT');
 }
 const objsLeft = () => G.objs.filter(o => !o.done && o.kind!=='exit');
 /* The HUD's objective line, as a value so it can be asserted rather than read
@@ -3194,11 +3280,26 @@ function pickWeapon(n){ if (P.has[n] && n!==P.w){ P.w=n; P.reload=0; P.fireCd=Ma
 
 /* ----------------------------------- AI --------------------------------- */
 /* Guards need a beat to react, or a doorway becomes an instant death sentence. */
+/* A positional sound is the game telling you WHERE something is, and a player
+   with the sound off gets none of it. Two of these were the only notice of
+   their event: a hostile waking (measured at 0 of 82,944 pixels changed, from
+   up to 17.1u away — outside the 12.5u radar entirely), and the legacy
+   tower's 0.4s wind-up, which the source itself calls the counterplay. Both
+   are answered here in the vocabulary the game already uses for pain: a short
+   arc on the reticle ring, pointing where the noise came from. Only for a
+   source OUTSIDE the picture — on screen the hostile's own movement is the
+   notice, and a marker over a thing you can see is clutter, not information. */
+function cue(kind, x, y, secs){
+  if (Math.abs(angDiff(P.ang, Math.atan2(y - P.y, x - P.x))) <= FOV_H) return;
+  if (P.cues.length >= 4) P.cues.shift();
+  P.cues.push({ ang: Math.atan2(y - P.y, x - P.x), t: secs, life: secs, kind });
+}
 function wake(e){
   if (e.alert || e.state==='dead') return;
   e.alert = 1; e.state = 'chase';
   e.cd = Math.max(e.cd, rr(.55, 1.05) * (G.diff===2 ? .7 : 1));
   sfxAt('alert', e.x, e.y);
+  cue('wake', e.x, e.y, .9);
 }
 
 function updateEnemy(e, dt){
@@ -3276,6 +3377,7 @@ function updateEnemy(e, dt){
         /* .4s tell before the burst: whining caps, sparks off the barrel arm,
            the fire pose held early — reuses existing fx/sfx, no new audio */
         e.pending = .4; e.fireFlash = .45; sfxAt('hack', e.x, e.y);
+        cue('windup', e.x, e.y, .4);
         fx('spark', e.x+Math.cos(e.ang)*.55, e.y+Math.sin(e.ang)*.55, .5);
       } else {
         const acc = clamp(d.acc * s.acc * (1 - dd/(s.sight*2.2)) * aimPenalty(), .06, .95);
@@ -3369,6 +3471,9 @@ function step(dt, scored){
   } else A.hbT = 0;
   if (P.hitT > 0) P.hitT -= dt;
   if (P.killT > 0) P.killT -= dt;
+  for (let i=P.cues.length-1; i>=0; i--){
+    P.cues[i].t -= dt; if (P.cues[i].t <= 0) P.cues.splice(i,1);
+  }
   for (let i=P.dmgDir.length-1; i>=0; i--){
     P.dmgDir[i].t -= dt; if (P.dmgDir[i].t <= 0) P.dmgDir.splice(i,1);
   }
@@ -4511,6 +4616,28 @@ function drawHUD(horizon){
     }
   }
 
+  /* ...and the same ring carries what the SOUND would have told you, for the
+     two events that had no picture at all: a hostile waking behind you, and
+     the legacy tower's wind-up. Amber, not the pain arc's red — this is a
+     warning, not a wound — and drawn OUTSIDE the pain radius so the two can
+     never be read as one mark. The wind-up's arc is the length of the tell it
+     is telling you about, so it dies exactly as the burst lands. */
+  for (const c of P.cues){
+    const rel = angDiff(P.ang, c.ang) - Math.PI/2;
+    /* fades over its own life, whatever that life is; steady under reduce
+       motion, where a 0.4s pulse is the thing the setting exists to stop */
+    const f = reducedMotion() ? .8 : clamp(c.t / c.life, 0, 1) * .5 + .45;
+    ctx.strokeStyle = (c.kind === 'windup' ? 'rgba(255,176,46,' : 'rgba(255,214,90,') + f.toFixed(2) + ')';
+    ctx.lineWidth = c.kind === 'windup' ? 4 : 3;
+    const half = c.kind === 'windup' ? .30 : .22;
+    for (let a = rel-half; a < rel+half; a += .095){
+      const b = Math.min(a+.095, rel+half), m = (a+b)/2;
+      const px = RW/2 + Math.cos(m)*82, py = RH/2 + Math.sin(m)*82;
+      if (wp && px >= wp[0]-3 && px <= wp[2]+3 && py >= wp[1]-3 && py <= wp[3]+3) continue;
+      ctx.beginPath(); ctx.arc(RW/2, RH/2, 82, a, b); ctx.stroke();
+    }
+  }
+
   /* crosshair */
   const spread = w.spread*(1-P.aim*.62)*(1+P.speed*.28);
   /* the cone in screen pixels grows with the zoom: at 260 px/rad flat, the
@@ -4646,13 +4773,7 @@ function drawHUD(horizon){
      input, so the ring is drawn from first contact and the prompt says how
      long it takes. */
   if (P.useTarget){
-    const hf = isTouch ? 'HOLD USE' : 'HOLD F';
-    const label = P.useTarget.sub==='npc' ? hf+' 1.9s — ESCORT THE CFO'
-      : P.useTarget.sub==='console' ? hf+' 1.9s — APPLY PATCH'
-      : P.useTarget.sub==='audit' ? hf+' 1.9s — PULL AUDIT LOG'
-      /* the terminal's job is whatever its objective says — M04's stairwell
-         terminal is a hack, and the prompt used to sell it as a deployment */
-      : hf+' 1.9s — '+(G.objs.some(o => o.kind==='term' && /^hack/i.test(o.text)) ? 'HACK TERMINAL' : 'DEPLOY AGENT');
+    const label = usePrompt(P.useTarget);
     txtP(label, RW>>1, RH-57, '#4ade80', 7);
     bar((RW>>1)-50, RH-54, 100, 5, P.useTarget.prog, '#4ade80');
   } else if (P.shootTarget){
@@ -4722,7 +4843,8 @@ function drawHUD(horizon){
       'SOURCE  ' + (M.locked ? 'POINTER LOCK' + (M.raw ? ' (RAW)' : '') : 'CURSOR DELTAS'),
       'EVENTS  ' + M.evtF + '/frame    DPR ' + (window.devicePixelRatio||1).toFixed(2),
       'RAW MAX ' + Math.round(M.rawMaxF) + 'px/event' +
-                   (M.locked ? '  (glitch >' + JUMP_PX + ')' : '  (clamp ' + MAX_EVENT_PX + ')'),
+                   (M.locked ? '  (cap ' + Math.round(JUMP_RAD / Math.max(1e-6, LOOK_PX * M.sens)) +
+                                 ' px, clamped ' + (M.clamped || 0) + ')' : '  (clamp ' + MAX_EVENT_PX + ')'),
       'FRAME   ' + Math.round(M.sumF) + 'px',
       'YAW     ' + Math.round(M.yawRate*57.3) + ' deg/s',
       'LOCK    ' + (M.locked ? 'HELD' : M.lockPending ? 'PENDING' : 'NONE') +
@@ -4760,13 +4882,37 @@ function toast(text, kind, ms){
   while (wrap.children.length > ((isTouch || TOUCH_SEEN) ? 3 : 6)) wrap.firstChild.remove();
   setTimeout(()=>{ d.style.transition='opacity .35s'; d.style.opacity='0';
     setTimeout(()=>d.remove(), 400); }, ms||2400);
+  say(text, ms);
 }
-function clearToasts(){ const w=document.getElementById('toasts'); if(w) w.textContent=''; }
+/* the same words into the one live region, wherever show() has parked it */
+function say(text, ms){
+  const w = document.getElementById('say'); if (!w) return;
+  const line = document.createElement('div');
+  line.textContent = text;
+  w.appendChild(line);
+  while (w.children.length > 6) w.firstChild.remove();
+  setTimeout(() => line.remove(), (ms || 2400) + 400);
+}
+function clearToasts(){
+  for (const id of ['toasts','say']){ const w = document.getElementById(id); if (w) w.textContent=''; }
+}
 
 /* ------------------------------- screens ------------------------------- */
 const SCREENS = ['s-boot','s-title','s-select','s-brief','s-pause','s-result','s-controls','s-options','s-cheats'];
 function show(id){
   G.screenId = id;
+  /* Carry the live region into the dialog that is about to open. A polite
+     region left outside an aria-modal dialog is a region an assistive
+     technology is told not to render — which is where every menu toast used
+     to be raised, the corrupt-save warning included, on the very next line
+     after show('s-title').
+     It goes in FIRST, never last: the pinned action row is selected as
+     `.row:last-child`, and parking this after it un-pinned RESUME on the
+     watch and ACCEPT on the briefing — the suite caught that on the first
+     run. Nothing selects a screen's first child. */
+  { const sayEl = document.getElementById('say');
+    const host = (id && document.getElementById(id)) || document.getElementById('frame');
+    if (sayEl && host && sayEl.parentNode !== host) host.insertBefore(sayEl, host.firstChild); }
   /* Every screen opens at its own top. A phone scrollport keeps the offset the
      last flick left, so the second pause opened 162px down — title, stats and
      the first objectives already off the top. */
@@ -4904,7 +5050,30 @@ function gotoBrief(){
    Safari do not implement it yet) the card says the same thing. Where it will
    not, the US glyphs stand and the line above the table says the binding is
    positional, which is the part a player actually needs to know. */
-let KB_LAYOUT = null;                       // the layout the card is currently labelled for
+/* A settings row puts its label in one span and its control in the next, so
+   the control's accessible name was only ever its own STATE: tabbing the
+   Options panel announced "CAPTURE, OFF, SNAP + PULL, WASD, ON, ON, OFF" —
+   two buttons named exactly ON, two exactly OFF, and nothing saying which
+   setting any of them was. v1.35 gave the sliders aria-labels by hand and the
+   rows with buttons were left behind. Wire each control to its own row label
+   instead of naming them one at a time, so a row added later is named too.
+   The control's own id goes SECOND, so the name reads "Corner radar ON" and
+   re-resolves as the state changes. */
+function nameRowControls(){
+  let n = 0, named = 0;
+  for (const row of document.querySelectorAll('.ctl')){
+    const lab = row.children[0], ctl = row.querySelector('button, input, [role="button"]');
+    if (!lab || !ctl) continue;                                    // the manual's rows have no controls
+    if (ctl.getAttribute('aria-label') || ctl.getAttribute('aria-labelledby')) continue;
+    if (!(lab.textContent || '').trim()) continue;
+    n++;
+    if (!lab.id) lab.id = 'ctllab-' + n;
+    if (!ctl.id) ctl.id = 'ctlctl-' + n;
+    ctl.setAttribute('aria-labelledby', lab.id + ' ' + ctl.id);
+    named++;
+  }
+  return named;
+}
 function relabelKeys(){
   const kb = navigator.keyboard;
   if (!kb || !kb.getLayoutMap) return;
@@ -4932,6 +5101,10 @@ function armBack(){
 }
 addEventListener('popstate', () => {
   if (typeof G === 'undefined') return;
+  /* the thumb press just above already answered this one: whether the browser
+     also navigates for that button depends on the pointer lock, so the press
+     owns its own popstate rather than being handled twice and going home */
+  if (M.thumbBackAt && performance.now() - M.thumbBackAt < 500){ M.thumbBackAt = 0; armBack(); return; }
   if (G.state === 'play'){ pause(); armBack(); }
   else if (G.state === 'pause' || G.state === 'result'){ sfx('click'); abortToTitle(); }
   /* A sheet is a sheet, and BACK closes a sheet. OPTIONS opened from the
@@ -5446,6 +5619,71 @@ function selfTestBody(runSim){
     ok('doors: a locked door stays shut without the keycard and opens with it',
        !!d && !!spot && shut === 0 && opened > 0, 'without ' + shut + ' with ' + opened + (d ? '' : ' (no locked door)'));
     P.keys = 0; P.alive = al0; G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
+  /* ---- what you cannot hear, you can see ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, g0 = G.cheats.god, al0 = P.alive;
+    const shot = () => { render(); return ctx.getImageData(0, 0, RW, RH).data; };
+    const diff = (a, b) => { let n = 0;
+      for (let i = 0; i < a.length; i += 4) if (a[i]!==b[i] || a[i+1]!==b[i+1] || a[i+2]!==b[i+2]) n++;
+      return n; };
+    const openAll = () => { for (const d of G.doors){ d.open = 1; G.solid[d.c] = 0; } };
+    const setup = () => { loadLevel(0, 1); G.state = 'play'; G.cheats.god = true;
+      P.alive = true; G.deadT = 0; clearInput();
+      G.time = Math.max(G.time, SPAWN_GRACE + 1);
+      P.cues.length = 0; P.dmgDir.length = 0; };
+    /* a hostile waking BEHIND the agent, through the real wake() */
+    setup();
+    let e = G.ents.find(x => x.kind === 'enemy');
+    P.ang = 0; e.x = P.x - 1; e.y = P.y + 4; e.alert = 0; e.state = 'idle';
+    const behindBearing = Math.atan2(e.y - P.y, e.x - P.x);
+    const b1 = shot(); wake(e); const a1 = shot();
+    const behindPx = diff(b1, a1), behindCues = P.cues.length;
+    /* the control: the same wake IN the picture must add no mark — a hostile
+       you can see announces itself by moving, and a badge over it is clutter */
+    setup(); e = G.ents.find(x => x.kind === 'enemy');
+    P.ang = 0; e.x = P.x + 4; e.y = P.y; e.alert = 0; e.state = 'idle';
+    const b2 = shot(); wake(e); const a2 = shot();
+    const aheadPx = diff(b2, a2), aheadCues = P.cues.length;
+    /* the legacy tower's wind-up, behind the agent, through step() */
+    setup();
+    for (const x of G.ents.filter(x => x.kind === 'enemy')) x.dead2 = true;
+    G.ents = G.ents.filter(x => !x.dead2);
+    for (let i = 0; i < G.solid.length; i++) G.solid[i] = 0;
+    openAll();
+    P.x = 16.5; P.y = 11.5; P.ang = 0;             // open floor, and clear of the map edge
+    const t = spawnEnemy('legacy', P.x - 6, P.y);
+    t.alert = 1; t.state = 'chase'; t.cd = 0;
+    for (let i = 0; i < 3; i++){ step(1/60); openAll(); }
+    t.cd = 0; t.pending = 0; P.cues.length = 0;
+    const b3 = shot();
+    for (let i = 0; i < 30 && !t.pending; i++){ step(1/60); openAll(); }
+    const a3 = shot(), windPx = diff(b3, a3), windCues = P.cues.length, pend = t.pending;
+    for (let i = 0; i < 90; i++){ step(1/60); openAll(); }
+    const gone = P.cues.length;
+    ok('cues: a hostile waking behind you, and the tower winding up, change the picture',
+       Math.abs(angDiff(P.ang, behindBearing)) > FOV_H &&
+       behindCues === 1 && behindPx > 50 && aheadCues === 0 && aheadPx === 0 &&
+       pend > 0 && windCues === 1 && windPx > 50 && gone === 0,
+       'wake behind ' + behindPx + 'px/' + behindCues + ' cue · wake ahead ' + aheadPx + 'px/' +
+       aheadCues + ' · wind-up ' + windPx + 'px/' + windCues + ' · after it passes ' + gone);
+    P.cues.length = 0; P.alive = al0; G.cheats.god = g0;
+    selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
+  /* ---- the interact prompt names the key on the player's own keyboard ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, kb0 = KB_LAYOUT;
+    loadLevel(0, 1); G.state = 'play';
+    const t = G.ents.find(e => e.kind === 'prop' && e.sub === 'term');
+    /* the same physical key prints F on QWERTY and U on Dvorak; the prompt
+       must follow the keycap, because it is telling the player what to hold */
+    KB_LAYOUT = new Map([['KeyF', 'f']]); const qwerty = t ? usePrompt(t) : '';
+    KB_LAYOUT = new Map([['KeyF', 'u']]); const dvorak = t ? usePrompt(t) : '';
+    KB_LAYOUT = null;                     const unknown = t ? usePrompt(t) : '';
+    const named = k => isTouch ? 'HOLD USE' : 'HOLD ' + k;
+    ok('prompt: the interact prompt names the key this keyboard prints',
+       !!t && qwerty.indexOf(named('F')) === 0 && dvorak.indexOf(named('U')) === 0 &&
+       unknown.indexOf(named('F')) === 0 && /1\.9s/.test(qwerty),
+       'QWERTY "' + qwerty + '" · Dvorak "' + dvorak + '" · no layout "' + unknown + '"');
+    KB_LAYOUT = kb0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
   /* ---- a found secret cache never shuts its wall on the agent inside ---- */
   { const st0 = G.state, sel0 = selLevel, d0 = G.diff, g0 = G.cheats.god, al0 = P.alive;
@@ -6311,8 +6549,16 @@ function selfTestBody(runSim){
     const wantFlick = ((want(2400) + Math.PI) % (2*Math.PI)) - Math.PI;
     ok('lock: a fast flick is not rate-capped', Math.abs(got - wantFlick) < 1e-9,
        (got*57.3).toFixed(1)+'deg of '+(wantFlick*57.3).toFixed(1));
+    /* An outsized single event is CLAMPED, not dropped. It used to be dropped,
+       and a 16000-dpi flick — or one hitched frame of coalesced movement — is
+       outsized, so the fastest flick turned the view least: 2999 counts gave
+       1.2449 rad and 3001 gave exactly zero. A bound in radians is a bound on
+       what a frame can be worth, and it scales itself with the sensitivity. */
     a0 = P.ang; mvL(5000,0); step(0.016);
-    ok('lock: a glitch jump is dropped', Math.abs(angDiff(a0,P.ang)) < 1e-12);
+    { const cap = JUMP_RAD / (LOOK_PX * M.sens), turned = Math.abs(angDiff(a0,P.ang));
+      ok('lock: a jump too big for a hand is clamped, not dropped',
+         5000 > cap ? Math.abs(turned - Math.PI) < 1e-6 : Math.abs(turned - want(5000)) < 1e-9,
+         turned.toFixed(4)+' rad, cap '+Math.round(cap)+'px at sens '+M.sens); }
     const pp = P.pitch; mvL(0,-40); step(0.016);
     ok('lock: mouse up looks up', P.pitch > pp, 'pitch='+P.pitch.toFixed(1));
     /* the same stream with the option on must come out flipped */
@@ -7462,6 +7708,35 @@ function selfTestBody(runSim){
         for (let i=0;i<4;i++) step(1/20);
         ok('fire buffer: a cooldown-tail tap fires when the gun frees', P.mag[0] === 5, 'mag='+P.mag[0]);
 
+        /* a fast flick is a fast flick: the captured path CLAMPS an outsized
+           event, it does not throw it away. The old raw-count guard dropped
+           anything past 3000, so movementX 2999 turned 1.2449 rad and 3001
+           turned exactly 0.0000 — and Chrome coalesces mousemove to the frame,
+           so one hitched frame arrives as a single event of thousands. */
+        { const lk0 = M.locked, sn0 = M.sens, a0 = P.ang, jl0 = M.justLocked, cl0 = M.clamped;
+          const flick = counts => { clearInput(); M.locked = true; M.justLocked = 0;
+            dispatchEvent(new MouseEvent('mousemove', { bubbles:true }));   // shape check only
+            M.dx = 0; M.dy = 0;
+            const ev = new MouseEvent('mousemove', { bubbles:true });
+            Object.defineProperty(ev, 'movementX', { value: counts });
+            Object.defineProperty(ev, 'movementY', { value: 0 });
+            dispatchEvent(ev);
+            const a = P.ang; step(1/60); return Math.abs(angDiff(a, P.ang)); };
+          M.sens = .70;
+          const cap = JUMP_RAD / (LOOK_PX * M.sens);
+          const under = flick(Math.round(cap * .9)), over = flick(Math.round(cap * 40));
+          M.sens = .15;                                   // the floor a high-dpi player uses
+          const capLow = JUMP_RAD / (LOOK_PX * M.sens);
+          const lowOver = flick(Math.round(capLow * 40));
+          ok('look: an outsized captured event is clamped to half a turn, never dropped',
+             under > 2.5 && Math.abs(over - Math.PI) < .02 && Math.abs(lowOver - Math.PI) < .02 &&
+             capLow > cap * 4,
+             'under the cap ' + under.toFixed(3) + ' rad · 40x over ' + over.toFixed(3) +
+             ' · at the sensitivity floor ' + lowOver.toFixed(3) + ' (cap ' + Math.round(cap) +
+             ' -> ' + Math.round(capLow) + ' counts)');
+          M.locked = lk0; M.sens = sn0; M.justLocked = jl0; M.clamped = cl0;
+          P.ang = a0; clearInput(); }
+
         /* a banked flick survives a frame hitch — the idle guard no longer eats it */
         { const lm0 = LOOKMODE; LOOKMODE = 'touch';
           clearInput(); const a0 = P.ang;
@@ -7666,6 +7941,29 @@ function selfTestBody(runSim){
              armed && watched && rearmed && G.state === 'title',
              'armed '+armed+' watch '+watched+' rearmed '+rearmed+' then '+G.state);
           G.state = 'play'; show(null); clearInput(); }
+        /* the mouse's thumb button is BACK, and gets the same two steps. A
+           captured pointer swallows the browser's own navigation, so no
+           popstate arrived in play and the first press that landed was the one
+           on the watch — where BACK means go home. An unlabelled button under
+           the thumb ended the run in one press. */
+        { const lk0 = M.locked, tb0 = M.thumbBackAt;
+          G.state = 'play'; show(null); armBack(); M.locked = true;
+          const thumb = () => document.dispatchEvent(new MouseEvent('mousedown',
+            { button:3, buttons:8, bubbles:true, cancelable:true }));
+          thumb();
+          const first = G.state, rearmed = !!(history.state && history.state.a360);
+          /* the navigation the browser may or may not also perform is the SAME
+             press, and must not be answered twice */
+          dispatchEvent(new PopStateEvent('popstate', { state:null }));
+          const stillWatch = G.state;
+          M.thumbBackAt = 0;
+          dispatchEvent(new PopStateEvent('popstate', { state:null }));   // a second, deliberate press
+          ok('back: the mouse thumb button opens the watch first, and once per press',
+             first === 'pause' && rearmed && stillWatch === 'pause' && G.state === 'title',
+             'first press ' + first + ' rearmed ' + rearmed + ' · its own popstate ' + stillWatch +
+             ' · second press ' + G.state);
+          M.locked = lk0; M.thumbBackAt = tb0; G.state = 'play'; show(null); clearInput(); }
+
         /* ...and a sheet opened OVER the watch closes on BACK instead of
            spending the entry on nothing and letting the NEXT one leave with
            the run. OPTIONS from the watch was the reachable one; the other
@@ -7845,7 +8143,14 @@ function selfTestBody(runSim){
 
         /* every control says what it is: five Options sliders and the photo
            input announced as a bare "slider" with no idea what they moved */
-        { const nameOf = el => (el.getAttribute('aria-label') || el.getAttribute('title') ||
+        { /* the order a reader resolves a name in: aria-labelledby wins over
+             aria-label, and both over the element's own text. Without the
+             labelledby leg this test reads a settings button as "OFF" and
+             calls that a name. */
+          const byIds = el => { const ids = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean);
+            if (!ids.length) return '';
+            return ids.map(i => { const t = document.getElementById(i); return t ? t.textContent : ''; }).join(' '); };
+          const nameOf = el => (byIds(el) || el.getAttribute('aria-label') || el.getAttribute('title') ||
             (el.labels && el.labels[0] && el.labels[0].textContent) || el.textContent || '').replace(/\s+/g,' ').trim();
           const nameless = [];
           for (const id of SCREENS){
@@ -7862,11 +8167,54 @@ function selfTestBody(runSim){
           }
           ok('a11y: every control on every screen has a name a reader can say',
              nameless.length === 0, nameless.join(' | ') || SCREENS.length+' screens and the cluster');
+          /* ...and a name that says only what the control's STATE is names
+             nothing. Tabbing Options announced "CAPTURE, OFF, SNAP + PULL,
+             WASD, ON, ON, OFF": two buttons called exactly ON, two exactly
+             OFF, and no way to tell which setting any of them was. A name
+             that repeats another on the same screen fails for the same
+             reason — a reader hearing it twice learns nothing either time. */
+          { const clash = [];
+            for (const id of SCREENS){
+              const sc = document.getElementById(id); if (!sc) continue;
+              show(id);
+              const seen = new Map();
+              for (const el of sc.querySelectorAll('button, input, [role="button"]')){
+                if (el.closest('[aria-hidden="true"]')) continue;
+                if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') continue;
+                const n = nameOf(el).toUpperCase();
+                if (!n) continue;
+                if (/^(ON|OFF|YES|NO)$/.test(n)) clash.push(id+' "'+n+'" says only its state');
+                else if (seen.has(n)) clash.push(id+' "'+n+'" twice');
+                else seen.set(n, el);
+              }
+            }
+            ok('a11y: ...and no control is named only by its own state, or twice on one screen',
+               clash.length === 0, clash.slice(0,4).join(' | ') || 'every name says which control it is'); }
           /* ...and the toasts are announced: they are how the game speaks */
-          const tw = document.getElementById('toasts');
+          const tw = document.getElementById('say');
           ok('a11y: mission events are announced once, through the toast column',
              tw.getAttribute('aria-live') === 'polite' && tw.getAttribute('role') === 'status' && tw.getAttribute('aria-atomic') === 'false',
              'role '+tw.getAttribute('role')+' live '+tw.getAttribute('aria-live')+' atomic '+tw.getAttribute('aria-atomic'));
+          /* ...from INSIDE whatever dialog is open, and from exactly one place.
+             aria-modal="true" tells an assistive technology to render nothing
+             outside the open dialog, and the live region was a sibling of every
+             screen — so a menu toast was raised where nothing was listening,
+             the corrupt-save warning among them, on the line after show(). */
+          { const live = () => [...document.querySelectorAll('[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"]')]
+              .filter(el => !el.closest('[aria-hidden="true"]'));
+            const outside = [];
+            const n = live().length;
+            for (const id of SCREENS){
+              const sc = document.getElementById(id); if (!sc) continue;
+              show(id);
+              for (const r of live()) if (!sc.contains(r)) outside.push(id+' → '+(r.id || r.className));
+            }
+            show(null);
+            const loose = live().filter(r => !document.getElementById('frame').contains(r));
+            ok('a11y: ...and it speaks from inside the dialog that is open, from one place only',
+               n === 1 && outside.length === 0 && loose.length === 0,
+               n + ' live region' + (n === 1 ? '' : 's') +
+               (outside.length ? ' · outside: ' + outside.slice(0,3).join(' | ') : ' · inside every screen')); }
           G.state = 'play'; show(null); }
 
         /* every screen seeds focus on itself, so the first Tab reaches its
@@ -8623,6 +8971,34 @@ function selfTestBody(runSim){
           }
           ok('controls: every token in the manual is a key this test can press',
              unknown.length === 0, unknown.join(' | ') || 'no unrecognised tokens');
+          /* ...and every action the movement map binds can be reached from the
+             RIGHT of the keyboard, which is what the line above the table
+             promises a player driving the mouse left-handed — or one with a
+             single hand. Aim was the gap: Z only, in both layouts, so the verb
+             was simply unavailable. Pause is the stated exception, and it is
+             Tab or Esc, which belong to no hand. */
+          { const RIGHT = new Set(['Semicolon','Quote','Slash','Backslash','BracketLeft','BracketRight',
+              'Comma','Period','ShiftRight','Enter','Backspace','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+              'KeyY','KeyU','KeyI','KeyO','KeyP','KeyH','KeyJ','KeyK','KeyL','KeyN','KeyM',
+              'Space',   // the bar spans the board: either thumb reaches it
+              'Digit7','Digit8','Digit9','Digit0','Minus','Equal']);
+            const lay0 = KEYS_LAYOUT, served = {}, all = new Set();
+            for (const lay of ['wasd','arrows']){
+              KEYS_LAYOUT = lay; applyLayout();
+              const byAction = {};
+              for (const code in KEYMAP) (byAction[KEYMAP[code]] = byAction[KEYMAP[code]] || []).push(code);
+              for (const act in byAction){ all.add(act);
+                if (byAction[act].some(c => RIGHT.has(c)) && !served[act]) served[act] = lay; }
+            }
+            KEYS_LAYOUT = lay0; applyLayout();
+            /* a gap only where NEITHER layout offers one: strafe is right-handed
+               once Movement keys is set to ARROWS, which the card points at */
+            const gaps = [...all].filter(a => !served[a]);
+            ok('controls: every bound action can be reached from the right of the keyboard',
+               gaps.length === 0,
+               gaps.join(' ') || (() => { const late = [...all].filter(a => served[a] === 'arrows');
+                 return all.size + ' actions mirrored' +
+                   (late.length ? ' · ' + late.join('/') + ' only under the ARROWS layout' : ''); })()); }
           /* ...and the glyphs follow the player's KEYBOARD, not a US one. The
              game binds physical keys, so on AZERTY the card used to name W for
              the key that types z and Z for the key that walks you forward —
@@ -8638,15 +9014,21 @@ function selfTestBody(runSim){
               ['Semicolon','m'],['KeyM',','],['Comma',';'],['Period',':'],['Slash','!'],
               ['Quote','ù'],['BracketLeft','^'],['BracketRight','$'],
               ['Digit1','&'],['Digit2','é'],['Digit3','"'],['Digit4',"'"]]);
+            /* read the GLYPHS, not the row string: a row gains keys over time
+               (aim grew a right-hand mirror) and a regex anchored to the end of
+               it fails for a card that is still perfectly correct */
+            const glyph = code => { const el = document.querySelector('#s-controls [data-code="' + code + '"]');
+              return el ? el.textContent : ''; };
+            const cluster = () => ['KeyW','KeyA','KeyS','KeyD'].map(glyph).join(' ');
             const moved = applyKeyLabels(fr);
-            const azerty = row('Move / strafe'), aimFR = row('Aim mode (zoom)');
+            const azerty = cluster(), aimFR = glyph('KeyZ');
             applyKeyLabels(us);
-            const back = row('Move / strafe'), aimUS = row('Aim mode (zoom)');
+            const back = cluster(), aimUS = glyph('KeyZ');
             cells.forEach((c, i) => { c.textContent = was[i]; });
             KB_LAYOUT = kb0;
             ok('controls: the manual names the keys on the player\'s own keyboard',
-               moved >= 10 && /^Z Q S D/.test(azerty) && /W$/.test(aimFR) &&
-               /^W A S D/.test(back) && /Z$/.test(aimUS),
+               moved >= 10 && azerty === 'Z Q S D' && aimFR === 'W' &&
+               back === 'W A S D' && aimUS === 'Z',
                moved + ' relabelled · AZERTY "' + azerty + '" aim "' + aimFR +
                '" · US "' + back + '" aim "' + aimUS + '"'); }
           /* Arm the agent so each key has something to do: a full magazine
@@ -9632,6 +10014,7 @@ function boot(){
   loadLevel(0, G.diff);                 // level 1 doubles as the menu backdrop
   P.x = 3.5; P.y = 2.5;
   resolveLook(); syncOptionsUI();
+  nameRowControls();                    // a settings row's control answers to its row's name
   relabelKeys();                        // name the keys the player's own board prints
   selfTest(false);                      // fail loudly if a level is unwinnable
   /* the suite exercises act('togglemus') twice, and each call toasts — without
