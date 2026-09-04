@@ -195,6 +195,43 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.39
+
+Four ways to lose a run without being told, each with a message or a rule
+already written for it that never ran. A save that cannot be read is stashed
+aside and announced — except boot runs the self-test before the announcement,
+and the self-test nulled it, so no player had ever seen it. A save that fails
+mid-session, when a sibling app on the same origin fills the quota, was
+swallowed whole: the debrief printed a rank over a run already lost. BACK from
+OPTIONS opened over the field watch fell through every branch, spending the
+history entry so the next BACK left the page. And the watch's two-tap ABORT
+was armed globally, so an arming tap, a RESUME and a second graze of the pause
+button threw the run away on one tap. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
+## v1.38
+
+Two players found halves of fixes. v1.32 ruled that a Ctrl, Alt or Meta chord
+is the browser's and never a game key, and put the guard in one of the two
+places a keystroke passes through — so Ctrl+X, the cut chord, still fired a
+live round, Ctrl+W walked the agent forward, and Alt+Shift, the layout-switch
+chord, put them into a sprint. And the rule that a re-fitted frame lets go of
+the thumbs on its pads asked only whether the picture had changed width, which
+portrait never does: a phone browser sliding its URL bar back in moved the
+stick 39.6px under a motionless thumb, and forward became backward. Ledger:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
+## v1.37
+
+v1.33 made the CFO you are escorting a body rather than a window, so a round
+into him stops and the agent is told. It fixed the path every weapon uses
+except one: the patch cannon's slug carries its own target list, tests it for
+hit points, and the CFO has none — so the slug flew through him, detonated on
+the guard behind for 82.5 HP, said nothing, and counted as a hit. It obeys the
+same contract now. Also: USE never checks the wall between you and the
+terminal, and every hackable prop in the campaign was measured unreachable
+through one by a margin of 0.21u — a level-design margin the maps are now held
+to. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.36
 
 A secret cache's wall could slide shut with the agent still inside it. The

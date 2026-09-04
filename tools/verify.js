@@ -410,6 +410,37 @@ async function runTouchDrive(page) {
     await dctx.close();
   }
 
+  /* ---------------- corrupt-save pass ---------------- */
+  /* A blob that cannot be parsed is stashed aside and the player is told —
+     but boot() runs the self-test BEFORE bootDone() shows that toast, and the
+     suite's own corrupt-blob block nulled SAVE_WARN twice, so the message
+     existed in the source and never once reached a player. End-to-end here,
+     because the suite cannot mark its own homework on a boot-order bug. */
+  {
+    const cctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await cctx.addInitScript(() => {
+      try { localStorage.setItem('a360.v2', '{"v":2,"best":{'); } catch (_) {}
+    });
+    const cpage = await cctx.newPage();
+    const cerrs = [];
+    cpage.on('pageerror', e => cerrs.push(e.message));
+    await cpage.goto('file://' + target);
+    await cpage.waitForFunction(() => typeof G !== 'undefined' && typeof selfTest === 'function', { timeout: 15000 });
+    await cpage.waitForTimeout(600);
+    const r = await cpage.evaluate(() => {
+      bootDone();
+      let stash = null; try { stash = localStorage.getItem('a360.v2.bad'); } catch (_) {}
+      return { toasts: document.getElementById('toasts').textContent, stash, bests: Object.keys(BEST).length };
+    });
+    const told = /COULD NOT BE READ/.test(r.toasts);
+    const kept = r.stash === '{"v":2,"best":{';
+    const ok = told && kept && cerrs.length === 0;
+    console.log('CORRUPT SAVE the player is told ' + (told ? 'yes' : 'NO — WIPED IN SILENCE') +
+                ' · bytes kept aside ' + (kept ? 'yes' : 'NO') + ' · page errors ' + cerrs.length + (ok ? '' : ' — FAILED'));
+    if (!ok) bad++;
+    await cctx.close();
+  }
+
   /* ---------------- portrait pass ---------------- */
   /* The F4 suite runs landscape. Portrait is where the toast type read the
      phone's tall axis (9.7px lines four deep across a 216px picture) and the
