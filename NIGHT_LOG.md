@@ -437,11 +437,24 @@ written for it, that simply never ran.
 | **4 · The watch asks twice on every visit** | `pause()` disarms ABORT and restores its label | ABORT TO MENU sits where the FIRE thumb rests, one graze of ❚❚ away, so a phone asks twice. But the arm was global and expired only on its own 2.5s timer — nothing cleared it on RESUME, RESTART or a new mission. A thumb that grazed the pause button, tapped ABORT (the arming tap), resumed, and grazed it again threw the run away on **one tap**. The button still read TAP AGAIN TO ABORT, but a thumb that grazed ❚❚ is not reading it. The two-tap rule is per visit; `pause()` is where a visit begins | Mutation-verified on the phone profile: `armed true disarmed false label "TAP AGAIN TO ABORT" then title` |
 | **What the players cleared** | Measured, not changed | **Nothing of one mission reaches the next.** A cold start of M03/SECRET versus reaching it after twelve consecutive messy runs — aborts mid-sprint, mid-reload, mid-weapon-switch, holding USE, crouched and aimed, a death, five missions across all three clearances — is identical across **90 fingerprinted fields**, with a noise floor established first. Watch RESTART, debrief RETRY and a page reload all agree. **A corrupt blob cannot crash or inject**: nine hostile shapes (truncated, wrong types, 1e308, a negative time, unknown codes, a rank of `<img onerror>`) all render MISSION SELECT normally with junk dropped and no script run. **The service worker updates in one load**, not two — chased three ways and refuted; the stale reading was the probe's own offline toggle. **Two tabs adversarially** — one 24h ahead, one offline — still merge to the better of each pair. **Clearing site data mid-mission** and finishing writes both the new best and the older in-memory one back |
 
+# Night log — the manual learns to read the player's keyboard
+
+The AZERTY player's second finding was the one I left standing last round,
+because the honest fix looked like a feature: the field manual names every key
+by the glyph a US keyboard prints on it, and the game binds the physical key.
+It turns out the browser will simply tell you what each physical key prints.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · The manual names the keys the player actually has** | Every layout-dependent glyph on the CONTROLS card carries its own `data-code`, and `relabelKeys()` rewrites them from `navigator.keyboard.getLayoutMap()` — the layout in force, not a guess | The game binds `event.code` throughout, which is *why* the movement cluster is the same diamond under every left hand. The card did not, so on a French AZERTY board the two facts pulled apart and it started naming each other's keycaps: **9 of 16 named keys were wrong**, and the worst two were a straight swap — the card's aim key **walks you forward** and its forward key **zooms**. Fed a real French layout the card now reads `Z Q S D`, aim `W`, reload `R · !`, use `Hold F · hold Ù`, crouch `C · M`, weapons `A E · ^ $ · wheel · & É " '`: 18 glyphs relabelled, and every one of them still the key the game answers | An assertion feeds the card a French layout map and requires the cluster to read Z Q S D and the aim row W, then a US map and requires W A S D and Z back: `18 relabelled`. Mutation-verified: `0 relabelled · AZERTY "W A S D"`. End-to-end in a real browser with a live `navigator.keyboard`, both with the API (`PASS the card names the keys an AZERTY player actually has`) and without it |
+| **2 · The card says whose keyboard it is speaking** | A line above the table: keys are bound by **position**, not by letter, and the names below follow *your keyboard* — or *a US keyboard* where the browser will not say | Firefox and Safari do not implement `KeyboardLayoutMap`, so for those players the glyphs really are the US ones and the card should admit it rather than quietly mislabel. The positional sentence is the part that helps every player on every browser: it is the reason a non-US layout is playable at all, and nothing on the screen had ever said it | Measured on a browser with `navigator.keyboard` removed: `{"move":"W A S D…","aim":"Right click · Z","note":"a US keyboard"}`, no page errors |
+| **3 · The manual's own test reads the promise, not the print** | The assertion that presses every key the card advertises takes the code from `data-code` where it is given, and strips those glyphs out of its prose scan | The existing guard turned each printed glyph into a code through a fixed table — a fact about US keyboards. Left alone it would have failed on an AZERTY board for a card that was finally telling the truth, and passed a `Z` relabelled from `KeyW` as though it were the US Z. It still parses **37 keys from 18 rows** and presses every one for real | The whole battery, plus the unchanged detail line `37 keys, all live` |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 474 desktop / 466 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 475 desktop / 466 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -456,5 +469,5 @@ written for it, that simply never ran.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.39'` (index.html) ↔ `agent360-v1.39`
+- **Versions:** game `VERSION = '1.40'` (index.html) ↔ `agent360-v1.40`
   (sw.js CACHE), enforced by verify.js

@@ -195,6 +195,20 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.40
+
+The field manual named every key by the glyph a US keyboard prints on it,
+while the game binds the physical key — which is why the movement cluster is
+the same diamond under every left hand. On a French AZERTY board those two
+facts pulled apart and the card began naming each other's keycaps: nine of
+sixteen keys wrong, and the worst two a straight swap, its aim key walking you
+forward and its forward key zooming. The browser knows what each physical key
+prints, so the card now asks it: on a French layout it reads Z Q S D, aim W,
+weapons A E · ^ $ · & É " '. Where a browser will not say, the US glyphs stand
+and the card admits they are US — and a new line explains that the binding is
+positional, which is the part that makes any layout playable.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.39
 
 Four ways to lose a run without being told, each with a message or a rule

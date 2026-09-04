@@ -349,7 +349,9 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
       <div class="eyebrow">field manual</div>
       <h2 class="ttl">CONTROLS</h2>
       <p class="hint no-touch" style="margin:0">Every action has a right-hand mirror, so you can drive the mouse with either hand.
-      Switch the arrow keys between turning and strafing under <b>Movement keys</b> in Options.</p>
+      Switch the arrow keys between turning and strafing under <b>Movement keys</b> in Options.
+      Keys are bound by <b>position</b>, not by letter: the movement cluster is the same four keys under your left
+      hand on every layout, and the names below follow <span id="ctl-layout">a US keyboard</span>.</p>
       <div class="grid2 panel touch-only" id="ctl-touch">
         <div class="ctl"><span>Move / strafe</span><span>Left pad — speed follows deflection</span></div>
         <div class="ctl"><span>Sprint</span><span>Push the pad all the way to its rim</span></div>
@@ -368,33 +370,33 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
       <div class="grid2 panel no-touch">
         <!-- the arrow rows follow the live layout (body.keys-arrows): one static
              table promised that ← → both turned AND strafed, whichever was true -->
-        <div class="ctl"><span>Move / strafe</span><span><span class="kb-wasd">W A S D · ↑ ↓</span> <span class="kb-arrows">↑ ↓ ← →</span></span></div>
-        <div class="ctl"><span>Turn</span><span>Mouse · , and . <span class="kb-wasd">· ← →</span></span></div>
-        <div class="ctl"><span>Fire</span><span>Click · Space · X</span></div>
-        <div class="ctl"><span>Aim mode (zoom)</span><span>Right click · Z</span></div>
+        <div class="ctl"><span>Move / strafe</span><span><span class="kb-wasd"><b data-code="KeyW">W</b> <b data-code="KeyA">A</b> <b data-code="KeyS">S</b> <b data-code="KeyD">D</b> · ↑ ↓</span> <span class="kb-arrows">↑ ↓ ← →</span></span></div>
+        <div class="ctl"><span>Turn</span><span>Mouse · <b data-code="Comma">,</b> and <b data-code="Period">.</b> <span class="kb-wasd">· ← →</span></span></div>
+        <div class="ctl"><span>Fire</span><span>Click · Space · <b data-code="KeyX">X</b></span></div>
+        <div class="ctl"><span>Aim mode (zoom)</span><span>Right click · <b data-code="KeyZ">Z</b></span></div>
         <div class="ctl"><span>Aim assist</span><span>Options · auto-aim, GoldenEye style</span></div>
-        <div class="ctl"><span>Reload</span><span>R · /</span></div>
-        <div class="ctl"><span>Interact &amp; hack</span><span>Hold F · hold '</span></div>
-        <div class="ctl"><span>Crouch</span><span>C · ;</span></div>
+        <div class="ctl"><span>Reload</span><span><b data-code="KeyR">R</b> · <b data-code="Slash">/</b></span></div>
+        <div class="ctl"><span>Interact &amp; hack</span><span>Hold <b data-code="KeyF">F</b> · hold <b data-code="Quote">'</b></span></div>
+        <div class="ctl"><span>Crouch</span><span><b data-code="KeyC">C</b> · <b data-code="Semicolon">;</b></span></div>
         <div class="ctl"><span>Sprint</span><span>Either Shift</span></div>
-        <div class="ctl"><span>Next / prev weapon</span><span>Q E · [ ] · wheel · 1–4</span></div>
-        <div class="ctl"><span>Corner radar</span><span>N</span></div>
+        <div class="ctl"><span>Next / prev weapon</span><span><b data-code="KeyQ">Q</b> <b data-code="KeyE">E</b> · <b data-code="BracketLeft">[</b> <b data-code="BracketRight">]</b> · wheel · <b data-code="Digit1">1</b> <b data-code="Digit2">2</b> <b data-code="Digit3">3</b> <b data-code="Digit4">4</b></span></div>
+        <div class="ctl"><span>Corner radar</span><span><b data-code="KeyN">N</b></span></div>
         <div class="ctl"><span>Floor plan / pause</span><span>Tab opens · Esc resumes</span></div>
         <div class="ctl"><span>Reset stuck input</span><span>Backspace</span></div>
         <div class="ctl"><span>Input diagnostics</span><span>F3</span></div>
         <div class="ctl"><span>Raw input trace</span><span>F2</span></div>
         <div class="ctl"><span>Run self test</span><span>F4</span></div>
-        <div class="ctl"><span>Mute music</span><span>M</span></div>
-        <div class="ctl"><span>Toggle scanlines</span><span>P</span></div>
+        <div class="ctl"><span>Mute music</span><span><b data-code="KeyM">M</b></span></div>
+        <div class="ctl"><span>Toggle scanlines</span><span><b data-code="KeyP">P</b></span></div>
       </div>
       <p class="hint no-touch">Click the viewport and the mouse is <b>captured</b>: it disappears, raw movement turns the view, and
       <b>Esc</b> hands it back (and pauses). That is the default and it works exactly like a native FPS. If the page is
       embedded somewhere that refuses pointer lock, the game falls back to <b>free look</b> — the mouse moves your
       reticle and pushing it past the two tick marks swings the view — and every click asks for capture again.
       Open the HTML file directly for guaranteed mouse capture. Change the mode under <b>Look mode</b> in Options;
-      <b>,</b> and <b>.</b> turn from the keyboard. <b>Backspace</b> resets stuck input; <b>F3</b> shows a live
+      <b data-code="Comma">,</b> and <b data-code="Period">.</b> turn from the keyboard. <b>Backspace</b> resets stuck input; <b>F3</b> shows a live
       input readout and <b>F2</b> the raw mouse stream.</p>
-      <p class="hint no-touch">Lost? The corner radar (<b>N</b>) marks objectives, and the watch (<b>Tab</b>) shows the whole floor
+      <p class="hint no-touch">Lost? The corner radar (<b data-code="KeyN">N</b>) marks objectives, and the watch (<b>Tab</b>) shows the whole floor
       plan with every outstanding objective lettered on it and its range in metres.</p>
       <p class="hint touch-only">Lost? The corner radar marks objectives, and the watch (<b>❚❚</b>) shows the whole floor
       plan with every outstanding objective lettered on it and its range in metres.</p>
@@ -481,7 +483,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.39';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.40';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -4891,6 +4893,40 @@ function gotoBrief(){
    surround's overscroll swipe used to cause. A live mission holds one history
    entry: BACK in play opens the watch (and re-arms), BACK on the watch or the
    debrief goes to the title, and the BACK after that leaves, as it should. */
+/* The manual names each key by the glyph a US keyboard prints on it, and the
+   game binds the PHYSICAL key (event.code) throughout — which is why the
+   movement cluster is the same diamond under every left hand. On a French
+   AZERTY board those two facts pulled apart and the card started lying: it
+   named W for the key that types z and Z for the key that walks you forward,
+   two of its rows pointing at each other's keycaps, nine of sixteen named keys
+   wrong. The browser knows what every physical key prints on the layout in
+   force, so where it will say (Chromium's KeyboardLayoutMap; Firefox and
+   Safari do not implement it yet) the card says the same thing. Where it will
+   not, the US glyphs stand and the line above the table says the binding is
+   positional, which is the part a player actually needs to know. */
+let KB_LAYOUT = null;                       // the layout the card is currently labelled for
+function relabelKeys(){
+  const kb = navigator.keyboard;
+  if (!kb || !kb.getLayoutMap) return;
+  kb.getLayoutMap().then(map => applyKeyLabels(map)).catch(() => {});
+}
+function applyKeyLabels(map){
+  let changed = 0;
+  for (const el of document.querySelectorAll('[data-code]')){
+    const g = map.get ? map.get(el.dataset.code) : null;
+    if (!g) continue;
+    /* a one-character legend reads as a keycap; anything longer is already a
+       name the layout gave us ("Backspace"), so leave its case alone */
+    const t = g.length === 1 ? g.toUpperCase() : g;
+    if (el.textContent !== t){ el.textContent = t; changed++; }
+  }
+  KB_LAYOUT = map;
+  /* and say which it is, because on a browser that cannot tell us the layout
+     the glyphs below really are the US ones and the card should admit it */
+  const note = document.getElementById('ctl-layout');
+  if (note) note.textContent = 'your keyboard';
+  return changed;
+}
 function armBack(){
   try { if (!(history.state && history.state.a360)) history.pushState({ a360:1 }, ''); } catch(_){}
 }
@@ -8568,9 +8604,18 @@ function selfTestBody(runSim){
           const unknown = [];
           for (const r of rows){
             const label = r.children[0].textContent.trim();
-            const keys = r.children[1].textContent;
-            /* '1-4' is a range the row writes as one token */
-            const toks = keys.replace(/1[–-]4/, '1 2 3 4').split(/[\s·]+/);
+            /* A glyph that carries data-code names its key OUTRIGHT, and that is
+               the one the browser relabels for a non-US layout — reading the
+               printed character instead would make this test fail on an AZERTY
+               board for a card that is finally telling the truth. Take the code
+               where it is given, and strip those glyphs out of the prose scan so
+               a relabelled 'Z' is not then read as the US Z as well. */
+            const cell = r.children[1].cloneNode(true);
+            for (const b of cell.querySelectorAll('[data-code]')){
+              if (!want.has(b.dataset.code)) want.set(b.dataset.code, label);
+              b.remove();
+            }
+            const toks = cell.textContent.split(/[\s·]+/);
             for (const t of toks){
               if (GLYPH[t]){ if (!want.has(GLYPH[t])) want.set(GLYPH[t], label); }
               else if (!PROSE.has(t)) unknown.push(label + ' → ' + JSON.stringify(t));
@@ -8578,6 +8623,32 @@ function selfTestBody(runSim){
           }
           ok('controls: every token in the manual is a key this test can press',
              unknown.length === 0, unknown.join(' | ') || 'no unrecognised tokens');
+          /* ...and the glyphs follow the player's KEYBOARD, not a US one. The
+             game binds physical keys, so on AZERTY the card used to name W for
+             the key that types z and Z for the key that walks you forward —
+             pointing at each other's keycaps. Feed it a French layout and the
+             cluster must read Z Q S D. */
+          { const kb0 = KB_LAYOUT;
+            const cells = [...document.querySelectorAll('#s-controls [data-code]')];
+            const was = cells.map(c => c.textContent);
+            const row = t => [...rows].find(r => r.children[0].textContent.trim() === t)
+                                      .children[1].textContent.replace(/\s+/g, ' ').trim();
+            const us = new Map(cells.map(c => [c.dataset.code, c.textContent.toLowerCase()]));
+            const fr = new Map([['KeyW','z'],['KeyA','q'],['KeyQ','a'],['KeyZ','w'],
+              ['Semicolon','m'],['KeyM',','],['Comma',';'],['Period',':'],['Slash','!'],
+              ['Quote','ù'],['BracketLeft','^'],['BracketRight','$'],
+              ['Digit1','&'],['Digit2','é'],['Digit3','"'],['Digit4',"'"]]);
+            const moved = applyKeyLabels(fr);
+            const azerty = row('Move / strafe'), aimFR = row('Aim mode (zoom)');
+            applyKeyLabels(us);
+            const back = row('Move / strafe'), aimUS = row('Aim mode (zoom)');
+            cells.forEach((c, i) => { c.textContent = was[i]; });
+            KB_LAYOUT = kb0;
+            ok('controls: the manual names the keys on the player\'s own keyboard',
+               moved >= 10 && /^Z Q S D/.test(azerty) && /W$/.test(aimFR) &&
+               /^W A S D/.test(back) && /Z$/.test(aimUS),
+               moved + ' relabelled · AZERTY "' + azerty + '" aim "' + aimFR +
+               '" · US "' + back + '" aim "' + aimUS + '"'); }
           /* Arm the agent so each key has something to do: a full magazine
              cannot reload, one weapon cannot cycle, and Backspace clears input
              that has to be stuck first. A key that does nothing HERE is a key
@@ -9241,7 +9312,7 @@ function act(a){
   sfx('click');                     // every menu activation blips, mouse or key
   switch(a){
     case 'missions': buildSelect(); G.state='select'; show('s-select'); break;
-    case 'controls': G.state='controls'; show('s-controls'); break;
+    case 'controls': G.state='controls'; show('s-controls'); relabelKeys(); break;
     /* Options can be opened over a paused mission, so BACK owes the player the
        watch they left, not the title screen — leaving that way would abandon
        the run. */
@@ -9561,6 +9632,7 @@ function boot(){
   loadLevel(0, G.diff);                 // level 1 doubles as the menu backdrop
   P.x = 3.5; P.y = 2.5;
   resolveLook(); syncOptionsUI();
+  relabelKeys();                        // name the keys the player's own board prints
   selfTest(false);                      // fail loudly if a level is unwinnable
   /* the suite exercises act('togglemus') twice, and each call toasts — without
      this wipe, MUSIC OFF / MUSIC ON sat on the splash logo on every load */
