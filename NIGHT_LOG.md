@@ -366,9 +366,28 @@ A note for the next round: the textures bake with `Math.random()`, so two page l
 
 ---
 
+# Night log — high contrast, and the row that swallowed clicks
+
+The low-vision reviewer finished last, having re-measured everything on the
+build as it moved under it. Its one earlier finding — health drawn as a bar and
+a colour with no number — had shipped in v1.33 and holds; all nineteen other
+colour-only signals still carry a shape, a word or a position beside the
+colour. What it found this time is what happens when the platform, rather than
+the player, changes the rules.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · A menu is a menu in High Contrast too** | `.screen` carries a background **colour** under its gradient | Windows High Contrast (`forced-colors: active`) drops background *images*, and the backdrop was only a gradient — so **every menu floated over the live mission at full colour**. Measured inside the frame: the title screen showed 10 distinct colours behind its text, select, briefing, pause and options 12 apiece, and the worst text run fell to **1.68:1** with 22 runs under 4.5:1 across eight screens. With a colour beneath: one colour, zero luminance swing | An assertion requires every screen's computed background colour to be opaque. Mutation-verified: `s-title rgba(0, 0, 0, 0)` |
+| **2 · The pinned row is a fade, not a lid** | `pointer-events:none` on the sticky action row, `auto` on its own buttons | The row's gradient is transparent for its top 40% and it still took every click landing there. At 200% zoom the Music and Scanlines sliders and CHOOSE PHOTO could be **seen and not pressed**: the sliders stayed at 34 and 50, `elementFromPoint` returned the row. At 150% it swallowed CHOOSE PHOTO and RESET | The assertion hit-tests it: put the row over the Options controls and ask the document what is under each control's own centre. It also caught my first attempt, which killed RESUME on the watch — the rule covered one of the three pinned-row selectors. Mutation-verified: `3 lids` |
+| **3 · The row cannot say OFF while the system says ON** | With `prefers-reduced-motion: reduce` in force the Options row reads **ON · SYSTEM**, reports `aria-pressed="true"`, and the toast says the system asks for it | The platform preference is honoured — shake spread 6px → 2px, the meltdown wash flat, the plate blink held, no CSS animation — but the row read `Reduce motion OFF` with `aria-pressed="false"`, and pressing it twice toasted OFF over motion that was already reduced, because the option cannot override the OS | Mutation-verified: `row reads "OFF" aria-pressed false` |
+| **4 · A screen says what it is** | Every screen is a named `role="dialog" aria-modal="true"`, labelled by its own heading where it has one | v1.33 made the toast column a live region and it behaves — one announcement per toast, none for expiry, nothing twice — but the debrief itself is a `tabindex="-1"` div with no role and no name, so focus landing on it announced nothing at all | Mutation-verified: `s-result` |
+| **What did not survive** | Measured, not changed | **Browser zoom cannot enlarge the game** — the frame is 1152×648 device pixels at 100%, 150%, 200% and 250%, three device pixels per game pixel every time. That is `fit()` doing its job: the picture already fills the window, so there is nothing for zoom to add. Menus do grow (an eyebrow 8.3px → 14.0px). Making the HUD itself bigger would be a scale option, not a bug fix. **Text under 12 CSS px**: 193 strings at 1280×720, none of them in the canvas HUD (18px there); on a landscape phone the HUD joins them at 10px and toasts sit at their 6px floor. Contrast is not the problem — a toast is 10.3:1 normally and 21:1 in forced colours — size is, and size is the picture's. **`prefers-contrast: more` is ignored** by every rule in the file. **A full mission win at 200% zoom is unproved**: the reviewer's own driver managed 1 of 4 objectives at 100% and 0 of 4 at 200%, timing out rather than dying even with INVULNERABLE, so the limiter is its path-following, not the zoom |
+
+---
+
 ## Standing numbers
 
-- **Self-tests:** 461 desktop / 453 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 465 desktop / 457 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -383,5 +402,5 @@ A note for the next round: the textures bake with `Math.random()`, so two page l
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.34'` (index.html) ↔ `agent360-v1.34`
+- **Versions:** game `VERSION = '1.35'` (index.html) ↔ `agent360-v1.35`
   (sw.js CACHE), enforced by verify.js

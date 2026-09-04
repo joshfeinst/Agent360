@@ -62,7 +62,11 @@ canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:bloc
    against 60 with the declaration gone. */
 .screen{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
   gap:clamp(10px,2.2vh,22px); padding:clamp(14px,3vh,36px); line-height:1.5; text-align:center;
-  background:linear-gradient(180deg, rgba(5,7,12,.93), rgba(5,7,12,.97));
+  /* the colour is load-bearing: forced-colors (Windows High Contrast) drops
+     background IMAGES, and with only the gradient every menu floated over the
+     live mission at full colour — worst text run 1.68:1 */
+  background-color:#05070c;
+  background-image:linear-gradient(180deg, rgba(5,7,12,.93), rgba(5,7,12,.97));
   overflow-y:auto; overflow-x:hidden; touch-action:pan-y;
   scrollbar-width:thin; scrollbar-color:var(--line) transparent;}
 /* centred while it fits, top-aligned and scrollable once it doesn't — the auto
@@ -88,7 +92,14 @@ canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:bloc
 #s-pause>.row:last-child,#s-brief>.row:last-child,
 .screen.pinrow>.row:last-child{position:sticky; bottom:0; z-index:2;
   width:100%; padding:10px 0 2px;
-  background:linear-gradient(180deg, rgba(5,7,12,0), rgba(5,7,12,.97) 40%)}
+  /* the top 40% of this row is transparent, and it used to take the clicks
+     landing on the controls visible through it — at 200% zoom Music, Scanlines
+     and CHOOSE PHOTO could be seen and not pressed */
+  pointer-events:none;
+  background-color:transparent;
+  background-image:linear-gradient(180deg, rgba(5,7,12,0), rgba(5,7,12,.97) 40%)}
+#s-pause>.row:last-child>*,#s-brief>.row:last-child>*,
+.screen.pinrow>.row:last-child>*{pointer-events:auto}
 .screen[hidden]{display:none}
 .eyebrow{font-family:var(--pix); font-size:clamp(7px,1.15vh,10px); letter-spacing:.18em; color:var(--cyan); text-transform:uppercase}
 h1.logo{font-family:var(--pix); margin:0; line-height:1.25; text-wrap:balance;
@@ -248,7 +259,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     </div>
 
     <!-- TITLE -->
-    <div class="screen" id="s-title" hidden>
+    <div class="screen" id="s-title" role="dialog" aria-modal="true" aria-label="Agent 360 main menu" hidden>
       <div class="eyebrow">a managed services thriller</div>
       <h1 class="logo">AGENT&nbsp;360<small id="logosub">GOLDENSHARE</small></h1>
       <div class="menu" role="group" aria-label="Main menu" id="titlemenu">
@@ -263,7 +274,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     </div>
 
     <!-- MISSION SELECT -->
-    <div class="screen" id="s-select" hidden>
+    <div class="screen" id="s-select" role="dialog" aria-modal="true" aria-label="CHOOSE YOUR ENGAGEMENT" hidden>
       <div class="eyebrow">mission select</div>
       <h2 class="ttl">CHOOSE YOUR ENGAGEMENT</h2>
       <div class="menu" id="misslist"></div>
@@ -273,7 +284,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     </div>
 
     <!-- BRIEFING -->
-    <div class="screen" id="s-brief" hidden>
+    <div class="screen" id="s-brief" role="dialog" aria-modal="true" aria-labelledby="b-title" hidden>
       <div class="eyebrow" id="b-eyebrow">briefing</div>
       <h2 class="ttl" id="b-title"></h2>
       <div class="dossier panel">
@@ -293,7 +304,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     </div>
 
     <!-- PAUSE / WATCH -->
-    <div class="screen" id="s-pause" hidden>
+    <div class="screen" id="s-pause" role="dialog" aria-modal="true" aria-labelledby="p-title" hidden>
       <div class="eyebrow">field watch — paused</div>
       <h2 class="ttl" id="p-title"></h2>
       <div class="dossier panel">
@@ -324,7 +335,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     </div>
 
     <!-- RESULTS -->
-    <div class="screen" id="s-result" hidden>
+    <div class="screen" id="s-result" role="dialog" aria-modal="true" aria-labelledby="r-title" hidden>
       <div class="eyebrow" id="r-eyebrow"></div>
       <h1 class="logo" id="r-title" style="font-size:clamp(18px,3.6vh,34px)"></h1>
       <div class="panel" style="width:min(560px,92vw)">
@@ -334,7 +345,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     </div>
 
     <!-- CONTROLS -->
-    <div class="screen" id="s-controls" hidden>
+    <div class="screen" id="s-controls" role="dialog" aria-modal="true" aria-label="CONTROLS" hidden>
       <div class="eyebrow">field manual</div>
       <h2 class="ttl">CONTROLS</h2>
       <p class="hint no-touch" style="margin:0">Every action has a right-hand mirror, so you can drive the mouse with either hand.
@@ -394,7 +405,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     </div>
 
     <!-- OPTIONS -->
-    <div class="screen" id="s-options" hidden>
+    <div class="screen" id="s-options" role="dialog" aria-modal="true" aria-label="OPTIONS" hidden>
       <div class="eyebrow">options</div>
       <h2 class="ttl">OPTIONS</h2>
       <div class="grid2 panel">
@@ -431,7 +442,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     </div>
 
     <!-- CHEATS -->
-    <div class="screen" id="s-cheats" hidden>
+    <div class="screen" id="s-cheats" role="dialog" aria-modal="true" aria-label="CHEAT MENU" hidden>
       <div class="eyebrow">unlocked at the console, as tradition demands</div>
       <h2 class="ttl">CHEAT MENU</h2>
       <div class="menu" id="cheatlist"></div>
@@ -470,7 +481,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.34';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.35';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -7457,6 +7468,66 @@ function selfTestBody(runSim){
              'focus '+(document.activeElement.textContent||document.activeElement.tagName).trim().slice(0,8)+' state '+G.state);
           resume(false); clearInput(); }
 
+        /* forced-colors (Windows High Contrast) drops background IMAGES: with
+           only a gradient behind them every menu floated over the live mission
+           at full colour, and the worst text run fell to 1.68:1 */
+        { const gradOnly = [];
+          for (const id of SCREENS){
+            const el = document.getElementById(id); if (!el) continue;
+            const cs = getComputedStyle(el);
+            const solid = cs.backgroundColor && !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(cs.backgroundColor);
+            if (!solid) gradOnly.push(id+' '+cs.backgroundColor);
+          }
+          ok('screens: every menu has a solid backdrop, not only a gradient image',
+             gradOnly.length === 0, gradOnly.join(' | ') || SCREENS.length+' screens');
+          /* ...and a pinned row is a fade, not a lid: its transparent top used
+             to swallow the clicks meant for the controls seen through it */
+          const rows = [...document.querySelectorAll('#s-pause>.row:last-child, #s-brief>.row:last-child, .screen.pinrow>.row:last-child')];
+          const lids = rows.filter(r => getComputedStyle(r).pointerEvents !== 'none');
+          const deaf = rows.flatMap(r => [...r.children]).filter(c => getComputedStyle(c).pointerEvents !== 'auto');
+          /* ...hit-tested, not just declared: put the row over a control and
+             ask the document what is under the control's own centre */
+          let shielded = 'nothing under a pinned row to test';
+          { G.state = 'play'; pause(); act('options');
+            const sc = document.getElementById('s-options');
+            const row = sc.querySelector('.row:last-child');
+            if (row && getComputedStyle(row).position === 'sticky'){
+              const rr = row.getBoundingClientRect();
+              const hidden = [...sc.querySelectorAll('input, button')].filter(c => {
+                if (row.contains(c)) return false;
+                const cr = c.getBoundingClientRect();
+                if (cr.width < 2) return false;
+                const cx = cr.left + cr.width/2, cy = cr.top + cr.height/2;
+                if (!(cx >= rr.left && cx <= rr.right && cy >= rr.top && cy <= rr.bottom)) return false;
+                const under = document.elementFromPoint(cx, cy);
+                return !(under && (under === c || c.contains(under)));
+              }).map(c => c.id || c.className);
+              shielded = hidden.length ? hidden.join(' ') : 'ok';
+            }
+            act('back'); resume(false); G.state = 'play'; show(null); }
+          const clickThrough = shielded === 'ok' || /nothing under/.test(shielded);
+          ok('screens: a pinned row lets clicks through, and its own buttons still take them',
+             rows.length > 0 && lids.length === 0 && deaf.length === 0 && clickThrough,
+             rows.length+' rows, '+lids.length+' lids, '+deaf.length+' deaf buttons, under the row: '+shielded);
+          /* ...and a screen says what it is when focus lands on it */
+          const mute = SCREENS.filter(id => { const el = document.getElementById(id);
+            if (!el || id === 's-boot') return false;
+            const lab = el.getAttribute('aria-label') ||
+              (el.getAttribute('aria-labelledby') && document.getElementById(el.getAttribute('aria-labelledby')));
+            return el.getAttribute('role') !== 'dialog' || !lab; });
+          ok('a11y: every screen announces itself when focus lands on it',
+             mute.length === 0, mute.join(' ') || 'named dialogs'); }
+
+        /* the Reduce Motion row cannot say OFF while the system forces it on */
+        { const m0 = RM_MEDIA, o0 = RM_OPT;
+          RM_MEDIA = true; RM_OPT = false; syncRMLabel();
+          const b = document.getElementById('o-rm');
+          const says = b.textContent, pressed = b.getAttribute('aria-pressed');
+          RM_MEDIA = m0; RM_OPT = o0; syncRMLabel();
+          ok('options: with the system asking for reduced motion the row says so',
+             /SYSTEM/.test(says) && pressed === 'true' && reducedMotion() === (RM_MEDIA || RM_OPT),
+             'row reads "'+says+'" aria-pressed '+pressed); }
+
         /* every control says what it is: five Options sliders and the photo
            input announced as a bare "slider" with no idea what they moved */
         { const nameOf = el => (el.getAttribute('aria-label') || el.getAttribute('title') ||
@@ -8844,7 +8915,12 @@ function syncMusLabel(){
 }
 function syncRMLabel(){
   const b = document.getElementById('o-rm');
-  if (b){ b.textContent = RM_OPT ? 'ON' : 'OFF'; b.setAttribute('aria-pressed', String(RM_OPT)); }
+  /* the OS can force it, and then the row said OFF over motion that was
+     already reduced — and toasted OFF when pressed, twice */
+  const on = reducedMotion();
+  if (b){ b.textContent = RM_MEDIA ? 'ON · SYSTEM' : (RM_OPT ? 'ON' : 'OFF');
+          b.setAttribute('aria-pressed', String(on));
+          b.title = RM_MEDIA ? 'Your system asks for reduced motion; the game follows it' : ''; }
   document.body.classList.toggle('reduce', RM_OPT);   // the CSS .blink rule reads this
 }
 /* State drives the widgets, never the reverse: after loadSettings() the sliders
@@ -8929,7 +9005,9 @@ function act(a){
       break;
     case 'togglerm':
       RM_OPT = !RM_OPT; syncRMLabel(); saveSettings();
-      toast(RM_OPT ? 'REDUCE MOTION: ON — SHAKE, WASH AND BLINK HELD DOWN' : 'REDUCE MOTION: OFF', 'cyan', 3400);
+      toast(RM_MEDIA ? 'REDUCE MOTION: ON — YOUR SYSTEM ASKS FOR IT'
+          : RM_OPT ? 'REDUCE MOTION: ON — SHAKE, WASH AND BLINK HELD DOWN'
+          : 'REDUCE MOTION: OFF', 'cyan', 3400);
       break;
     case 'togglemus':                /* KeyM for touch players — same state, same blob */
       A.musOn = !A.musOn; syncMusLabel(); saveSettings();
