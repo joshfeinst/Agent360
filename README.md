@@ -195,6 +195,18 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.38
+
+Two players found halves of fixes. v1.32 ruled that a Ctrl, Alt or Meta chord
+is the browser's and never a game key, and put the guard in one of the two
+places a keystroke passes through — so Ctrl+X, the cut chord, still fired a
+live round, Ctrl+W walked the agent forward, and Alt+Shift, the layout-switch
+chord, put them into a sprint. And the rule that a re-fitted frame lets go of
+the thumbs on its pads asked only whether the picture had changed width, which
+portrait never does: a phone browser sliding its URL bar back in moved the
+stick 39.6px under a motionless thumb, and forward became backward. Ledger:
+[NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.37
 
 v1.33 made the CFO you are escorting a body rather than a window, so a round

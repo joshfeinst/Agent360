@@ -481,7 +481,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.37';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.38';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -661,7 +661,15 @@ addEventListener('keydown', e => {
   /* Only claim gameplay keys while actually playing, so Space and Tab still
      operate the menus and the Options screen stays keyboard-accessible. */
   const playing = (typeof G !== 'undefined') && G && G.state === 'play';
-  const a = playing ? KEYMAP[e.code] : null;
+  /* A chord is the browser's, not the game's — and that has to be decided
+     HERE, not only in onKey() below. v1.32 put the guard in onKey and left
+     this path open, so every held action still answered a modifier: Ctrl+X,
+     the cut chord, fired a live round (mag 7 -> 6, with the report and the
+     HUD count); Ctrl+W and Meta+W each walked the agent 0.7u; Alt+Shift and
+     Ctrl+Shift — what a bilingual player presses to change keyboard layout —
+     put them into a sprint. Shift alone stays: it IS the sprint key. */
+  const chord = e.ctrlKey || e.altKey || e.metaKey;
+  const a = (playing && !chord) ? KEYMAP[e.code] : null;
   if (e.repeat) {
     if (a){ e.preventDefault();
       /* A key already down when the mission started sends only repeats — the
@@ -6713,6 +6721,20 @@ function selfTestBody(runSim){
           tev('touchstart', document.getElementById('tstick'), [{ identifier:74, clientX:cx, clientY:cy - r.height/2*.76 }]);
           ok('touch: a fresh press after the lift owns the pad again', TIN.move === 74 && held.ty < -.5, 'move='+TIN.move+' ty='+held.ty);
           tev('touchend', null, [{ identifier:74, clientX:cx, clientY:cy - r.height/2*.76 }]);
+          /* ...and the release must not depend on WHICH axis binds the fit.
+             Portrait is width-bound, so a phone browser sliding its URL bar
+             back in changes only the height: RW*s never moved, nothing was
+             released, and the vh-anchored cluster slid out from under the
+             thumb. Hold the picture still and change only the viewport height. */
+          { const vh0 = FIT_VH;
+            tev('touchstart', document.getElementById('tstick'), [{ identifier:75, clientX:cx, clientY:cy - r.height/2*.76 }]);
+            const held0 = TIN.move === 75 && held.ty < -.5;
+            FIT_VH = FIT_VH + 52; fit();          // the picture is unchanged; the viewport is not
+            ok('touch: a viewport that changed only in height lets go too',
+               held0 && TIN.move === null && held.ty === 0,
+               'holding='+held0+' move='+TIN.move+' ty='+held.ty);
+            tev('touchend', null, [{ identifier:75, clientX:cx, clientY:cy - r.height/2*.76 }]);
+            FIT_VH = vh0; }
           FIT_W = fw0; }
       }
       if (!hadTouch) document.body.classList.remove('touch');
@@ -7584,6 +7606,29 @@ function selfTestBody(runSim){
           if (G.showTests){ G.showTests = false; G.testReturn = null; }
           ok('keys: a chord with Ctrl, Alt or Meta is the browser\'s, not a game key',
              scanHeld && noReport, 'scanlines '+sc0+'->'+SCANOP+' report '+!noReport);
+          /* ...and that is true of the HELD actions too, which is the half the
+             first version of this test missed: Ctrl+X fired a live round and
+             Alt+Shift sprinted, because keydown latches held[] BEFORE onKey
+             ever sees the modifier. Every gameplay key, against every modifier. */
+          { const mag0 = P.mag.slice(), w0 = P.w, reached = [];
+            P.mag[P.w] = WEAPS[P.w].mag;
+            for (const mod of ['ctrlKey', 'altKey', 'metaKey'])
+              for (const code of Object.keys(KEYMAP)){
+                clearInput(); M.fireEdge = 0; M.pressNew = false;
+                const mag1 = P.mag[P.w];
+                dispatchEvent(new KeyboardEvent('keydown',
+                  Object.assign({ code, key:'x', bubbles:true, cancelable:true }, { [mod]: true })));
+                const on = Object.keys(held).filter(k => held[k]);
+                if (on.length || M.fireEdge || P.mag[P.w] !== mag1)
+                  reached.push(mod.replace('Key','') + '+' + code +
+                    (on.length ? ' -> ' + on.join(',') : '') + (M.fireEdge ? ' -> FIRE' : ''));
+                clearInput();
+              }
+            ok('keys: ...and no chord latches a held action or a shot either',
+               reached.length === 0,
+               reached.length ? reached.length + ' got through: ' + reached.slice(0,4).join(' · ')
+                              : (Object.keys(KEYMAP).length * 3) + ' chords, none reached the game');
+            P.mag = mag0; P.w = w0; clearInput(); }
           SCANOP = sc0; G.state = st0; show(null); }
         /* the Esc that dropped the lock and opened the watch is not the Esc
            that closes it */
@@ -9532,10 +9577,19 @@ function fit(){
   if (s * dpr >= 2) s = Math.floor(s * dpr) / dpr;
   view.style.width = (RW*s)+'px';
   view.style.height = (RH*s)+'px';
-  /* a frame that changed size moved the pads: let go of the thumbs on them */
-  if (FIT_W && RW*s !== FIT_W && TIN && (TIN.move !== null || TIN.aimpad !== null) &&
+  /* A viewport that changed moved the pads: let go of the thumbs on them.
+     This used to ask only whether the PICTURE had changed width, and in
+     portrait the fit is width-bound — so a phone browser sliding its URL bar
+     back in (height only, ~52px) left RW*s untouched and released nothing,
+     while the cluster, positioned in vh, slid 39.6px up the glass under a
+     thumb that never moved. The stick then read that thumb against the new
+     centre and FORWARD became BACKWARD: ty -0.55 to +0.229, and the agent
+     walked back out of the fight. Ask about the viewport itself, on both
+     axes, so it cannot matter which one binds. */
+  if (FIT_W && (RW*s !== FIT_W || w !== FIT_VW || h !== FIT_VH) &&
+      TIN && (TIN.move !== null || TIN.aimpad !== null) &&
       typeof releasePads === 'function') releasePads();
-  FIT_W = RW*s;
+  FIT_W = RW*s; FIT_VW = w; FIT_VH = h;
   /* Toasts scale with the PICTURE. 1.15vh read the phone's tall axis in
      portrait — 9.7px type in a 216px-tall frame, four toasts deep across the
      crosshair while the guards were still up. */
@@ -9552,7 +9606,7 @@ function fit(){
    moved — and no resize fires, so the DEVICE-pixel snap above would keep the
    old ratio and hand the art back the uneven columns it exists to prevent.
    There is no event for it that every engine agrees on, so the loop asks. */
-let FIT_W = 0;
+let FIT_W = 0, FIT_VW = 0, FIT_VH = 0;
 function checkDpr(){ if ((devicePixelRatio || 1) !== FIT_DPR) fit(); }
 addEventListener('resize', fit);
 fit();

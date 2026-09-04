@@ -408,11 +408,24 @@ One did not.
 | **2 · Nothing hackable can be reached through a wall** | No code change — USE was measured and is clean. An assertion now holds the maps to it | USE picks its target by distance and facing and asks nothing about the wall between, while sight, bullets and blast splash all walk the grid. Every standable spot within its 1.55u reach of every hackable prop in the campaign: **12 props, 3,115 spots, none blind**. The reach is the reason — a body stands .26 off a wall face and a prop sits .5 beyond a 1.0-thick one, so a straight wall puts it at 1.76u, out of reach by 0.21u. That is a level-design margin, not a rule the code enforces, and one cell of a future map edit spends it | The guard is proved sensitive rather than mutated: plant a terminal diagonally across a solid corner — 1.41u away and blind — and it fails naming the spot a player would stand in, `through a wall: M04 term at 6.5,11.5 from 5.20,12.30` |
 | **What did not survive** | Measured, not changed | **13,500 frames** of randomized play across all fifteen combos, checking numeric invariants every frame — position finite, in bounds and never in a solid cell; hp, armour, every magazine and every ammo pool against its own cap; the clock monotonic; no entity with a NaN position and no runaway list — came back **clean**. The soak had only ever caught thrown exceptions, so this was an untested gap rather than a defect. **No mission has a kill-all objective**, so a hostile that cannot path to you can never strand a run. **Scenery is decorative and carries no hp**, so shooting the furniture cannot inflate accuracy. **No door is both secret and locked**, so v1.36's wider found-radius cannot nag for a keycard from across the room |
 
+# Night log — the sixth player-session round
+
+Four players this time: one whose storage and service worker are a mess, one
+who never leaves a window alone, one on a French AZERTY keyboard beside a
+friend on Dvorak, and one who restarts everything. Two of them found a fix
+that had only been half made.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · A chord is the browser's — in the other half of the key path too** | The `keydown` listener decides a chord is not a game key, the same as `onKey()` already did | v1.32 ruled that "a chord with Ctrl, Alt or Meta is never a game key" and put the guard in `onKey`. But `keydown` latches `held[]` and the fire edge **before** `onKey` ever sees the modifier, and that half was never covered — nor tested, because the assertion only ever pressed Ctrl+P and Alt+F4, both `onKey` paths. So every held action still answered a modifier: **Ctrl+X, the cut chord, fired a live round** (magazine 7 → 6, with the report and the HUD count — identical to a plain X, so a full fire edge); Ctrl+W and Meta+W each **walked the agent 0.7u**; Alt+Shift and Ctrl+Shift, what a bilingual player presses to change keyboard layout, put them **into a sprint**. 11 of 11 chords reached the game, on real trusted events. Shift alone still sprints: it is the sprint key | The assertion now sweeps **every** key in the map against all three modifiers and requires none to latch an action or a shot: 63 chords, none reached the game. Mutation-verified: `63 got through: ctrl+KeyW -> fwd · ctrl+KeyS -> back · ctrl+KeyA -> left · ctrl+KeyD -> right` |
+| **2 · Forward stayed forward when the URL bar came back** | `fit()` releases the thumbs when the **viewport** changed on either axis, not only when the picture changed width | The release asked `RW*s !== FIT_W` — has the picture changed width. **Portrait is width-bound**, so a phone browser sliding its URL bar back in changes only the height, `RW*s` never moves, and nothing was released — while the touch cluster, positioned in `vh`, slid **39.6px up the glass** under a thumb that never moved. The stick then re-read that thumb against its new centre and **forward became backward**: `ty −0.55` to `+0.229`, the agent walking back out of the fight at `P.x 5.331 → 5.061`. Landscape was the control and passed, because there height binds. Any width-bound touch layout is exposed, not portrait alone | An assertion holds the picture still and changes only the viewport height, requiring the pad to let go. Mutation-verified: `holding=true move=75 ty=-0.76` |
+| **What the players cleared** | Measured, not changed | **The diamond is a diamond on AZERTY** — the game binds `event.code` throughout, so W/A/S/D are physical positions: +0.979 / −0.979 / −0.940 / +0.940u with the characters z/q/s/d. **CapsLock does not stop the agent** (0.979u either way — nothing compares lowercase). **OS key repeat latches nothing**: twelve repeats with no keyup give one weapon step, one round. **The AZERTY number row works** both unshifted and with Shift. **A dead key mid-composition costs nothing.** **Resizing while sprinting and firing** through nine shapes keeps state, capture and every held key, with `P.ang` bit-identical; **aim stays honest** across shapes and scalings — worst impact shift 0.045u, inside the cone's own spread. **Changing devicePixelRatio mid-mission** re-fits onto exact device pixels every time. **The watch and OPTIONS survive punishing shapes** (2560×300, 380×900, 400×300) with nothing clipped or unpressable. **A rotate mid-fight** releases the pads and a 1px twitch does not re-take them |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 468 desktop / 460 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 470 desktop / 462 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -427,5 +440,5 @@ One did not.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.37'` (index.html) ↔ `agent360-v1.37`
+- **Versions:** game `VERSION = '1.38'` (index.html) ↔ `agent360-v1.38`
   (sw.js CACHE), enforced by verify.js
