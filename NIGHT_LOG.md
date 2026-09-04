@@ -396,11 +396,23 @@ missions, and the cause turned out to need no hysteresis at all.
 | **1 · A cache you have opened stays open** | A **found** secret door holds on a 2.50u radius (`DOOR_R2_FOUND`), not the 1.10u that hid it | The tight radius is there to keep a secret secret: the ordinary 1.61u would pop a disguised wall open from the next aisle. Once the door is `found` that disguise is spent, and the radius becomes a trap. The caches behind these doors are 1 to 3 cells deep, and the deepest spot a `.26` body can actually stand in one is **2.21u** from the door (M03's far corner) — well outside 1.10u, so the wall slid shut with the agent inside it. Measured shut for 100% of a 2s stand in M04 `[24,9]` d=1.17 and `[26,9]` d=1.24, M02 `[14,16]` d=1.19, M05 `[25,12]` d=1.21; M03 `[21,13]` at d=1.73 for 15%. Never a hard trap — the neighbouring cell reopened it — but the closet you just opened closing on you reads as a bug every time | The assertion floods each secret door's own pocket, stands the player at the deepest reachable point of **every** cell of **every** cache in the game, and steps 2s demanding the cell never goes solid: 10 spots, deepest 2.13u of 2.50u. Mutation-verified against the old line: `shut on the agent in M01 cell 24,4 at 1.13u` |
 | **What the auditor cleared** | Measured, not changed | The v1.33 spawn grace holds — first hostile shot lands at **3.22s** on every mission and clearance, zero rounds fired inside the 3.2s banner. Objective order strands nobody. The M05 escape is winnable **walking** from the worst cell on every clearance: 59 steps, 26.0s against a 35s fuse. Entity crowding never puts a hostile in a solid cell, and no prop corpse blocks a doorway |
 
+# Night log — the one weapon that did not get the memo
+
+No player found these two; I went looking in the code the last round had just
+touched, and asked of each rule the game teaches whether every path obeys it.
+One did not.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · The cannon's slug is stopped by the CFO too** | The PATCH CANNON's projectile stops on the unrescued CFO, does not go off in his face, is not a hit, and toasts HOLD FIRE — the contract v1.33 wrote for hitscan | v1.33 made the man you are escorting *a body, not a window*, and it fixed the path every other weapon uses. The cannon is the one round with an entity list of its own, and it tests targets for `hp`, which the CFO does not carry — so he failed both of its tests. Agent, CFO and guard on one line: the slug **crossed him on 13 of its 24 flight frames**, detonated behind him for **82.5 HP**, said nothing, and **counted as a hit**, so a shot that should have been refused also inflated the debrief's accuracy. The PP7 fired down the same lane stopped dead and warned | An assertion fires the cannon the way a player fires it and requires the slug never to pass him, the man behind to lose nothing, the warning to appear and the hit count not to move. Mutation-verified: `crossed him on 9 frames · the man behind lost 84.7 HP · warned false · hits +1`. Writing it also caught the test itself leaving `P.fireCd` dirty — the mission-drift assertion from the method round named it |
+| **2 · Nothing hackable can be reached through a wall** | No code change — USE was measured and is clean. An assertion now holds the maps to it | USE picks its target by distance and facing and asks nothing about the wall between, while sight, bullets and blast splash all walk the grid. Every standable spot within its 1.55u reach of every hackable prop in the campaign: **12 props, 3,115 spots, none blind**. The reach is the reason — a body stands .26 off a wall face and a prop sits .5 beyond a 1.0-thick one, so a straight wall puts it at 1.76u, out of reach by 0.21u. That is a level-design margin, not a rule the code enforces, and one cell of a future map edit spends it | The guard is proved sensitive rather than mutated: plant a terminal diagonally across a solid corner — 1.41u away and blind — and it fails naming the spot a player would stand in, `through a wall: M04 term at 6.5,11.5 from 5.20,12.30` |
+| **What did not survive** | Measured, not changed | **13,500 frames** of randomized play across all fifteen combos, checking numeric invariants every frame — position finite, in bounds and never in a solid cell; hp, armour, every magazine and every ammo pool against its own cap; the clock monotonic; no entity with a NaN position and no runaway list — came back **clean**. The soak had only ever caught thrown exceptions, so this was an untested gap rather than a defect. **No mission has a kill-all objective**, so a hostile that cannot path to you can never strand a run. **Scenery is decorative and carries no hp**, so shooting the furniture cannot inflate accuracy. **No door is both secret and locked**, so v1.36's wider found-radius cannot nag for a keycard from across the room |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 466 desktop / 458 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 468 desktop / 460 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -415,5 +427,5 @@ missions, and the cause turned out to need no hysteresis at all.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.36'` (index.html) ↔ `agent360-v1.36`
+- **Versions:** game `VERSION = '1.37'` (index.html) ↔ `agent360-v1.37`
   (sw.js CACHE), enforced by verify.js

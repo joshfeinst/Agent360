@@ -195,6 +195,18 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.37
+
+v1.33 made the CFO you are escorting a body rather than a window, so a round
+into him stops and the agent is told. It fixed the path every weapon uses
+except one: the patch cannon's slug carries its own target list, tests it for
+hit points, and the CFO has none — so the slug flew through him, detonated on
+the guard behind for 82.5 HP, said nothing, and counted as a hit. It obeys the
+same contract now. Also: USE never checks the wall between you and the
+terminal, and every hackable prop in the campaign was measured unreachable
+through one by a margin of 0.21u — a level-design margin the maps are now held
+to. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.36
 
 A secret cache's wall could slide shut with the agent still inside it. The

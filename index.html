@@ -481,7 +481,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.36';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.37';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -3606,6 +3606,19 @@ function step(dt, scored){
       if (e.mine){
         for (const t of G.ents){
           if (t.dead2) continue;
+          /* The CFO is a body to this slug too. hitscan learned that in v1.33;
+             the cannon did not, and it is the one weapon whose round has an
+             entity list of its own — the CFO carries no hp, so he failed both
+             tests below and the slug flew THROUGH him to detonate on the guard
+             beyond, 82.5 HP of it, with nothing said. Same contract as a
+             bullet: the round stops, it is not a hit, it does not go off in
+             his face, and the agent is told. */
+          if (t.kind==='prop' && t.sub==='npc' && !t.rescued &&
+              dist2(t.x,t.y,e.x,e.y) < t.r*t.r*1.6){
+            e.dead2 = true; fx('puff', e.x, e.y, .5);
+            if (!(G.cfoNagT > G.time)){ G.cfoNagT = G.time + 3; toast('HOLD FIRE — THAT IS THE CFO','red',2200); }
+            break;
+          }
           if ((t.kind==='enemy'&&t.state!=='dead'&&dist2(t.x,t.y,e.x,e.y)<t.r*t.r*1.6) ||
               (t.kind==='prop'&&t.hp>0&&dist2(t.x,t.y,e.x,e.y)<t.r*t.r*1.6)){
             e.dead2=true;
@@ -5598,6 +5611,46 @@ function selfTestBody(runSim){
     foe.dead2 = true; G.ents = G.ents.filter(o => o !== foe); P.lockT = null;
     AIM_ASSIST = aa0; P.x = px0; P.y = py0; P.ang = a0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
+  /* ---- nothing hackable can be reached through a wall ---- */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, px0 = P.x, py0 = P.y, a0 = P.ang;
+    /* USE picks its target by distance and facing and asks nothing about the
+       wall between — unlike sight, bullets and blast splash, which all walk the
+       grid. No shipped map lets that bite: this holds the maps to it, so a
+       terminal moved one cell in a future edit cannot silently become hackable
+       from the corridor outside. 00 AGENT carries every hackable prop the game
+       has, so one clearance covers the campaign. */
+    const R = .26, sw = R * .72;
+    const standable = (x, y) => !isSolid(x,y) &&
+      !isSolid(x+R,y) && !isSolid(x-R,y) && !isSolid(x,y+R) && !isSolid(x,y-R) &&
+      !isSolid(x+R,y-sw) && !isSolid(x+R,y+sw) && !isSolid(x-R,y-sw) && !isSolid(x-R,y+sw);
+    let props = 0, spots = 0, through = null;
+    for (let li = 0; li < LEVELS.length && !through; li++){
+      loadLevel(li, 2); G.state = 'play';
+      for (const e of G.ents){
+        if (e.kind !== 'prop' || e.sub === 'ap' || e.sub === 'infected' || e.deco) continue;
+        if (e.hacked || e.rescued) continue;
+        props++;
+        for (let sx = -1.6; sx <= 1.6 && !through; sx += .15)
+          for (let sy = -1.6; sy <= 1.6; sy += .15){
+            const x = e.x + sx, y = e.y + sy;
+            if (x < 0 || y < 0 || x >= G.W || y >= G.H) continue;
+            const d2 = dist2(x, y, e.x, e.y);
+            if (d2 > 2.4 || d2 < .01) continue;      // the same reach step() uses
+            if (!standable(x, y)) continue;
+            spots++;
+            if (los(x, y, e.x, e.y)) continue;       // he can see it: that is the honest case
+            through = LEVELS[li].code + ' ' + e.sub + ' at ' + e.x + ',' + e.y +
+                      ' from ' + x.toFixed(2) + ',' + y.toFixed(2);
+            break;
+          }
+      }
+    }
+    ok('use: nothing hackable can be reached through a wall',
+       props >= 11 && spots > 500 && !through,
+       through ? 'through a wall: ' + through
+               : props + ' props, ' + spots + ' standing spots in reach, none blind');
+    P.x = px0; P.y = py0; P.ang = a0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
   /* ---- the CFO stops a round and says so; the crate gives what fits ---- */
   { const st0 = G.state, sel0 = selLevel, d0 = G.diff, px0 = P.x, py0 = P.y;
     const li = LEVELS.findIndex(L => L.objectives.some(o => o.kind === 'npc'));
@@ -5609,6 +5662,40 @@ function selfTestBody(runSim){
     ok('CFO: a round into the CFO stops, is not a hit, and the agent is told',
        stopped && said && G.hits === h0 && !n.dead2 && !n.rescued, 'stopped '+stopped+' said '+said+' hits +'+(G.hits-h0));
     clearToasts();
+    /* ...and the one round that is not a hitscan obeys the same contract. The
+       cannon's slug carries its own entity list, and the CFO has no hp to fail
+       its tests with, so it flew through him and detonated on what stood
+       behind. Fired the way a player fires it. */
+    { const w0 = P.w, al0 = P.alive, g0 = G.cheats.god, t0 = G.time, hits0 = G.hits,
+          mag0 = P.mag.slice(), am0p = Object.assign({}, P.ammo), ang0 = P.ang,
+          cd0 = P.fireCd, rel0 = P.reload, fo0 = P.firedOnce, lft0 = P.lastFireT;
+      P.alive = true; G.deadT = 0; G.cheats.god = true; G.time = Math.max(G.time, SPAWN_GRACE);
+      const row = n.y | 0;
+      for (let x = (n.x|0) - 3; x <= (n.x|0) + 3; x++) G.solid[row * G.W + x] = 0;
+      const foe = spawnEnemy('goon', n.x + 2.5, n.y);
+      foe.state = 'idle'; foe.alert = 0;
+      const foeHp = foe.hp;
+      P.x = n.x - 2; P.y = n.y; P.ang = 0;
+      P.w = 3; P.mag[3] = WEAPS[3].mag; P.ammo[WEAPS[3].ammo] = 9;
+      P.reload = 0; P.fireCd = 0; P.firedOnce = false;
+      playerFire();
+      let crossed = 0;
+      for (let i = 0; i < 120; i++){
+        const slug = G.ents.find(e => e.mine && !e.dead2);
+        if (slug && slug.x > n.x) crossed++;
+        step(1/60);
+        P.x = n.x - 2; P.y = n.y; P.ang = 0;   // the shot is what is under test, not the walk
+      }
+      const warned = [...document.getElementById('toasts').children].some(t => /CFO/.test(t.textContent));
+      ok('CFO: the cannon\'s slug is stopped by him too, and says so',
+         crossed === 0 && foe.hp === foeHp && warned && G.hits === hits0,
+         'crossed him on ' + crossed + ' frames · the man behind lost ' + (foeHp - foe.hp).toFixed(1) +
+         ' HP · warned ' + warned + ' · hits +' + (G.hits - hits0));
+      foe.dead2 = true; G.ents = G.ents.filter(o => o !== foe && !o.mine);
+      P.w = w0; P.alive = al0; G.cheats.god = g0; G.time = t0; P.ang = ang0;
+      P.mag = mag0; P.ammo = am0p; P.fireCd = cd0; P.reload = rel0;
+      P.firedOnce = fo0; P.lastFireT = lft0;
+      clearInput(); clearToasts(); }
     /* the crate */
     const has0 = P.has.slice(), am0 = Object.assign({}, P.ammo);
     P.has = [true, true, true, true];
