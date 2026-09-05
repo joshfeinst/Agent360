@@ -556,11 +556,35 @@ the game the way a player with a working connection sees it.
 | **The economy, measured and sound** | Not changed | Every source and sink enumerated per mission × clearance. Must-kill hp is only the props and the rack; everything else can be walked past. Worst case in the game is **M05/00 with the PP7 alone and every crate: 37% accuracy**, against the bots' measured 36–76%; played as a panicky player who sprayed 14 shells, 7 slugs and 14 rounds into walls, the west-wing crate still refilled all three. The checkpoint restores the loadout **and every crate, kit and vest** — an inexhaustible well. **No mission can be starved** |
 | **M05/00, quantified — your call** | Not changed | The rack has **1,700 hp** on 00. At 100% accuracy with no movement lost the fastest kill is **21.3s** (shotgun); a checkpoint agent with 100 hp and 60 armour lives **4.5s** if one slug per volley lands. Ten played duels: alive 5.0–8s at 82–100% accuracy, rack left at 1,457–1,646. This is why the objective bot has never won M05/00 — time-to-live, not ammo or the bot. The checkpoint also drops the agent at (15.5, 3.5), **inside** the hazard ring and 5.66u from a rack whose keep range is 5.5u, under a source comment saying "staged outside the arena". Retuning the finale is a design decision, not a repair, so it is recorded here and left |
 
+# Night log — the icon that took the offline app with it
+
+While the tenth round's players ran, a hunt on ground none of them cover: the
+installed app's precache when one shell asset is transiently missing.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · A missing icon no longer costs the offline shell** | `SHELL` is what the app cannot boot without and is still precached with `addAll()`, which must succeed; the three icons moved to `ICONS` and are fetched one at a time under `Promise.allSettled`, best effort | `cache.addAll()` is all-or-nothing. Served over http with **one decorative icon** (`icon-maskable-512.png`) returning 404: **no service worker registered, the `agent360-v1.47` bucket held 0 entries, and an offline reload failed outright** — the whole installed app lost to an asset the game never draws. Control, every file present: worker active, page controlled, 6 entries, offline boot. With the fix and the icon still missing: worker active, controlled, **5 entries, the game boots offline** | Measured end to end over a local http server with a properly controlled page (`navigator.serviceWorker.ready`, one online reload, then offline). `verify.js` gained a source check that the icons are precached apart from the shell and best-effort; evaluated against the old shape it says NO. The harness itself had to be fixed twice on the way — the offline reload waited for `load`, which never fires offline while the font request hangs — and both cases were re-measured after each fix |
+
+# Night log — the clocks that lie, and the network that stalls
+
+The tenth round's first report came from the player whose machine cannot keep
+time: NTP snaps, a sleeping laptop, a privacy browser that coarsens every
+timestamp to 100ms, an event clock on another origin. Alongside it, the
+service-worker hunt from the previous section went one step further: a
+network that stalls rather than fails.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · A coarse clock no longer slows the world** | `loop()` simulates the elapsed frame in sub-steps of at most 0.05s, up to the 0.5s ceiling the scored clock has always had; `advance()` is that frame path without the render, so the suite can drive it | Physics clamped each frame to 0.05s and the scored clock to 0.5s. On a browser that coarsens rAF timestamps to 100ms (Firefox `resistFingerprinting`, Tor) the deltas arrive as `0, 0, 0.1, 0, 0.1…` and half of every 0.1 was thrown away: the agent walked **2.35u** in two seconds where a fine clock walks **4.7u**, the reload took **2.2s** of wall time instead of 1.15s, hostiles crawled — and the SLA clock advanced **2.1s of 2s**. Par was halved and the clock was honest about it. Measured by histogramming the `dt` handed to `step()`: 105 frames of 0 and 22 of 0.1 at 60Hz; coarsening `performance.now()` alone changed nothing, so it is the rAF timestamp | The assertion feeds `advance()` 2s of 60Hz deltas and then the same 2s as 100ms buckets and requires the same travel and the same scored time, then one 3s stall and requires both clocks capped at 0.5s. Mutation-verified by restoring the single clamped step |
+| **2 · The mission-start swallow measures on one clock** | A touch record carries `t0` on the event clock (for its own length) and `at` on `performance.now()`; the swallow compares `at` with `G.startAt`, which is on that clock | `viewTap` tested `e.timeStamp − G.startAt`: two clocks. Skewed a second apart, the 600ms swallow lasted **1.6s** (no shot at 862ms or 1331ms); on an engine whose event clock is on the epoch (old WebKit) the swallow **never held**, and the RETRY mash v1.32 fixed put rounds into the spawn wall again | The suite feeds `viewTap` records with an event clock a second behind and requires a tap at 0.8s to fire and one at 0.2s to be held. Mutation-verified: `fired at 0.8s with a skewed event clock false` |
+| **3 · A stalled network no longer holds the cached app hostage** | The shell's network-first fetch races `NET_MS` (3s) and serves the cache after it, still refreshing the cache when the network answers; a font stylesheet MISS races the same timeout and answers an empty stylesheet | A stalled connection is not a failed one, so the worker's `catch()` never fired. Served with every request stalling 12s and the whole shell cached, the installed app took **25.1s** to boot. With the shell race alone, **16.3s**: the document came from cache at 3s and then the render-blocking Google Fonts `<link>` sat 12.5s on a cache miss with the page's scripts waiting behind it. With both races, **6.5s** — the two 3-second races in series, which is the honest bound | Measured end to end over a delaying local server with a controlled page and the network stalled only after install; the server's own request log and the page's resource timings name each stalled request. Two source checks in `verify.js` hold the shape |
+| **What the clock-liar cleared** | Measured, not changed | **A 20s foreground stall** (a suspended tab, a print dialog) costs 0.5s scored and now 0.5s simulated — the reload continues, nothing slams, no fault. **A wall clock 40s back between two tabs** cannot hurt a save: the stamp is an identity, never an ordering. **Timers throttled to 1Hz** (a background tab) stretch a toast to 4.8s and delay the abort re-arm while the `performance.now()` checks stay exact — cosmetic, and nobody is tapping a background tab. Coarse `performance.now()` alone: the fire buffer, the 600ms tap, the debrief arm and the idle test all held; a 5%-fast clock is indistinguishable from real time |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 490 desktop / 480 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 492 desktop / 482 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -575,5 +599,5 @@ the game the way a player with a working connection sees it.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.47'` (index.html) ↔ `agent360-v1.47`
+- **Versions:** game `VERSION = '1.48'` (index.html) ↔ `agent360-v1.48`
   (sw.js CACHE), enforced by verify.js
