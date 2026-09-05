@@ -509,7 +509,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.49';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.50';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -616,7 +616,23 @@ const RET_IDLE  = 2.4;            // and snaps back once the mouse stops
 const TPAD_TURN  = 3.1;           // right-pad yaw rad/s at the rim (TURN_MAX is 4.3)
 const TPAD_PITCH = 24;            // right-pad horizon px/s at the rim (46 pinned the view at the ceiling in .65s)
 const TPAD_DEAD  = .28;           // ...and a horizontal sweep must stay horizontal
-const isTouch = matchMedia('(hover:none) and (pointer:coarse)').matches;
+/* A phone is a touch device whatever its PRIMARY pointer says. The one media
+   query here answered "mouse" on a phone paired with a controller that Android
+   registers as a pointing device (a pad in keyboard/mouse mode, a pad with a
+   trackpad): pointer:fine, hover:hover — and the game dressed the phone as a
+   desktop. No cluster, a hint about a captured mouse, the 19-row keyboard
+   card, and the clearance chooser back below the 390px fold, on a device
+   with no keyboard. The second rule: a screen this small that reports touch
+   points and a coarse pointer of ANY kind is a phone in the hand. Touchscreen
+   laptops and tablets with a mouse keep the mouse profile, and hybrid, as
+   before — their short side is 768 and up. */
+function touchProfile(primaryCoarse, anyCoarse, touchPoints, shortSide){
+  return primaryCoarse || (touchPoints > 0 && anyCoarse && shortSide <= 520);
+}
+const isTouch = touchProfile(matchMedia('(hover:none) and (pointer:coarse)').matches,
+                             matchMedia('(any-pointer:coarse)').matches,
+                             navigator.maxTouchPoints || 0,
+                             Math.min(screen.width || 1e9, screen.height || 1e9));
 /* The input model was decided once, by that media query, and a touchscreen
    laptop answers "mouse": the cluster never appeared, so with the keyboard
    folded away a finger could shoot and look and nothing else — 0.00 units
@@ -1233,6 +1249,7 @@ function unlock(){
   const viewTap = (s, e) => {
     if (e.type !== 'touchend' || s.moved >= 12 || e.timeStamp - s.t0 >= TAP_MS) return;
     if (G.state !== 'play' || !P.alive) return;
+    if (s.opened) return;                       // this tap opened the cluster; that is its whole job
     /* the taps that hammered RETRY land on the view once the debrief hides:
        seven rounds into the spawn wall and a guard alerted. The first
        moments of a mission answer no tap. */
@@ -1285,6 +1302,10 @@ function unlock(){
   addEventListener('touchend', glassEmpty);
   addEventListener('touchcancel', glassEmpty);
   view.addEventListener('touchstart', e=>{
+    /* the finger that OPENS hybrid is answered by the cluster appearing, not
+       by a shot: it used to do both, and a player rescuing a mis-profiled
+       phone spent a round on the rescue (mag 7→6, measured) */
+    const opened = !isTouch && !TOUCH_SEEN;
     enableHybrid();
     /* One owner per look drag, exactly as the pads have at padStart: a second
        finger landing on the canvas used to rebind T.look to itself, so the
@@ -1303,8 +1324,8 @@ function unlock(){
        v1.32 fixed put seven rounds into the spawn wall again. */
     const at = performance.now();
     for (const t of e.changedTouches){
-      if (T.look){ if (!T.tap) T.tap={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp,at}; }
-      else { T.look={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp,at}; M.tlook = true; }
+      if (T.look){ if (!T.tap) T.tap={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp,at,opened}; }
+      else { T.look={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp,at,opened}; M.tlook = true; }
     }
     e.preventDefault(); }, {passive:false});
   const dropOwner = [];
@@ -8162,6 +8183,34 @@ function selfTestBody(runSim){
              Math.abs(a30 - a360) < .01 && Math.abs(c30 - c360) < .01,
              'aim after 0.3s ' + a30.toFixed(3) + ' / ' + a360.toFixed(3) + ' · crouch after 0.25s ' + c30.toFixed(3) + ' / ' + c360.toFixed(3));
           clearInput(); P.aim = 0; P.crouch = 0; HOLD_LATCH = hl0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
+        /* the profile rule, as a function: a phone with a pad-mouse is still a
+           phone; a touchscreen laptop with a mouse is still a desktop */
+        ok('profile: a phone-sized touch screen is a touch device whatever its primary pointer',
+           touchProfile(true, true, 5, 390) === true &&        // an ordinary phone
+           touchProfile(false, false, 0, 720) === false &&     // an ordinary desktop
+           touchProfile(false, true, 5, 390) === true &&       // a phone paired with a pad-mouse
+           touchProfile(false, true, 10, 768) === false &&     // a touchscreen laptop / tablet with a mouse
+           touchProfile(false, false, 5, 390) === false,       // touch points but nothing coarse: not a phone
+           'phone ' + touchProfile(true, true, 5, 390) + ' · desktop ' + touchProfile(false, false, 0, 720) +
+           ' · phone+pad-mouse ' + touchProfile(false, true, 5, 390) + ' · touch laptop ' + touchProfile(false, true, 10, 768) +
+           ' · fine-only ' + touchProfile(false, false, 5, 390));
+        /* ...and the finger that opens hybrid does not also shoot */
+        if (!isTouch){
+          const ts0 = TOUCH_SEEN, hy0 = document.body.classList.contains('hybrid'), st0 = G.state, sel0 = selLevel, d0 = G.diff;
+          selLevel = 0; G.diff = 1; startMission(false); G.state = 'play'; G.startAt = performance.now() - 2000;
+          TOUCH_SEEN = false; document.body.classList.remove('hybrid'); P.mag[P.w] = 7; P.fireCd = 0;
+          const r = view.getBoundingClientRect();
+          const tap = id => { const t = new Touch({ identifier:id, target:view, clientX:r.left + r.width/2, clientY:r.top + r.height*.4 });
+            view.dispatchEvent(new TouchEvent('touchstart', { touches:[t], changedTouches:[t], targetTouches:[t], bubbles:true, cancelable:true }));
+            view.dispatchEvent(new TouchEvent('touchend',   { touches:[],  changedTouches:[t], targetTouches:[],  bubbles:true, cancelable:true })); };
+          tap(41); const opened = TOUCH_SEEN, afterFirst = P.mag[P.w];
+          for (let i = 0; i < 3; i++) step(1/60); P.fireCd = 0;
+          tap(42); const afterSecond = P.mag[P.w];
+          ok('hybrid: the finger that opens the cluster does not spend a round; the next one shoots',
+             opened && afterFirst === 7 && afterSecond === 6, 'opened ' + opened + ' · mag after the opening tap ' + afterFirst + ' · after the next ' + afterSecond);
+          clearInput(); TOUCH_SEEN = ts0; document.body.classList.toggle('hybrid', hy0); pinSelectForTouch();
+          selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
         /* a fast flick is a fast flick: the captured path CLAMPS an outsized
            event, it does not throw it away. The old raw-count guard dropped

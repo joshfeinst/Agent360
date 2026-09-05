@@ -621,11 +621,27 @@ milliseconds without running a frame, so it was refused as a clock).
 |---|---|---|---|
 | **Nothing grows, nothing drifts** | Measured, not changed | Post-GC heap floor over thirty readings **51.6 → 53.4 MB**, the whole rise being the first mission's level and decal state, flat thereafter; DOM **852 → 1074 nodes** then flat for every camp reading; listeners **85 → 119** and flat within ±3 after the first mission; **one live timer** (the music interval) at every idle reading; one Document throughout. **200 enters and leaves of MISSION SELECT, 200 opens of OPTIONS, 500 pause/resumes**: node counts flat from the first hundred on. **10,411 shots and 13.5 minutes of music**: 116,440 audio nodes created, 116,440 finalised, **18–24 live** at every reading; the scheduler at 0.9999× with no double-scheduling. **Twenty minutes of drone churn at the rack**: 139 spawns, 142 kills, the entity list between 32 and 49, corpses reaped, decals at exactly the 48 cap under 800 shots a minute. **Eight real minutes on the watch: `G.time` 15.1161 → 15.1161.** Storage written once per setting change or mission end — thirty times in the whole life, never per frame. Frame time and input latency at the end of the life **no worse than at the start** (render p99 6.2 → 1.9 ms; keydown-to-shot 14.7 → 8.2 ms) | Every quantity taken over at least four readings with a forced-GC minimum and a control. The one candidate — a monotone 37 KB/min rise on the idle screens — was the player's own un-drained per-frame timing array; the control without it read **2.9 KB/min and not monotone**. Stated, not measurable here: headless Chromium cannot hide a tab, so the `visibilitychange` pause and the scheduler's `document.hidden` guard rest on the source and on the earlier stall measurements |
 
+# Night log — the eleventh round, one: a controller in the hand
+
+The game has never touched the Gamepad API — zero references, zero
+listeners, zero polls across a full mission — and the first player of the
+eleventh round established that plugging a pad in **breaks nothing**: A mashed
+28 times through the boot, Start and both sticks held in play, and the game
+walked, turned and fired from keyboard and mouse as if nothing were there.
+"No gamepad support" is a feature request and was ranked last. The finding
+was what the pad does to the phone.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · A phone is a touch device whatever its primary pointer says** | `touchProfile()`: the old media query, OR a screen whose short side is ≤520px that reports touch points and a coarse pointer of *any* kind | Android registers many controllers as pointing devices (a pad in keyboard/mouse mode, a pad with a trackpad), and Chrome then answers `pointer:fine, hover:hover` — so `isTouch` was false and **the phone was dressed as a desktop**: boot said CLICK TO SKIP, the title hint spoke of a captured mouse, CONTROLS was the 19-row keyboard table, the mission opened with **no touch cluster** under a band reading `MOUSE CAPTURED · W A S D MOVE`, and the v1.49 fold fix was gone with the profile — the clearance row back at 392px on a 390px screen. Touchscreen laptops and tablets with a mouse keep the mouse profile and hybrid: their short side is 768 and up | The rule is a pure function and the assertion runs it on five devices: a phone, a desktop, a phone with a pad-mouse, a touch laptop, and a fine-only screen with touch points. Mutation-verified by restoring the single query. The player's own repro passes on the fix. Confidence is medium, and honestly so: the media state was a shim, because no hardware here can pair a pad |
+| **2 · The finger that opens hybrid does not shoot** | The touch that flips `TOUCH_SEEN` is answered by the cluster appearing, and by nothing else | The rescue for a mis-profiled device is a finger on the view, which opens hybrid — and that same tap **fired a round** (`mag 7→6`). A tap whose whole job is to open the controls should not also spend ammunition on whatever is in front of you | Assertion: the opening tap leaves the magazine at 7, the next tap takes it to 6. Mutation-verified at `mag after the opening tap 6` |
+| **What the pad cleared** | Measured, not changed | A pad connecting mid-session can never remove the cluster — the profile is read once. The on-screen-keyboard resize (v1.38) still lets go of both thumbs and reads them again on re-press. Android's key fallback makes a pad half-work by accident — A drives the menus, the d-pad walks and turns, B opens the watch — with no fire, no USE and no reload, which the touch HUD's *TAP TO SHOOT* is honest about, since it is describing the finger |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 498 desktop / 488 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 500 desktop / 490 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -640,5 +656,5 @@ milliseconds without running a frame, so it was refused as a clock).
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.49'` (index.html) ↔ `agent360-v1.49`
+- **Versions:** game `VERSION = '1.50'` (index.html) ↔ `agent360-v1.50`
   (sw.js CACHE), enforced by verify.js
