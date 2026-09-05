@@ -195,6 +195,20 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.49
+
+A player who acted only on what the screen had said found that thirty-six
+lines of text between the cold load and the first fight never named a
+movement key; that a loss was a headline and a table of numbers; that on a
+landscape phone the clearance chooser and BACK opened two pixels below the
+fold with no scrollbar and no fade; that phone toasts were under a millimetre
+tall; and that the capture band flashed for six frames. All five are fixed.
+A player on a 360 Hz monitor drove the real frame loop at every cadence from
+20 to 360 and through a wandering dt: every quantity held except aim and
+crouch, which eased with a per-frame fraction and so took 10% longer at
+360 Hz than at 30 — now a frame-rate-independent ease.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.48
 
 A browser that coarsens timestamps to 100ms (Firefox resistFingerprinting,

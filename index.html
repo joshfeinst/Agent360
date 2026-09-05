@@ -277,7 +277,12 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     </div>
 
     <!-- MISSION SELECT -->
-    <div class="screen" id="s-select" role="dialog" aria-modal="true" aria-label="CHOOSE YOUR ENGAGEMENT" hidden>
+    <!-- pinrow: on a landscape phone the clearance chooser, its one description
+         and BACK all opened below a 390px fold with no scrollbar and no fade — a
+         first-timer played SECRET AGENT without knowing a choice existed. The
+         pinned row keeps BACK on screen and its gradient is the cue that the
+         list goes on. -->
+    <div class="screen pinrow" id="s-select" role="dialog" aria-modal="true" aria-label="CHOOSE YOUR ENGAGEMENT" hidden>
       <div class="eyebrow">mission select</div>
       <h2 class="ttl">CHOOSE YOUR ENGAGEMENT</h2>
       <div class="menu" id="misslist"></div>
@@ -341,6 +346,9 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     <div class="screen" id="s-result" role="dialog" aria-modal="true" aria-labelledby="r-title" hidden>
       <div class="eyebrow" id="r-eyebrow"></div>
       <h1 class="logo" id="r-title" style="font-size:clamp(18px,3.6vh,34px)"></h1>
+      <!-- a loss used to be its headline and a table of numbers: nothing said
+           what killed you or what to do differently -->
+      <p class="hint" id="r-cause" style="margin:0 0 6px"></p>
       <div class="panel" style="width:min(560px,92vw)">
         <dl class="dl" id="r-stats"></dl>
       </div>
@@ -499,7 +507,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.48';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.49';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -3028,6 +3036,14 @@ function keyName(code, fallback){
   const g = KB_LAYOUT.get(code);
   return g ? (g.length === 1 ? g.toUpperCase() : g) : fallback;
 }
+/* the fraction of the way to a target one frame of dt should travel, for an
+   exponential ease with time constant 1/rate: the same distance in the same
+   time whatever the frame rate, unlike a per-frame fraction */
+const ease = (rate, dt) => 1 - Math.exp(-rate * dt);
+function moveKeysLabel(){
+  if (KEYS_LAYOUT === 'arrows') return 'ARROWS';
+  return ['KeyW','KeyA','KeyS','KeyD'].map(c => keyName(c, c.slice(3))).join(' ');
+}
 function usePrompt(t){
   const hf = isTouch ? 'HOLD USE' : 'HOLD ' + keyName('KeyF', 'F');
   return t.sub==='npc' ? hf+' 1.9s — ESCORT THE CFO'
@@ -3068,6 +3084,11 @@ function hurtPlayer(dmg, sx, sy){
   if (sx !== undefined){
     if (P.dmgDir.length >= 4) P.dmgDir.shift();
     P.dmgDir.push({ ang: Math.atan2(sy-P.y, sx-P.x), t:.8 });
+    /* who it was, for the debrief: the living hostile nearest the shot's origin */
+    let who = null, best = 1.2;
+    for (const e of G.ents) if (e.kind==='enemy' && e.state!=='dead'){
+      const d = Math.hypot(e.x-sx, e.y-sy); if (d < best){ best = d; who = e; } }
+    G.lastHit = { sub: who ? who.sub : 'blast', dist: Math.hypot(P.x-sx, P.y-sy) };
   }
   G.shake = Math.max(G.shake||0, Math.min(6, dmg/4));
   /* armour ate most of it: a metallic tink, not a flesh grunt — pairs with the
@@ -3555,7 +3576,7 @@ function step(dt, scored){
      holds, the world waits a breath, then endMission reopens the ticket. */
   if (!P.alive){
     G.deadT -= dt;
-    P.camZ = lerp(P.camZ, .12, Math.min(1, dt*3.2));
+    P.camZ = lerp(P.camZ, .12, ease(3.29, dt));   // the death beat, at every refresh rate alike
     P.hurt = Math.max(P.hurt, .85);
     if (G.shake) G.shake = Math.max(0, G.shake - dt*22);
     if (G.deadT <= 0) endMission(false, G.deadWhy || 'AGENT DOWN');
@@ -3714,8 +3735,13 @@ function step(dt, scored){
 
   /* aim / crouch */
   const wantAim = (M.aim || held.aim) ? 1 : 0;
-  P.aim = lerp(P.aim, wantAim, Math.min(1, dt*9));
-  P.crouch = lerp(P.crouch, crouchHeld()?1:0, Math.min(1,dt*10));
+  /* Frame-rate independent easing — the same repair velSmooth had. A
+     per-frame fraction (dt*9) reaches 95% zoom in 0.300s at 30Hz and 0.331s
+     at 360Hz, measured; and P.aim gates movement speed, spread and the assist,
+     so a phone reached "aimed" a tenth sooner than a fast desk. The rates are
+     matched to what 60Hz felt like, so nothing changes there. */
+  P.aim = lerp(P.aim, wantAim, ease(9.75, dt));
+  P.crouch = lerp(P.crouch, crouchHeld()?1:0, ease(10.94, dt));
   P.camZ = .5 - P.crouch*.17;
 
   /* move */
@@ -4909,14 +4935,21 @@ function drawHUD(horizon){
   if (!document.hasFocus()){
     ctx.fillStyle = 'rgba(5,8,14,.78)'; ctx.fillRect(0, HALFH-15, RW, 28);
     txt((isTouch?'TAP':'CLICK')+' THE VIEWPORT TO TAKE CONTROL', RW>>1, HALFH+3, '#ffb02e', 7, 'center');
-  } else if (!M.locked && wantsLock() && !lockGivenUp()){
+  } else if (!M.locked && wantsLock() && !lockGivenUp() && !M.lockPending){
+    /* ...and not while the request from ACCEPT is in flight: the band flashed
+       for six frames before the lock landed, then MOUSE CAPTURED replaced it */
     /* Capture wanted but not held: say exactly what to do, for as long as it
        applies — not just for the first fifteen seconds. */
     const by = HALFH + P.pitch < RH-84 ? RH-80 : RH-116;      // never on a lowered crosshair
     ctx.fillStyle = 'rgba(5,8,14,.70)'; ctx.fillRect(0, by, RW, 16);
     txt('CLICK THE VIEW OR PRESS ENTER TO CAPTURE THE MOUSE', RW>>1, by+11, '#ffb02e', 6, 'center');
   } else if (G.time < 15){
-    txtP(M.locked ? 'MOUSE CAPTURED · ESC TO RELEASE'
+    /* The first fifteen seconds are the only teaching the mission does, and
+       this band spent them on the mouse alone: a player who read every screen
+       from the cold load to the mission was never told how to WALK — the
+       manual is optional, and nothing pointed at it. Name the cluster, in the
+       keys this keyboard prints, or the arrows if that is the layout. */
+    txtP(M.locked ? 'MOUSE CAPTURED · ' + moveKeysLabel() + ' MOVE · ESC RELEASES'
        : LOOKMODE==='touch' ? 'LEFT PAD MOVES · RIGHT PAD LOOKS · TAP TO SHOOT'
        : LOOKMODE==='drag' ? 'DRAG TO LOOK · TAP TO FIRE'
        : 'MOVE MOUSE TO AIM · PUSH PAST THE TICKS TO TURN',
@@ -5401,6 +5434,18 @@ function ticketOf(code, diff){
   return 'INC-' + (104200 + h*137 + diff*11);
 }
 const RESULT_ARM_MS = 500, ABORT_ARM_MS = 2500;
+/* One line under a loss's headline: what did it, and what to do differently.
+   The debrief was the headline and a table of numbers — a first-timer who
+   died read AGENT DOWN, DAMAGE TAKEN 105, RETRY, and nothing else. */
+const HOSTILE_NAME = { phish:'a phishing bot', goon:'a security goon', legacy:'a legacy tower',
+                       drone:'a drone', boss:'LEGACY-DC01', blast:'your own blast' };
+function lossCause(why){
+  if (/THERMAL/.test(why))
+    return 'The building went up before you reached the exit. Head for it the moment the shield falls — the fuse is long enough on foot from anywhere.';
+  const h = G.lastHit, who = h ? (HOSTILE_NAME[h.sub] || 'a hostile') : 'a hostile';
+  const range = h ? ' at ' + Math.round(h.dist * 2.6) + ' m' : '';
+  return 'Taken down by ' + who + range + '. Keep moving — hostile aim tracks a sprinting agent badly, and standing still is how you get shot.';
+}
 function abortToTitle(){ G.abortArmAt = 0; G.state='title'; show('s-title'); clearToasts(); }
 const resultArmed = () => performance.now() - (G.resultAt || 0) >= RESULT_ARM_MS;
 function endMission(win, why){
@@ -5421,6 +5466,7 @@ function endMission(win, why){
   document.getElementById('r-title').textContent =
     finale ? 'THE NETWORK IS MANAGED' : (win ? 'MISSION COMPLETE' : why);
   document.getElementById('r-title').style.color = finale ? '#ffb02e' : win ? '#4ade80' : '#ff3b30';
+  document.getElementById('r-cause').textContent = win ? '' : lossCause(why);
   const acc = G.shots ? Math.round(G.hits/G.shots*100) : 0;
   const done = G.objs.filter(o=>o.done).length;
   const ticket = ticketOf(G.L.code, G.diff);
@@ -6198,7 +6244,7 @@ function selfTestBody(runSim){
 
   /* ---- toasts are sized by the picture: 1.15vh read the phone's tall axis in
      portrait and stacked 31px lines across a 216px frame ---- */
-  { const want = [[216,6],[360,6],[648,8.29],[1080,13.82],[2000,16]];
+  { const want = [[216,6],[360,8.33],[648,8.4],[1080,13.82],[2000,16]];
     const off = want.filter(([h,px]) => Math.abs(toastPx(h) - px) > .02).map(([h,px]) => h+'->'+toastPx(h).toFixed(2)+' want '+px);
     const fh = view.getBoundingClientRect().height;
     const varPx = parseFloat(getComputedStyle(document.getElementById('frame')).getPropertyValue('--toastpx'));
@@ -6206,7 +6252,7 @@ function selfTestBody(runSim){
     const t = document.getElementById('toasts').lastChild;
     const live = t ? parseFloat(getComputedStyle(t).fontSize) : NaN;
     clearToasts();
-    ok('toasts: type size follows the frame height', off.length === 0, off.join(' ') || '216/360/648/1080/2000 → 6/6/8.29/13.82/16');
+    ok('toasts: type size follows the frame height', off.length === 0, off.join(' ') || '216/360/648/1080/2000 → 6/8.33/8.4/13.82/16');
     ok('toasts: ...and the live toast wears it',
        Math.abs(varPx - toastPx(fh)) < .05 && Math.abs(live - toastPx(fh)) < .05,
        'frame '+fh.toFixed(0)+'px var '+varPx+' toast '+live); }
@@ -8010,6 +8056,63 @@ function selfTestBody(runSim){
              'fine ' + fine.u + 'u/' + fine.t + 's · coarse ' + coarse.u + 'u/' + coarse.t + 's · 3s stall ' + stall.u + 'u/' + stall.t + 's');
           clearInput(); G.tscale = ts0; G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
+        /* What the first fifteen seconds teach, and what a loss explains. A
+           player who read every screen from the cold load to the mission was
+           never told how to walk; a loss was its headline and a table. */
+        { const st0 = G.state, sel0 = selLevel, d0 = G.diff, lk0 = M.locked, lp0 = M.lockPending, t0 = G.time, lm0 = LOOKMODE, look0 = LOOK, lf0 = M.lockFails;
+          selLevel = 0; G.diff = 1; startMission(false); G.state = 'play';
+          LOOK = 'capture'; M.lockFails = 0;               // what wantsLock() reads: the capture band is in play
+          const drawn = () => { const seen = []; const real = ctx.fillText;
+            ctx.fillText = function(str){ seen.push(String(str)); return real.apply(this, arguments); };
+            try { drawHUD(); } finally { ctx.fillText = real; } return seen; };
+          M.locked = true; M.lockPending = false; G.time = 5; LOOKMODE = 'capture';
+          const band = drawn().find(x => /MOUSE CAPTURED/.test(x)) || '';
+          const keys = moveKeysLabel();
+          ok('teach: the fifteen-second band names the movement keys',
+             band.indexOf(keys) >= 0 && /ESC/.test(band), '"' + band + '" (keys ' + keys + ')');
+          /* the capture band waits for the request that ACCEPT just made */
+          M.locked = false; M.lockPending = true;
+          const flash = drawn().some(x => /CAPTURE THE MOUSE/.test(x));
+          M.lockPending = false;
+          const armed = wantsLock() && !lockGivenUp();        // false on a touch profile: nothing to flash there
+          const shown = armed ? drawn().some(x => /CAPTURE THE MOUSE/.test(x)) : true;
+          ok('teach: the capture band does not flash while the lock request is in flight',
+             !flash && shown, (armed ? '' : '(no capture on this profile) ') + 'pending ' + flash + ' · settled ' + shown);
+          /* a loss names its cause */
+          G.lastHit = { sub:'goon', dist: 4 };
+          endMission(false, 'AGENT DOWN'); const cause = document.getElementById('r-cause').textContent;
+          G.state = 'play'; show(null); endMission(false, 'THERMAL SHUTDOWN'); const melt = document.getElementById('r-cause').textContent;
+          G.state = 'play'; show(null); endMission(true); const winCause = document.getElementById('r-cause').textContent;
+          ok('debrief: a loss says what did it and what to do differently',
+             /security goon at 10 m/.test(cause) && /Keep moving/.test(cause) && /exit/.test(melt) && winCause === '',
+             '"' + cause.slice(0, 60) + '…" · meltdown "' + melt.slice(0, 40) + '…" · win "' + winCause + '"');
+          ok('select: the action row is pinned, so BACK and the fade are on a phone screen',
+             document.getElementById('s-select').classList.contains('pinrow'));
+          M.locked = lk0; M.lockPending = lp0; G.time = t0; LOOKMODE = lm0; LOOK = look0; M.lockFails = lf0; G.lastHit = null;
+          selLevel = sel0; loadLevel(0, d0); G.state = st0; show(null); }
+
+        /* aim and crouch ease in the same TIME at every refresh rate. The
+           per-frame fraction they used reached 95% zoom in 0.300s at 30Hz and
+           0.331s at 360Hz; P.aim gates speed, spread and the assist. */
+        { const st0 = G.state, sel0 = selLevel, d0 = G.diff, hl0 = HOLD_LATCH;
+          selLevel = 0; G.diff = 1; startMission(false); G.state = 'play'; HOLD_LATCH = false;
+          /* the VALUE after a fixed time, not the time to a threshold: a
+             threshold crossing is detected a whole frame late at 30Hz, which
+             both hides the defect and forgives it. 0.3s of Z at 30 and 360Hz
+             must leave P.aim at the same zoom (an exponential: 0.946 at both;
+             the per-frame fraction: 0.960 against 0.935). */
+          const after = (dt, act, secs) => { clearInput(); P.aim = 0; P.crouch = 0; held[act] = true;
+            /* exactly secs of simulation: the last step is partial, or 0.25s at
+               30Hz is eight whole frames and 0.267s, and the two runs differ */
+            for (let t = 0; t < secs - 1e-9; t += dt) step(Math.min(dt, secs - t));
+            held[act] = false; return act === 'aim' ? P.aim : P.crouch; };
+          const a30 = after(1/30, 'aim', .3), a360 = after(1/360, 'aim', .3);
+          const c30 = after(1/30, 'crouch', .25), c360 = after(1/360, 'crouch', .25);
+          ok('ease: aim and crouch reach the same zoom in the same time at 30Hz and 360Hz',
+             Math.abs(a30 - a360) < .01 && Math.abs(c30 - c360) < .01,
+             'aim after 0.3s ' + a30.toFixed(3) + ' / ' + a360.toFixed(3) + ' · crouch after 0.25s ' + c30.toFixed(3) + ' / ' + c360.toFixed(3));
+          clearInput(); P.aim = 0; P.crouch = 0; HOLD_LATCH = hl0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
         /* a fast flick is a fast flick: the captured path CLAMPS an outsized
            event, it does not throw it away. The old raw-count guard dropped
            anything past 3000, so movementX 2999 turned 1.2449 rad and 3001
@@ -8202,9 +8305,15 @@ function selfTestBody(runSim){
              pinned('s-pause') && optPinned, pinned('s-pause')+'/'+optPinned);
           ok('screens: ...and Options off the menus does not, so it cannot cover a row',
              !pinned('s-options'));
-          const sel = document.querySelector('#s-select>.row:last-child');
-          ok('screens: ...and the select screen deliberately does not',
-             !sel || getComputedStyle(sel).position !== 'sticky'); }
+          /* The select screen pins too, since v1.49. It deliberately did not,
+             because a sticky row covered the rows scrolled under it — and the
+             v1.35 click shield ended that: a pinned row is pointer-events:none
+             with its own buttons auto, and the hit-test assertion below holds
+             every pinned row to it. On a landscape phone the clearance chooser
+             and BACK opened below a 390px fold with no scrollbar and no fade;
+             the pinned row is the fade, and BACK is always on screen. */
+          ok('screens: ...and so does the select screen, now that a pinned row cannot cover one',
+             pinned('s-select')); }
 
         /* the clearance check follows the DIFFS table it indexes, so a fourth
            rung would persist instead of silently vanishing with its bests */
@@ -10466,7 +10575,13 @@ function loopTail(){
    floor from a landscape phone up, and it keeps growing with the picture —
    capped at 10 it was the smallest text on a 1080p stream, a quarter of the
    HUD's glyphs */
-function toastPx(h){ return Math.max(6, Math.min(16, h * .0128)); }
+/* Sized by the picture, with a floor in GAME pixels: on a landscape phone the
+   frame is 360px tall, h*.0128 gave 4.6 and the 6px floor — smaller than the
+   HUD's own 6-game-pixel type (10px) and under a millimetre on the glass —
+   for the column that teaches KEYCARD REQUIRED and OUT OF AMMUNITION. Five
+   game pixels, capped at what the desktop already gets (8.4 at 648), so a
+   phone toast lands at the desktop's 8.3 and nothing else moves. */
+function toastPx(h){ return Math.max(6, Math.min(16, Math.max(h * .0128, Math.min(8.4, h * 5 / 216)))); }
 function fitClamp(win, cli, vv, scale){
   return Math.min(win || 1e9, cli || 1e9, (vv ? vv * (scale || 1) : 0) || 1e9);
 }

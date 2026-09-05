@@ -580,11 +580,39 @@ network that stalls rather than fails.
 | **3 · A stalled network no longer holds the cached app hostage** | The shell's network-first fetch races `NET_MS` (3s) and serves the cache after it, still refreshing the cache when the network answers; a font stylesheet MISS races the same timeout and answers an empty stylesheet | A stalled connection is not a failed one, so the worker's `catch()` never fired. Served with every request stalling 12s and the whole shell cached, the installed app took **25.1s** to boot. With the shell race alone, **16.3s**: the document came from cache at 3s and then the render-blocking Google Fonts `<link>` sat 12.5s on a cache miss with the page's scripts waiting behind it. With both races, **6.5s** — the two 3-second races in series, which is the honest bound | Measured end to end over a delaying local server with a controlled page and the network stalled only after install; the server's own request log and the page's resource timings name each stalled request. Two source checks in `verify.js` hold the shape |
 | **What the clock-liar cleared** | Measured, not changed | **A 20s foreground stall** (a suspended tab, a print dialog) costs 0.5s scored and now 0.5s simulated — the reload continues, nothing slams, no fault. **A wall clock 40s back between two tabs** cannot hurt a save: the stamp is an identity, never an ordering. **Timers throttled to 1Hz** (a background tab) stretch a toast to 4.8s and delay the abort re-arm while the `performance.now()` checks stay exact — cosmetic, and nobody is tapping a background tab. Coarse `performance.now()` alone: the fire buffer, the 600ms tap, the debrief arm and the idle test all held; a 5%-fast clock is indistinguishable from real time |
 
+# Night log — what the screens never said
+
+The tenth round's reader played by one rule: act only on what the screen has
+said so far. Every guess is a finding. The literal path works up to a
+handful of gaps, and those were the cheap kind.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · The fifteen-second band names the movement keys** | `MOUSE CAPTURED · W A S D MOVE · ESC RELEASES` — the keys this keyboard prints (`Z Q S D` on AZERTY), or `ARROWS` on that layout | Thirty-six lines of DOM, HUD and toast text between the cold load and the first fight, and **not one named a movement key**. The band that owns the mission's only teaching moment spent it on the mouse alone; the manual is optional, and nothing pointed at it. Most players would guess WASD, which is why the reader ranked it below its literal weight — and why it costs one line to stop asking them to | The assertion reads the drawn band off the canvas and requires the live layout's cluster in it. Mutation-verified at `"MOUSE CAPTURED · ESC TO RELEASE"` |
+| **2 · A loss says what did it and what to do differently** | `hurtPlayer` records the living hostile nearest the shot's origin; a loss's debrief carries one line under its headline — *Taken down by a security goon at 10 m. Keep moving…* — and a meltdown says to head for the exit the moment the shield falls | A loss was its headline and a table: **AGENT DOWN / DAMAGE TAKEN 105 / RETRY**, and THERMAL SHUTDOWN the same shape. The CONTROLS card already carried the advice (*standing still is how you get shot*); the one screen a dead player is certain to read did not | Mutation-verified: an empty cause line |
+| **3 · The clearance chooser is reachable on a phone** | The select screen pins its action row, like the watch | On a landscape phone (844×390) the clearance row opened at **392px on a 390px screen**, its one description at 456 and BACK at 491 — no scrollbar, no fade, no chevron. A first-timer played SECRET AGENT (*full roster, real damage, they aim*) without knowing a choice existed. v1.35 had deliberately left this row unpinned because a sticky row covered the rows scrolled under it; the v1.35 click shield ended that hazard, and the hit-test assertion holds every pinned row to it. The pinned row is the fade | The old *deliberately does not* assertion is rewritten with the reasoning; the pinned-row hit-test now covers the select screen too |
+| **4 · Phone toasts are no smaller than the HUD** | `toastPx` floors at five game pixels, capped at the desktop's 8.4 | On 844×390 the frame is 360px tall and `h*.0128` gave 4.6 — the 6px floor, **18 device pixels, under a millimetre**, for the column that teaches KEYCARD REQUIRED and OUT OF AMMUNITION, while the HUD's own smallest type was 10px. The formula was tuned in portrait, where 216px earns the floor honestly. A phone toast now lands at 8.33px, the desktop's own size; nothing else moves | The pinned table reads `216/360/648/1080/2000 → 6/8.33/8.4/13.82/16`; the portrait pass still measures 6px |
+| **5 · The capture band does not flash** | Not drawn while the request ACCEPT just made is in flight | `CLICK THE VIEW OR PRESS ENTER TO CAPTURE THE MOUSE` painted for **six frames (~99ms)** before the lock landed, then MOUSE CAPTURED replaced it | Mutation-verified with `wantsLock()` armed |
+| **What the reader cleared** | Measured, not changed | Boot advances unaided at 3.40s and says CLICK TO SKIP from 326ms; the hint band runs exactly 15s; no hostile fires in the 3.2s banner; every toast reads at ≤3.9 words per second against a 4 w/s norm; KEYCARD REQUIRED comes before the key, HOLD FIRE keeps the CFO alive, OUT OF AMMUNITION says so once; the watch explains letters, shapes, pips, ranges and bearings; the win debrief is coherent. **Guesses left standing, ranked low:** SLA WINDOW is a time target (explained by *2:30 — MET*), INC- tickets and TIER 2 TECH are theme, the radar's N and the ring's arcs are never named in-mission |
+
+# Night log — three hundred and sixty frames a second
+
+The 360Hz player replaced `requestAnimationFrame` before the page's scripts
+and drove the game's own `loop()` at 20, 30, 60, 144, 240 and 360Hz, through a
+120→60→120 switch mid-mission, a wandering 8/25/4/16ms loop and a 0/16.7ms
+one — with real keys and a real mouse, and a virtual clock feeding both the
+frame stamp and `performance.now()` so the game never saw two clocks.
+
+| Round | What changed | Why the numbers said so | How it was verified |
+|---|---|---|---|
+| **1 · Aim and crouch ease in the same time at every refresh rate** | `ease(rate, dt) = 1 − e^(−rate·dt)` replaces the per-frame fractions on aim, crouch and the death-beat camera, with the rates matched to what 60Hz felt like | `P.aim = lerp(P.aim, want, min(1, dt*9))` is a *per-frame* fraction — the exact pattern `velSmooth` was already rewritten to fix — so time to 95% zoom was **0.300s at 30Hz and 0.331s at 360Hz** (crouch 0.250 → 0.297s), matching the lerp's closed form at each dt exactly. Cosmetic in the hand, but `P.aim` gates movement speed, spread and the assist's `< .5` test, so a 30Hz phone reached *aimed* a tenth sooner than a fast desk | The assertion steps aim and crouch to 95% at dt 1/30 and 1/360 and requires the same time within 4%. Mutation-verified by restoring the fractions |
+| **What held, per sim second, at every cadence** | Measured, not changed | Turn for 400 captured px **0.672 rad** at all seven cadences; walk **2.35u/s** and sprint **3.478u/s** everywhere; PP7 interval 0.230–0.233s; reload, door and hack within one frame (the right kind of quantization); the hack's `% .28 < dt` tick and the tower's `% .12 < dt` spark fire once per period even under a wandering dt and a dt of 0. **The fire buffer** lands a cooldown-tail tap on the reload's own frame at every rate. **A 120→60→120 switch** while walking, turning and tapping fire: every step exactly `2.35·dt`, every yaw `2.4·dt`, no double shot. **360Hz in real time: 359.9fps achieved, 1.01ms a frame**, `G.time` advancing 1.000s per real second, no per-frame DOM reads. **A 1kHz mouse at 360Hz** turns the same 1.680 rad as at 60. **The assist's pull** moves exactly `min(|d|, 1.7·dt)` on every locked frame. A hostile's cooldown reset discards its frame's overshoot — ≤3.3% of a ~1s cooldown, under the ±25% random cadence — noted, not filed |
+
 ---
 
 ## Standing numbers
 
-- **Self-tests:** 492 desktop / 482 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 496 desktop / 486 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
@@ -599,5 +627,5 @@ network that stalls rather than fails.
   desktop + phone) · `tools/playtest.js` (scripted-bot finale duel + escape,
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
-- **Versions:** game `VERSION = '1.48'` (index.html) ↔ `agent360-v1.48`
+- **Versions:** game `VERSION = '1.49'` (index.html) ↔ `agent360-v1.49`
   (sw.js CACHE), enforced by verify.js
