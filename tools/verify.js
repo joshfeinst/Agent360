@@ -98,6 +98,24 @@ function sourceCheck() {
      app sat on a blank tab for 25s with the whole shell cached */
   const swRace = /const NET_MS = \d+/.test(sw) && (sw.match(/Promise\.race\(\[/g) || []).length >= 2 && (sw.match(/setTimeout\([\s\S]{0,160}?NET_MS\)/g) || []).length >= 2;
   console.log('SW shell fetch races a stalled network ' + (swRace ? '— yes' : '— NO, A STALL HOLDS THE CACHED APP HOSTAGE'));
+  /* The game targets ES2018 on purpose: one `??` was enough to leave every
+     Chrome ≤79 and Safari ≤13.0 on the splash forever, since the whole script
+     block failed to parse. Script blocks only — comments and strings inside
+     them count too, because a parser does not read comments before it fails,
+     but that is the price of a check that cannot be fooled. */
+  const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
+  /* `?.` followed by a digit is a ternary with a decimal literal (`combat?.10:.05`),
+     and the language excludes exactly that from optional chaining — so does this */
+  const es2020 = (scripts.match(/\?\?/g) || []).length + (scripts.match(/[\w\)\]]\?\.(?![0-9])[\w\[\(]/g) || []).length;
+  console.log('SOURCE no ES2020 tokens (?? / ?.) in any script block ' + (es2020 ? '— NO: ' + es2020 + ' found' : '— yes'));
+  /* ...and the stylesheet keeps a fallback beside every `inset` and every
+     clamp() font size, for the parsers that drop them */
+  const css = (html.match(/<style>([\s\S]*?)<\/style>/) || ['',''])[1];
+  const insets = (css.match(/inset:0/g) || []).length;
+  const insetOK = insets > 0 && (css.match(/top:0;right:0;bottom:0;left:0; inset:0/g) || []).length === insets;
+  const clamps = (css.match(/font-size:clamp\(/g) || []).length;
+  const clampOK = clamps > 0 && (css.match(/font-size:[0-9.]+px; font-size:clamp\(/g) || []).length === clamps;
+  console.log('CSS fallbacks beside inset (' + insets + ') and clamp() font sizes (' + clamps + ') ' + (insetOK && clampOK ? '— yes' : '— NO'));
   const swIcons = /const ICONS = \[/.test(sw) && /allSettled\(ICONS\.map/.test(sw) && !/icons\/icon-[^']*'\s*\]\s*;?\s*\n?[^\n]*\n?[\s\S]{0,40}addAll/.test(sw) &&
                   !/SHELL = \[[^\]]*icons\//.test(sw);
   console.log('SW icons precache best-effort, apart from the shell ' + (swIcons ? '— yes' : '— NO, ONE MISSING ICON REJECTS THE INSTALL'));
@@ -110,7 +128,7 @@ function sourceCheck() {
   const stat = (html.match(/id="titlehint">([^<]+)</) || [])[1];
   const hOK = !!cap && !!stat && stat.indexOf(cap) === 0;
   console.log('TITLE HINT static default ' + (hOK ? 'matches the shipped look mode' : 'DRIFTED from TITLE_HINT.capture'));
-  return vOK && hOK && swScoped && swClone && sfxOK && swFresh && swIcons && swRace;
+  return vOK && hOK && swScoped && swClone && sfxOK && swFresh && swIcons && swRace && !es2020 && insetOK && clampOK;
 }
 
 async function wirePage(page, errors, resourceErrs) {

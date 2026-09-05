@@ -195,6 +195,18 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.52
+
+A player on old engines — a 2017 Android whose Chrome stopped updating, an
+iPad on iOS 12–14, a Chromebook past its update date — found two things that
+were not API calls at all. One `??`, the only ES2020 token in the file, made
+the whole main script fail to parse on Chrome ≤79 and Safari ≤13, leaving the
+static splash up forever. And `inset:0` with no four-side fallback put every
+screen below the fold on Chrome 80–86 and Safari 13.4–14 and collapsed the
+touch cluster to nothing. The file is ES2018 again and the stylesheet carries
+fallbacks an old parser keeps, and verify.js now holds both.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.51
 
 Two windows of the game on one profile: a setting chosen in one was erased by
