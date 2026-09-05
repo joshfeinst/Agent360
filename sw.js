@@ -4,7 +4,7 @@
    installed app keeps its faces with no network. Bump CACHE on every release —
    activate() deletes the old one, and verify.js fails if this drifts from the
    VERSION constant in index.html. */
-const CACHE = 'agent360-v1.50';
+const CACHE = 'agent360-v1.51';
 /* SHELL is what the app cannot boot without, and its precache must succeed.
    ICONS are decoration, and they are precached one at a time, best effort:
    addAll() is all-or-nothing, so a transient 404 on ONE icon used to reject

@@ -384,8 +384,8 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
       <div class="grid2 panel no-touch">
         <!-- the arrow rows follow the live layout (body.keys-arrows): one static
              table promised that ← → both turned AND strafed, whichever was true -->
-        <div class="ctl"><span>Move / strafe</span><span><span class="kb-wasd"><b data-code="KeyW">W</b> <b data-code="KeyA">A</b> <b data-code="KeyS">S</b> <b data-code="KeyD">D</b> · ↑ ↓</span> <span class="kb-arrows">↑ ↓ ← →</span></span></div>
-        <div class="ctl"><span>Turn</span><span>Mouse · <b data-code="Comma">,</b> and <b data-code="Period">.</b> <span class="kb-wasd">· ← →</span></span></div>
+        <div class="ctl" data-row="move"><span>Move / strafe</span><span><span class="kb-wasd"><b data-code="KeyW">W</b> <b data-code="KeyA">A</b> <b data-code="KeyS">S</b> <b data-code="KeyD">D</b> · ↑ ↓</span> <span class="kb-arrows">↑ ↓ ← →</span></span></div>
+        <div class="ctl" data-row="turn"><span>Turn</span><span>Mouse · <b data-code="Comma">,</b> and <b data-code="Period">.</b> <span class="kb-wasd">· ← →</span></span></div>
         <div class="ctl"><span>Fire</span><span>Click · Space · <b data-code="KeyX">X</b></span></div>
         <div class="ctl"><span>Aim mode (zoom)</span><span>Right click · <b data-code="KeyZ">Z</b> · <b data-code="Backslash">\</b></span></div>
         <div class="ctl"><span>Aim assist</span><span>Options · auto-aim, GoldenEye style</span></div>
@@ -509,7 +509,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.50';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.51';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -5084,6 +5084,13 @@ function clearToasts(){ const w = document.getElementById('toasts'); if (w) w.te
 
 /* ------------------------------- screens ------------------------------- */
 const SCREENS = ['s-boot','s-title','s-select','s-brief','s-pause','s-result','s-controls','s-options','s-cheats'];
+function syncTitleLine(){
+  const sub = document.getElementById('logosub');
+  if (sub){
+    sub.textContent = campaignDone ? 'GOLDENSHARE · COMPLETE' : 'GOLDENSHARE';
+    sub.style.color = campaignDone ? 'var(--gold)' : '';
+  }
+}
 function show(id){
   G.screenId = id;
   /* Carry the live region into the dialog that is about to open. A polite
@@ -5111,13 +5118,7 @@ function show(id){
   if (id && id !== 's-pause'){ const el = document.getElementById(id);
     if (el){ el.tabIndex = -1; el.focus({ preventScroll:true }); } }
   /* the persisted campaign flag earns the title screen a permanent gold line */
-  if (id === 's-title'){
-    const sub = document.getElementById('logosub');
-    if (sub){
-      sub.textContent = campaignDone ? 'GOLDENSHARE · COMPLETE' : 'GOLDENSHARE';
-      sub.style.color = campaignDone ? 'var(--gold)' : '';
-    }
-  }
+  if (id === 's-title') syncTitleLine();
   /* "no screen" means play — except for the F4 report, which is painted on the
      canvas with no screen behind it. The cluster used to stay live and on top
      of it, so an AIM/CROUCH/RLD tap set a latch on the mission paused behind
@@ -5264,6 +5265,18 @@ function nameRowControls(){
   }
   return named;
 }
+/* A keycap is not a word. Without this a translator turned the manual's "A"
+   into "UM" (Portuguese for "a"), so the movement row read W UM S D — and
+   applyKeyLabels and the translator then rewrote it back and forth on every
+   visit. Google's own signal for "leave this alone" is translate="no". */
+/* Chrome stamps <html class="translated-ltr"> when it translates a page and
+   wraps every text node in <font style="vertical-align: inherit">; either is
+   the sign that the words on screen are not the words in the file */
+const pageTranslated = () => /translated-(ltr|rtl)/.test(document.documentElement.className) ||
+  !!document.querySelector('.screen font[style*="vertical-align"]');
+function markKeycaps(){
+  for (const el of document.querySelectorAll('[data-code]')) el.setAttribute('translate', 'no');
+}
 function relabelKeys(){
   const kb = navigator.keyboard;
   if (!kb || !kb.getLayoutMap) return;
@@ -5385,9 +5398,7 @@ function pause(){
      button, tapped ABORT (the arming tap), then RESUMED and grazed it again
      threw the run away on ONE tap — and RESTART did the same. The two-tap
      rule is per visit; this is where a visit begins. */
-  G.abortArmAt = 0;
-  { const ab = document.querySelector('#s-pause [data-act="abort"]');
-    if (ab && ab.textContent === 'TAP AGAIN TO ABORT') ab.textContent = 'ABORT TO MENU'; }
+  disarmAbort();
   document.getElementById('p-title').textContent = G.L.code+' · '+G.L.name;
   document.getElementById('p-meta').innerHTML =
     '<dt>Elapsed</dt><dd>'+fmt(G.time)+'</dd>'+
@@ -5473,6 +5484,16 @@ function lossCause(why){
   const h = G.lastHit, who = h ? (HOSTILE_NAME[h.sub] || 'a hostile') : 'a hostile';
   const range = h ? ' at ' + Math.round(h.dist * 2.6) + ' m' : '';
   return 'Taken down by ' + who + range + '. Keep moving — hostile aim tracks a sprinting agent badly, and standing still is how you get shot.';
+}
+/* The arm's one way down. It writes the CANONICAL label, never one read back
+   from the button: a read-back on a translated page is already Portuguese,
+   and writing it again made the translator translate it a second time
+   ("PT·abortar para o menu", measured with a Translate stand-in). The English
+   source string is what a translator knows how to handle. */
+function disarmAbort(){
+  const ab = document.querySelector('#s-pause [data-act="abort"]');
+  if (ab && G.abortArmAt) ab.textContent = 'ABORT TO MENU';
+  G.abortArmAt = 0;
 }
 function abortToTitle(){ G.abortArmAt = 0; G.state='title'; show('s-title'); clearToasts(); }
 const resultArmed = () => performance.now() - (G.resultAt || 0) >= RESULT_ARM_MS;
@@ -6524,6 +6545,36 @@ function selfTestBody(runSim){
              back.campaignDone === true,
              Object.keys(b).map(k => k+'='+b[k].time+(b[k].win?'w':'l')).join(' ') + ' campaignDone ' + (back && back.campaignDone));
           campaignDone = cd1; for (const k in BEST) delete BEST[k]; }
+        /* the other window's SETTINGS arrive, and its write does not take this
+           window's keyboard. A blob with a foreign stamp lands on disk and the
+           storage event fires, as it does from a save next door. */
+        { const inv0 = INVERT_Y, mus0 = A.musOn, diff0 = G.diff, st0 = G.state, sel0 = selLevel;
+          const foreign = (inv, diff) => { localStorage.setItem(SAVE_KEY, JSON.stringify({ v:2, stamp:'next-door', inv, musOn:false, diff, best:{} }));
+            dispatchEvent(new StorageEvent('storage', { key: SAVE_KEY })); };
+          INVERT_Y = false; A.musOn = true; G.diff = 1; G.state = 'title'; show('s-title');
+          foreign(true, 2);
+          const adopted = INVERT_Y === true && A.musOn === false && G.diff === 2;
+          const label = document.getElementById('o-inv').textContent;
+          /* a live mission keeps its clearance */
+          G.state = 'play'; show(null); G.diff = 0;
+          foreign(false, 2);
+          const keptDiff = G.diff === 0 && INVERT_Y === false;
+          /* focus: a Tab-outlined title button survives the write next door */
+          G.state = 'title'; show('s-title');
+          const cb = document.querySelector('#s-title [data-act="controls"]'); cb.focus();
+          foreign(true, 1);
+          const titleFocus = document.activeElement === cb;
+          /* ...and so does an outlined mission row */
+          G.state = 'select'; buildSelect(); show('s-select');
+          const row = document.getElementById('misslist').children[1]; row.focus();
+          foreign(false, 1);
+          const rowFocus = document.activeElement === document.getElementById('misslist').children[1];
+          ok('save: a setting chosen in the other window is adopted here, and a live mission keeps its clearance',
+             adopted && label === 'ON' && keptDiff,
+             'adopted ' + adopted + ' (inv label ' + label + ') · live mission kept diff ' + keptDiff);
+          ok('save: ...and the other window\'s write does not take this window\'s keyboard',
+             titleFocus && rowFocus, 'title button ' + titleFocus + ' · mission row ' + rowFocus);
+          INVERT_Y = inv0; A.musOn = mus0; G.diff = diff0; selLevel = sel0; syncOptionsUI(); G.state = st0; }
         /* a blob that cannot be read is announced and kept aside, not
            silently replaced by the next save */
         { SAVE_WARN = null; try { localStorage.setItem(SAVE_KEY, '{"v":2,"best":{'); } catch(_){}
@@ -6715,7 +6766,7 @@ function selfTestBody(runSim){
       ok('options: look mode is offered on a mouse and hidden on a phone',
          isTouch ? shown === false : shown === true, 'display '+shown);
       ok('options: the sensitivity row names the device it is on',
-         !!lab && lab.textContent === (isTouch ? 'View-drag sensitivity' : 'Mouse sensitivity'),
+         !!lab && (pageTranslated() || lab.textContent === (isTouch ? 'View-drag sensitivity' : 'Mouse sensitivity')),
          lab ? lab.textContent : 'no label'); }
 
     /* CHOOSE PHOTO was a <label>, which no key can reach */
@@ -8186,6 +8237,11 @@ function selfTestBody(runSim){
 
         /* the profile rule, as a function: a phone with a pad-mouse is still a
            phone; a touchscreen laptop with a mouse is still a desktop */
+        /* keycaps are marked for translators to leave alone: "A" became "UM" */
+        { const caps = [...document.querySelectorAll('#s-controls [data-code]')];
+          ok('controls: every keycap is marked translate="no"',
+             caps.length >= 18 && caps.every(el => el.getAttribute('translate') === 'no'),
+             caps.length + ' keycaps, ' + caps.filter(el => el.getAttribute('translate') !== 'no').length + ' unmarked'); }
         ok('profile: a phone-sized touch screen is a touch device whatever its primary pointer',
            touchProfile(true, true, 5, 390) === true &&        // an ordinary phone
            touchProfile(false, false, 0, 720) === false &&     // an ordinary desktop
@@ -8516,7 +8572,19 @@ function selfTestBody(runSim){
             pause();                            // ...and comes straight back
             const label = ab.textContent, disarmed = !G.abortArmAt;
             act('abort');                       // ONE tap must not go home
-            ok('watch: ...and it asks again on the next visit, not once for 2.5s',
+            /* ...and the arm comes down by STATE. A translating browser rewrites
+             the button's text; the restore used to read it back and compare,
+             so on a translated phone the button said "tap again" forever. */
+          { G.state = 'play'; show(null); pause();
+            act('abort');                                             // the arming tap
+            const wrap = document.createElement('font'); wrap.style.verticalAlign = 'inherit';
+            wrap.textContent = 'TOQUE NOVAMENTE PARA ABORTAR'; ab.textContent = ''; ab.appendChild(wrap);   // Translate rewrites it
+            resume(true); pause();                                    // the arm comes down on the next visit
+            const restored = ab.textContent;
+            ok('watch: ...and the arm restores the label by state, whatever a translator wrote on it',
+               restored === 'ABORT TO MENU' && !G.abortArmAt, 'label "' + restored + '" armAt ' + G.abortArmAt);
+            ab.textContent = label0; G.abortArmAt = 0; }
+          ok('watch: ...and it asks again on the next visit, not once for 2.5s',
                armed && disarmed && label === 'ABORT TO MENU' && G.state === 'pause',
                'armed '+armed+' disarmed '+disarmed+' label "'+label+'" then '+G.state);
             ab.textContent = label0; G.abortArmAt = 0;
@@ -9493,8 +9561,12 @@ function selfTestBody(runSim){
               else if (!PROSE.has(t)) unknown.push(label + ' → ' + JSON.stringify(t));
             }
           }
+          /* on a translated page the prose is not the file's prose: the keycaps
+             are marked translate="no" and still read, but the words between
+             them are the browser's, and this scan stands down and says so */
           ok('controls: every token in the manual is a key this test can press',
-             unknown.length === 0, unknown.join(' | ') || 'no unrecognised tokens');
+             pageTranslated() || unknown.length === 0,
+             pageTranslated() ? '(page is translated: the keycaps are held, the prose is the browser\'s)' : unknown.join(' | ') || 'no unrecognised tokens');
           /* ...and every action the movement map binds can be reached from the
              RIGHT of the keyboard, which is what the line above the table
              promises a player driving the mouse left-handed — or one with a
@@ -9606,11 +9678,11 @@ function selfTestBody(runSim){
             const visText = el => [...el.childNodes].map(n => n.nodeType === 3 ? n.textContent
               : (getComputedStyle(n).display === 'none' ? '' : visText(n))).join('').replace(/\s+/g, ' ').trim();
             const shown = () => rows.map(r => visText(r.children[1]));
-            const rowOf = name => rows.findIndex(r => r.children[0].textContent.trim() === name);
+            const rowOf = key => rows.findIndex(r => r.dataset.row === key);   // by attribute: a translated page rewrites the words
             KEYS_LAYOUT = 'wasd'; applyLayout();
-            const w = shown(), wTurn = w[rowOf('Turn')], wMove = w[rowOf('Move / strafe')];
+            const w = shown(), wTurn = w[rowOf('turn')], wMove = w[rowOf('move')];
             KEYS_LAYOUT = 'arrows'; applyLayout();
-            const a = shown(), aTurn = a[rowOf('Turn')], aMove = a[rowOf('Move / strafe')];
+            const a = shown(), aTurn = a[rowOf('turn')], aMove = a[rowOf('move')];
             KEYS_LAYOUT = lay1; applyLayout();
             ok('controls: the arrow rows say what the live layout does',
                /←/.test(wTurn) && !/←/.test(wMove) && !/←/.test(aTurn) && /←/.test(aMove),
@@ -10079,11 +10151,51 @@ function saveSettings(){
 }
 /* ...and the other tab's save lands here as it happens, so MISSION SELECT
    shows the win the moment it is filed next door */
+/* The other window's SETTINGS arrive here too. The v1.37 merge folded in
+   bests and left every other field last-writer-wins, so Invert Y chosen in
+   one window was erased the moment the other window saved anything — its
+   Soundtrack toggle, a mission end — from its own stale memory: measured,
+   disk inv:true → inv:false on the other window's click, the first window's
+   button still reading ON over a disk that said off. Settings are one
+   player's choices; a write next door is that player, and this window adopts
+   it, so its own next save carries the change forward instead of undoing it.
+   A live mission keeps its clearance and mission: those two are adopted on
+   the menus only. */
+function adoptSettings(d, live){
+  const num = (v,lo,hi,fb) => typeof v === 'number' && isFinite(v) ? clamp(v,lo,hi) : fb;
+  M.sens  = num(d.sens, .15, 2.2, M.sens);
+  M.tsens = num(d.tsens, .3, 2.2, M.tsens);
+  if (!isTouch && LOOK_ORDER.indexOf(d.look) >= 0) LOOK = d.look;
+  INVERT_Y = d.inv === true;
+  if (d.aim === 0 || d.aim === 1 || d.aim === 2) AIM_ASSIST = d.aim;
+  if (d.keys === 'wasd' || d.keys === 'arrows') KEYS_LAYOUT = d.keys;
+  A.sfxVol = num(d.sfx, 0, 1, A.sfxVol); A.musVol = num(d.mus, 0, 1, A.musVol); A.musOn = d.musOn !== false;
+  if (A.sfx) A.sfx.gain.value = A.sfxVol; if (A.mus) A.mus.gain.value = A.musOn ? A.musVol : 0;
+  SCANOP = Math.round(num(d.scan, 0, 100, SCANOP)); G.mapOn = d.map !== false;
+  RM_OPT = d.rm === true; HOLD_LATCH = d.hold === true;
+  if (!live){
+    if ((d.diff|0) === d.diff && d.diff >= 0 && d.diff < DIFFS.length) G.diff = d.diff;
+    if ((d.level|0) === d.level && d.level >= 0 && d.level < LEVELS.length) selLevel = d.level;
+  }
+  resolveLook(); applyLayout(); syncOptionsUI();
+}
 addEventListener('storage', e => {
   if (e.key !== SAVE_KEY) return;
+  let d = null; try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(_){}
+  if (d && typeof d === 'object' && d.v === 2 && d.stamp !== SAVE_STAMP)
+    adoptSettings(d, G.state === 'play' || G.state === 'pause' || G.state === 'result');
   mergeFromDisk();
-  if (G.state === 'select') buildSelect();
-  if (G.state === 'title') show('s-title');
+  /* ...and without taking this window's keyboard away. show('s-title') seeds
+     focus on the dialog, so a save next door moved a Tab-outlined CONTROLS to
+     the heading and the next Enter opened MISSION SELECT; buildSelect() drops
+     the outlined row to BODY. Refresh what changed; put focus back where it was. */
+  if (G.state === 'select'){
+    const act = document.activeElement, list = document.getElementById('misslist');
+    const i = act && list && list.contains(act) ? Array.prototype.indexOf.call(list.children, act) : -1;
+    buildSelect();
+    if (i >= 0 && list.children[i]) list.children[i].focus({ preventScroll:true });
+  }
+  if (G.state === 'title') syncTitleLine();
 });
 /* A store that answers reads and refuses writes is the common shape of a
    blocked one; the game used to say nothing and forget everything on reload. */
@@ -10249,11 +10361,16 @@ function act(a){
       if ((isTouch || TOUCH_SEEN) && G.state === 'pause' && ab){
         const now = performance.now();
         if (!(G.abortArmAt && now - G.abortArmAt < ABORT_ARM_MS)){
-          G.abortArmAt = now; const label = ab.textContent; ab.textContent = 'TAP AGAIN TO ABORT';
-          setTimeout(() => { if (ab.textContent === 'TAP AGAIN TO ABORT') ab.textContent = label; G.abortArmAt = 0; }, ABORT_ARM_MS);
+          /* The restore is by STATE, never by reading the label back: a
+             browser that translates the page rewrites the button's text under
+             us, and the old `=== 'TAP AGAIN TO ABORT'` gate then never fired —
+             on a translated phone the button read "tap again" from its first
+             arm until the run was actually aborted. */
+          G.abortArmAt = now; ab.textContent = 'TAP AGAIN TO ABORT';
+          setTimeout(() => { if (G.abortArmAt === now) disarmAbort(); }, ABORT_ARM_MS);
           break;
         }
-        G.abortArmAt = 0; ab.textContent = 'ABORT TO MENU';
+        disarmAbort(); ab.textContent = 'ABORT TO MENU';
       }
       abortToTitle(); break; }
     case 'facepick': { const fi = document.getElementById('o-face'); if (fi) fi.click(); break; }
@@ -10562,6 +10679,7 @@ function boot(){
   loadLevel(0, G.diff);                 // level 1 doubles as the menu backdrop
   P.x = 3.5; P.y = 2.5;
   resolveLook(); syncOptionsUI();
+  markKeycaps();                        // a keycap is not a word: translators leave it alone
   nameRowControls();                    // a settings row's control answers to its row's name
   pinSelectForTouch();                  // BACK on screen where a 390px fold hid the clearance chooser
   relabelKeys();                        // name the keys the player's own board prints
