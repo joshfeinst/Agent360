@@ -625,7 +625,7 @@ milliseconds without running a frame, so it was refused as a clock).
 
 ## Standing numbers
 
-- **Self-tests:** 497 desktop / 487 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 498 desktop / 488 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
