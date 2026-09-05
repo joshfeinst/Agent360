@@ -652,7 +652,7 @@ was what the pad does to the phone.
 
 ## Standing numbers
 
-- **Self-tests:** 504 desktop / 494 mobile (F4 in-game; run headlessly on
+- **Self-tests:** 504 desktop / 493 mobile (F4 in-game; run headlessly on
   desktop and phone contexts by verify.js)
 - **The battery:** `tools/verify.js` (selftest + 15-combo soaks at 60Hz
   desktop, 60Hz mobile-touch, and 144Hz/30Hz frame-rate invariance, plus the
