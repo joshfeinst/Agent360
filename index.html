@@ -39,7 +39,10 @@ body{
 canvas#view,#touch,#touch *{touch-action:none}
 /* pan-y, not none: .screen sits inside #stage and needs vertical scrolling, and
    touch-action intersects down the ancestor chain */
-#stage{position:fixed; inset:0; display:grid; place-items:center; touch-action:pan-y; background:
+/* `inset` and `clamp()` each carry a fallback an older parser keeps: without
+   them Chrome 80-86 and Safari 13.4-14.0 dropped the declarations, every
+   screen landed below the fold and the touch cluster collapsed to 0x0 */
+#stage{position:fixed; top:0;right:0;bottom:0;left:0; inset:0; display:grid; place-items:center; touch-action:pan-y; background:
   radial-gradient(ellipse at 50% 45%, #0b1420 0%, #05070c 70%, #000 100%);}
 #frame{position:relative; line-height:0; box-shadow:0 0 0 1px #1e3a52, 0 0 60px -10px #35d0ff33, 0 30px 80px -20px #000;}
 canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:block; background:#000; cursor:crosshair;}
@@ -48,10 +51,10 @@ canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:bloc
    every frame. background-size is set from fit() so the stripe period is an
    exact multiple of the game-pixel size — a fractional period shimmered as the
    stripes beat against the upscaled pixels on phones. */
-#scan{position:absolute; inset:0; pointer-events:none; opacity:.5;
+#scan{position:absolute; top:0;right:0;bottom:0;left:0; inset:0; pointer-events:none; opacity:.5;
   background-image:linear-gradient(rgba(0,0,0,.28) 0 1px, rgba(0,0,0,0) 1px);
   background-size:100% 3px; background-repeat:repeat;}
-#vig{position:absolute; inset:0; pointer-events:none;
+#vig{position:absolute; top:0;right:0;bottom:0;left:0; inset:0; pointer-events:none;
   background:radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,.55) 100%);}
 
 /* ---------- overlay screens ---------- */
@@ -60,7 +63,7 @@ canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:bloc
    whole surface on every presented frame whether or not the backdrop moved:
    measured 38fps at 720p and 13fps at 1080p on every menu and pause screen,
    against 60 with the declaration gone. */
-.screen{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+.screen{position:absolute; top:0;right:0;bottom:0;left:0; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
   gap:clamp(10px,2.2vh,22px); padding:clamp(14px,3vh,36px); line-height:1.5; text-align:center;
   /* the colour is load-bearing: forced-colors (Windows High Contrast) drops
      background IMAGES, and with only the gradient every menu floated over the
@@ -101,14 +104,14 @@ canvas#view{image-rendering:pixelated; image-rendering:crisp-edges; display:bloc
 #s-pause>.row:last-child>*,#s-brief>.row:last-child>*,
 .screen.pinrow>.row:last-child>*{pointer-events:auto}
 .screen[hidden]{display:none}
-.eyebrow{font-family:var(--pix); font-size:clamp(7px,1.15vh,10px); letter-spacing:.18em; color:var(--cyan); text-transform:uppercase}
+.eyebrow{font-family:var(--pix); font-size:7px; font-size:clamp(7px,1.15vh,10px); letter-spacing:.18em; color:var(--cyan); text-transform:uppercase}
 h1.logo{font-family:var(--pix); margin:0; line-height:1.25; text-wrap:balance;
-  font-size:clamp(20px,4.6vh,44px); color:var(--gold);
+  font-size:20px; font-size:clamp(20px,4.6vh,44px); color:var(--gold);
   text-shadow:0 3px 0 #7a4a00, 0 0 26px #ffb02e55;}
 h1.logo small{display:block; font-size:.42em; color:var(--paper); text-shadow:none; margin-top:.7em; letter-spacing:.06em}
-h2.ttl{font-family:var(--pix); font-size:clamp(11px,2.1vh,18px); margin:0; color:var(--gold); letter-spacing:.04em; text-wrap:balance}
-.sub{font-size:clamp(12px,1.9vh,17px); color:var(--dim); max-width:62ch; margin:0}
-.blink{font-family:var(--pix); font-size:clamp(8px,1.4vh,12px); color:var(--paper); animation:bl 1.1s steps(2,end) infinite}
+h2.ttl{font-family:var(--pix); font-size:11px; font-size:clamp(11px,2.1vh,18px); margin:0; color:var(--gold); letter-spacing:.04em; text-wrap:balance}
+.sub{font-size:12px; font-size:clamp(12px,1.9vh,17px); color:var(--dim); max-width:62ch; margin:0}
+.blink{font-family:var(--pix); font-size:8px; font-size:clamp(8px,1.4vh,12px); color:var(--paper); animation:bl 1.1s steps(2,end) infinite}
 @keyframes bl{50%{opacity:.15}}
 @media (prefers-reduced-motion:reduce){.blink{animation:none}}
 body.reduce .blink{animation:none}
@@ -122,7 +125,7 @@ body.reduce .blink{animation:none}
 .panel::after{right:-1px; bottom:-1px; border-left:0; border-top:0}
 
 .menu{display:flex; flex-direction:column; gap:6px; width:min(560px,92vw)}
-.mi{font-family:var(--pix); font-size:clamp(8px,1.45vh,12px); letter-spacing:.05em; color:var(--paper);
+.mi{font-family:var(--pix); font-size:8px; font-size:clamp(8px,1.45vh,12px); letter-spacing:.05em; color:var(--paper);
   background:#0b1421; border:1px solid #1e3a52; padding:11px 14px; text-align:left; cursor:pointer;
   display:flex; justify-content:space-between; align-items:center; gap:12px; transition:transform .08s, background .12s;}
 .mi:hover,.mi:focus-visible{background:#132234; border-color:var(--cyan); color:#fff; outline:none; transform:translateX(3px)}
@@ -130,8 +133,8 @@ body.reduce .blink{animation:none}
 .mi .k{color:var(--cyan); font-size:.85em}
 .mi[disabled]{opacity:.35; cursor:not-allowed}
 .row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
-#difflist .mi{justify-content:center; white-space:nowrap; font-size:clamp(7px,1.2vh,10px)}
-.btn{font-family:var(--pix); font-size:clamp(8px,1.35vh,11px); padding:10px 16px; cursor:pointer;
+#difflist .mi{justify-content:center; white-space:nowrap; font-size:7px; font-size:clamp(7px,1.2vh,10px)}
+.btn{font-family:var(--pix); font-size:8px; font-size:clamp(8px,1.35vh,11px); padding:10px 16px; cursor:pointer;
   background:var(--gold); color:#231300; border:0; letter-spacing:.05em}
 .btn.ghost{background:#0b1421; color:var(--paper); border:1px solid var(--line)}
 .btn:hover{filter:brightness(1.12)}
@@ -141,14 +144,14 @@ body.reduce .blink{animation:none}
   width:min(900px,94vw); text-align:left; align-items:start}
 @media (max-width:720px){.dossier{grid-template-columns:1fr}}
 .objs{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:9px}
-.objs li{display:grid; grid-template-columns:auto 1fr; gap:10px; font-size:clamp(12px,1.75vh,16px); align-items:start}
+.objs li{display:grid; grid-template-columns:auto 1fr; gap:10px; font-size:12px; font-size:clamp(12px,1.75vh,16px); align-items:start}
 .objs .tag{font-family:var(--pix); font-size:.8em; color:var(--cyan); padding-top:.25em}
 .objs li.done{color:var(--dim)} .objs li.done .tag{color:var(--gold)}
 .objs li.done .txt{text-decoration:line-through; text-decoration-color:#ffb02e88}
-.dl{display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:clamp(11px,1.6vh,15px); margin:0}
+.dl{display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:11px; font-size:clamp(11px,1.6vh,15px); margin:0}
 .dl dt{color:var(--dim); text-transform:uppercase; letter-spacing:.08em; font-size:.85em; padding-top:.15em}
 .dl dd{margin:0; font-variant-numeric:tabular-nums; font-weight:600}
-.hint{font-size:clamp(10px,1.5vh,13px); color:var(--dim); max-width:70ch}
+.hint{font-size:10px; font-size:clamp(10px,1.5vh,13px); color:var(--dim); max-width:70ch}
 .hint b{color:var(--cyan); font-weight:700}
 kbd{font-family:var(--pix); font-size:.72em; background:#101c2c; border:1px solid var(--line); padding:3px 5px; color:var(--paper)}
 /* vw units measure the viewport, but these live inside #frame, which is
@@ -156,7 +159,7 @@ kbd{font-family:var(--pix); font-size:.72em; background:#101c2c; border:1px soli
    clip at both edges under the screen's overflow-x:hidden. */
 .grid2,.dossier,.menu,.panel{max-width:100%}
 .grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px 22px; text-align:left; width:min(760px,92vw)}
-.ctl{display:flex; justify-content:space-between; gap:10px; font-size:clamp(11px,1.6vh,14px); border-bottom:1px dotted #1e3a52; padding:5px 0}
+.ctl{display:flex; justify-content:space-between; gap:10px; font-size:11px; font-size:clamp(11px,1.6vh,14px); border-bottom:1px dotted #1e3a52; padding:5px 0}
 .ctl span:last-child{color:var(--dim); text-align:right}
 input[type=range]{accent-color:var(--cyan); width:150px}
 .ctl .sv{font-family:var(--pix); font-size:.78em; color:var(--cyan); display:inline-block;
@@ -166,8 +169,8 @@ input[type=range]{accent-color:var(--cyan); width:150px}
 .ctl.touch-only{display:none}
 body.touch .ctl.touch-only, body.hybrid .ctl.touch-only{display:flex}
 .mi .best{display:block; font-size:.72em; color:var(--gold); margin-top:5px; letter-spacing:.06em}
-.stat{font-family:var(--pix); color:var(--gold); font-size:clamp(9px,1.5vh,13px)}
-#touch{position:absolute; inset:0; pointer-events:none; display:none}
+.stat{font-family:var(--pix); color:var(--gold); font-size:9px; font-size:clamp(9px,1.5vh,13px)}
+#touch{position:absolute; top:0;right:0;bottom:0;left:0; inset:0; pointer-events:none; display:none}
 body.touch #touch.on, body.hybrid #touch.on{display:block}
 /* Buttons float over the canvas but take pointer events ONLY on themselves, so
    every uncovered pixel stays part of the look surface. 44px floors keep them
@@ -509,7 +512,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.51';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.52';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -2742,7 +2745,13 @@ function loadLevel(li, di){
     if (WALLTEX[ch] !== undefined){ G.solid[c]=1; G.tex[c]=WALLTEX[ch]; continue; }
     if (DOORTEX[ch] !== undefined){
       G.solid[c]=1;
-      G.tex[c] = ch==='H' ? (L.secretTex ?? DOORTEX.H) : DOORTEX[ch];
+      /* Not the nullish-coalescing operator: it was the only ES2020 token in
+         the file, and one token is enough — on Chrome ≤79 and Safari ≤13.0 this
+         whole script block failed to parse and the game sat on its static
+         splash forever. The file is ES2018, and verify.js holds every script
+         block to it — comments included, so no spelling of the token can
+         creep back. */
+      G.tex[c] = ch==='H' ? (L.secretTex !== undefined ? L.secretTex : DOORTEX.H) : DOORTEX[ch];
       G.doorIx[c] = G.doors.length;
       G.doors.push({ c, x:x+.5, y:y+.5, open:0, locked: ch==='L',
                      secret: ch==='H', found:0, was:0 });
