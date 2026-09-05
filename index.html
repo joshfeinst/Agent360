@@ -5802,6 +5802,47 @@ function selfTestBody(runSim){
        !!d && !!spot && shut === 0 && opened > 0, 'without ' + shut + ' with ' + opened + (d ? '' : ' (no locked door)'));
     P.keys = 0; P.alive = al0; G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
 
+  /* ---- the frame path holds its invariants under a wandering clock ---- */
+  /* verify.js soaks step() directly; advance() — the sub-stepping frame path
+     from v1.48 — had never been soaked. Seeded random input through it with
+     raw deltas from 0 to 0.3s and one 3s stall in fifty, holding the same
+     invariants the harness does plus the one advance() itself promises: no
+     frame scores more than the 0.5s ceiling. */
+  { const st0 = G.state, sel0 = selLevel, d0 = G.diff, ts0 = G.tscale;
+    const mk = seed => { let x = seed>>>0; return () => (x = (x*1664525+1013904223)>>>0) / 4294967296; };
+    const KEYS = ['fwd','back','left','right','sprint','crouch','fire','use','reload','aim'];
+    const bad = []; let frames = 0, subs = 0, stalls = 0;
+    G.tscale = 1;
+    for (let li = 0; li < LEVELS.length && bad.length < 4; li++) for (let di = 0; di < 3 && bad.length < 4; di++){
+      const rnd = mk(7000 + li*97 + di*13);
+      selLevel = li; G.diff = di; startMission(false); G.state = 'play';
+      let tPrev = -1;
+      for (let f = 0; f < 200 && bad.length < 4; f++){
+        for (const k of KEYS) if (rnd() < .12) held[k] = !held[k];
+        if (rnd() < .04) P.w = (P.w + 1) & 3;
+        M.dx = (rnd()-.5)*60; M.dy = (rnd()-.5)*20;
+        const r = rnd(); const raw = r < .02 ? 3 : r < .1 ? .1 + rnd()*.2 : r < .5 ? 1/60 : rnd()*.05;
+        if (raw === 3) stalls++;
+        const gt = G.time;
+        advance(raw, Math.min(.05, raw)); frames++; subs += Math.ceil(Math.min(.5, raw) / .05);
+        if (G.state !== 'play') break;
+        const tag = LEVELS[li].code+'/'+di+' f'+f;
+        if (!isFinite(P.x) || !isFinite(P.y) || P.x<0 || P.y<0 || P.x>=G.W || P.y>=G.H) bad.push(tag+' position');
+        else if (G.solid[(P.y|0)*G.W+(P.x|0)]) bad.push(tag+' in a wall');
+        if (!isFinite(P.hp) || P.hp < 0 || P.hp > 100) bad.push(tag+' hp '+P.hp);
+        for (const a in AMMOCAP){ const v = P.ammo[a]; if (!isFinite(v)||v<0||v>AMMOCAP[a]) bad.push(tag+' ammo '+a+'='+v); }
+        if (!isFinite(G.time) || G.time < tPrev - 1e-9) bad.push(tag+' clock');
+        if (G.time - gt > .5 + 1e-6) bad.push(tag+' scored +'+(G.time-gt).toFixed(2)+' in one frame');
+        if (P.aim < -1e-9 || P.aim > 1+1e-9 || P.crouch < -1e-9 || P.crouch > 1+1e-9) bad.push(tag+' ease out of bounds');
+        tPrev = G.time;
+      }
+    }
+    clearInput(); G.tscale = ts0;
+    ok('frame: advance() holds every invariant under a wandering clock and 3s stalls',
+       bad.length === 0 && frames > 2000 && stalls > 20,
+       bad.length ? bad.slice(0,3).join(' | ') : frames + ' frames, ' + subs + ' sub-steps, ' + stalls + ' stalls, clean');
+    selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
   /* ---- what you cannot hear, you can see ---- */
   { const st0 = G.state, sel0 = selLevel, d0 = G.diff, g0 = G.cheats.god, al0 = P.alive;
     const shot = () => { render(); return ctx.getImageData(0, 0, RW, RH).data; };
