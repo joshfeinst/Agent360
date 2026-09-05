@@ -277,12 +277,14 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
     </div>
 
     <!-- MISSION SELECT -->
-    <!-- pinrow: on a landscape phone the clearance chooser, its one description
-         and BACK all opened below a 390px fold with no scrollbar and no fade — a
-         first-timer played SECRET AGENT without knowing a choice existed. The
-         pinned row keeps BACK on screen and its gradient is the cue that the
-         list goes on. -->
-    <div class="screen pinrow" id="s-select" role="dialog" aria-modal="true" aria-label="CHOOSE YOUR ENGAGEMENT" hidden>
+    <!-- On a landscape phone the clearance chooser, its one description and
+         BACK all opened below a 390px fold with no scrollbar and no fade — a
+         first-timer played SECRET AGENT without knowing a choice existed. On a
+         TOUCH profile the row is pinned (pinrow, set by pinSelectForTouch): BACK
+         stays on screen and its gradient is the cue that the list goes on. Not
+         on a desktop, where there is room and the visual audit measured the
+         pinned row painting over the clearance description at 960x540. -->
+    <div class="screen" id="s-select" role="dialog" aria-modal="true" aria-label="CHOOSE YOUR ENGAGEMENT" hidden>
       <div class="eyebrow">mission select</div>
       <h2 class="ttl">CHOOSE YOUR ENGAGEMENT</h2>
       <div class="menu" id="misslist"></div>
@@ -624,7 +626,7 @@ const isTouch = matchMedia('(hover:none) and (pointer:coarse)').matches;
 let TOUCH_SEEN = false;
 function enableHybrid(){
   if (isTouch || TOUCH_SEEN) return;
-  TOUCH_SEEN = true;
+  TOUCH_SEEN = true; pinSelectForTouch();
   document.body.classList.add('hybrid');
   if (typeof G !== 'undefined' && G.state === 'play' && !G.showTests)
     document.getElementById('touch').classList.add('on');
@@ -5221,6 +5223,11 @@ function gotoBrief(){
    instead of naming them one at a time, so a row added later is named too.
    The control's own id goes SECOND, so the name reads "Corner radar ON" and
    re-resolves as the state changes. */
+/* the select screen pins its action row on a touch profile only — see the markup */
+function pinSelectForTouch(){
+  const el = document.getElementById('s-select');
+  if (el) el.classList.toggle('pinrow', !!(isTouch || TOUCH_SEEN));
+}
 function nameRowControls(){
   let n = 0, named = 0;
   for (const row of document.querySelectorAll('.ctl')){
@@ -8086,8 +8093,10 @@ function selfTestBody(runSim){
           ok('debrief: a loss says what did it and what to do differently',
              /security goon at 10 m/.test(cause) && /Keep moving/.test(cause) && /exit/.test(melt) && winCause === '',
              '"' + cause.slice(0, 60) + '…" · meltdown "' + melt.slice(0, 40) + '…" · win "' + winCause + '"');
-          ok('select: the action row is pinned, so BACK and the fade are on a phone screen',
-             document.getElementById('s-select').classList.contains('pinrow'));
+          pinSelectForTouch();
+          ok('select: the action row is pinned on a phone, so BACK and the fade are on screen',
+             document.getElementById('s-select').classList.contains('pinrow') === !!(isTouch || TOUCH_SEEN),
+             'touch ' + !!(isTouch || TOUCH_SEEN));
           M.locked = lk0; M.lockPending = lp0; G.time = t0; LOOKMODE = lm0; LOOK = look0; M.lockFails = lf0; G.lastHit = null;
           selLevel = sel0; loadLevel(0, d0); G.state = st0; show(null); }
 
@@ -8312,8 +8321,9 @@ function selfTestBody(runSim){
              every pinned row to it. On a landscape phone the clearance chooser
              and BACK opened below a 390px fold with no scrollbar and no fade;
              the pinned row is the fade, and BACK is always on screen. */
-          ok('screens: ...and so does the select screen, now that a pinned row cannot cover one',
-             pinned('s-select')); }
+          pinSelectForTouch();
+          ok('screens: ...and the select screen pins on a touch profile only — the desktop has room, and the audit saw the row paint over the clearance note at 960x540',
+             pinned('s-select') === !!(isTouch || TOUCH_SEEN), 'touch ' + !!(isTouch || TOUCH_SEEN) + ' pinned ' + pinned('s-select')); }
 
         /* the clearance check follows the DIFFS table it indexes, so a fourth
            rung would persist instead of silently vanishing with its bests */
@@ -10463,6 +10473,7 @@ function boot(){
   P.x = 3.5; P.y = 2.5;
   resolveLook(); syncOptionsUI();
   nameRowControls();                    // a settings row's control answers to its row's name
+  pinSelectForTouch();                  // BACK on screen where a 390px fold hid the clearance chooser
   relabelKeys();                        // name the keys the player's own board prints
   selfTest(false);                      // fail loudly if a level is unwinnable
   /* the suite exercises act('togglemus') twice, and each call toasts — without
