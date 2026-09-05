@@ -195,6 +195,30 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.51
+
+Two windows of the game on one profile: a setting chosen in one was erased by
+the other's next save, because the v1.37 merge folded in only bests — and the
+other window's save stole this window's keyboard focus through the storage
+handler. Settings written next door are adopted now (a live mission keeps its
+clearance), and focus stays put. A browser that translates the page rewrote
+the watch's ABORT button under a text-gated restore, so on a translated phone
+it read "tap again" forever; the arm comes down by state now, keycaps carry
+translate="no" so "A" is no longer "UM", and F4 no longer shows four red rows
+that were only the suite reading Portuguese.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
+## v1.50
+
+A phone paired with a controller that Android registers as a pointing device
+answers "fine pointer, hover", and the game dressed it as a desktop: no touch
+cluster, a hint about a captured mouse, the keyboard card, and the clearance
+chooser back below the fold. A phone-sized screen with touch points is a
+touch device now whatever its primary pointer says; touchscreen laptops keep
+the mouse profile. And the finger that opens hybrid no longer spends a round
+doing it. The game itself ignores a gamepad, and nothing breaks when one is
+plugged in. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.49
 
 A player who acted only on what the screen had said found that thirty-six
