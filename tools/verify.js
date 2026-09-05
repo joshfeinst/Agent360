@@ -90,6 +90,17 @@ function sourceCheck() {
      that is the previous build for ten minutes after every deploy. */
   const swFresh = /addAll\(SHELL\.map\(\s*\w+\s*=>\s*new Request\(\s*\w+\s*,\s*\{\s*cache:\s*'reload'/.test(sw);
   console.log('SW precache bypasses the HTTP cache ' + (swFresh ? '— yes' : '— NO, IT CAN PRECACHE THE OLD BUILD'));
+  /* ...and the icons are precached one at a time, best effort: addAll() is
+     all-or-nothing, and a transient 404 on one decorative icon used to reject
+     the whole install — no worker, no offline app. */
+  /* ...and a stalled network is not a failed one: the shell's network-first
+     fetch races a timeout and serves the cache after it, or the installed
+     app sat on a blank tab for 25s with the whole shell cached */
+  const swRace = /const NET_MS = \d+/.test(sw) && (sw.match(/Promise\.race\(\[/g) || []).length >= 2 && (sw.match(/setTimeout\([\s\S]{0,160}?NET_MS\)/g) || []).length >= 2;
+  console.log('SW shell fetch races a stalled network ' + (swRace ? '— yes' : '— NO, A STALL HOLDS THE CACHED APP HOSTAGE'));
+  const swIcons = /const ICONS = \[/.test(sw) && /allSettled\(ICONS\.map/.test(sw) && !/icons\/icon-[^']*'\s*\]\s*;?\s*\n?[^\n]*\n?[\s\S]{0,40}addAll/.test(sw) &&
+                  !/SHELL = \[[^\]]*icons\//.test(sw);
+  console.log('SW icons precache best-effort, apart from the shell ' + (swIcons ? '— yes' : '— NO, ONE MISSING ICON REJECTS THE INSTALL'));
   const vOK = hv && sv && hv === sv;
   console.log('VERSION index.html v' + hv + ' / sw.js v' + sv + (vOK ? ' — in step' : ' — MISMATCH'));
   /* syncTitleHint() rewrites the title how-to the moment scripts run, but the
@@ -99,7 +110,7 @@ function sourceCheck() {
   const stat = (html.match(/id="titlehint">([^<]+)</) || [])[1];
   const hOK = !!cap && !!stat && stat.indexOf(cap) === 0;
   console.log('TITLE HINT static default ' + (hOK ? 'matches the shipped look mode' : 'DRIFTED from TITLE_HINT.capture'));
-  return vOK && hOK && swScoped && swClone && sfxOK && swFresh;
+  return vOK && hOK && swScoped && swClone && sfxOK && swFresh && swIcons && swRace;
 }
 
 async function wirePage(page, errors, resourceErrs) {

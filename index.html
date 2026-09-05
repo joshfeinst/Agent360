@@ -499,7 +499,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.47';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.48';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -1226,7 +1226,7 @@ function unlock(){
     /* the taps that hammered RETRY land on the view once the debrief hides:
        seven rounds into the spawn wall and a guard alerted. The first
        moments of a mission answer no tap. */
-    if (G.startAt && s.t0 - G.startAt < TAP_SWALLOW_MS) return;
+    if (G.startAt && (s.at != null ? s.at : s.t0) - G.startAt < TAP_SWALLOW_MS) return;
     /* the band says CLICK THE VIEW to capture the mouse: a finger's tap is
        that click, not a shot — it used to fire and leave the band up */
     if (!isTouch && !M.locked && wantsLock() && !lockGivenUp()){ tryLock(); return; }
@@ -1285,9 +1285,16 @@ function unlock(){
        frame arrive as one event with two changedTouches, and the second used
        to get no record at all — its lift could not tap-fire, and it could not
        inherit the drag. */
+    /* t0 is the EVENT clock, for the tap's own length against its touchend;
+       at is performance.now(), for the swallow against G.startAt, which is on
+       that clock. They used to be compared across clocks: where the event
+       clock runs a second behind, the 600ms swallow lasted 1.6s, and where it
+       is on the epoch (old WebKit) the swallow never held and the RETRY mash
+       v1.32 fixed put seven rounds into the spawn wall again. */
+    const at = performance.now();
     for (const t of e.changedTouches){
-      if (T.look){ if (!T.tap) T.tap={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp}; }
-      else { T.look={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp}; M.tlook = true; }
+      if (T.look){ if (!T.tap) T.tap={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp,at}; }
+      else { T.look={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp,at}; M.tlook = true; }
     }
     e.preventDefault(); }, {passive:false});
   const dropOwner = [];
@@ -1355,6 +1362,7 @@ function unlock(){
      stick against the NEW centre: forward became a hard-left strafe mid-sprint.
      A pad that has moved lets go of its finger; the thumb re-presses. */
   const dead = new Set();                          // fingers a re-fit let go of, until they lift
+  window.viewTapFor = (s, e) => viewTap(s, e);   // the suite feeds it records with skewed clocks
   window.releasePads = () => {
     if (T.move !== null) dead.add(T.move); if (T.aimpad !== null) dead.add(T.aimpad);
     T.move = T.aimpad = null; T.run = false;
@@ -7966,6 +7974,42 @@ function selfTestBody(runSim){
           ok('hud: an empty reserve reads red', !!seenDry && /ff3b30/i.test(seenDry.col), seenDry ? seenDry.col : 'no "/ 0" drawn');
           P.reload = rl0; G.cheats.god = g0; P.ammo[WEAPS[P.w].ammo] = am0; P.mag[P.w] = mg0; G.state = st0; }
 
+        /* the swallow is measured on ONE clock. A tap is a touch record with
+           t0 on the event clock and at on performance.now(); the swallow
+           compares at with G.startAt, which is on that clock too. */
+        { const sa0 = G.startAt, mg0 = P.mag[P.w], al0 = P.alive, st1 = G.state;
+          G.state = 'play'; P.alive = true; P.mag[P.w] = 7; P.fireCd = 0;
+          const now = performance.now(); G.startAt = now - 800;          // 0.8s into the mission
+          const end = { type:'touchend', timeStamp: now - 1000 };        // an event clock a second behind
+          const skewed = { moved:0, t0: now - 1000 - 100, at: now - 100 };
+          viewTapFor(skewed, end); const firedSkew = P.mag[P.w] === 6;
+          P.mag[P.w] = 7; G.startAt = now - 200;                          // 0.2s in: still inside the swallow
+          const early = { moved:0, t0: now - 1000 - 100, at: now - 100 };
+          viewTapFor(early, end); const heldEarly = P.mag[P.w] === 7;
+          ok('touch: the mission-start swallow measures the tap on its own clock',
+             firedSkew && heldEarly, 'fired at 0.8s with a skewed event clock ' + firedSkew + ' · held at 0.2s ' + heldEarly);
+          P.mag[P.w] = mg0; G.startAt = sa0; P.alive = al0; G.state = st1; }
+
+        /* A coarse clock does not slow the world. Feed the frame the deltas a
+           100ms-bucketed rAF delivers (0, 0.1, 0, 0.1 …) and the agent must
+           travel as far, and the scored clock advance as much, as under fine
+           deltas summing to the same time; a stall is forgiven the same way on
+           both clocks, at the 0.5s ceiling. advance() is loop() without the
+           render, so this drives the real frame path. */
+        { const st0 = G.state, sel0 = selLevel, d0 = G.diff, g0 = G.cheats.god, ts0 = G.tscale;
+          selLevel = 0; G.diff = 1; startMission(false); G.state = 'play'; G.cheats.god = true; G.tscale = 1;
+          const run = deltas => { clearInput(); held.fwd = true; P.x = 5.5; P.y = 2.5; P.ang = 0;
+            const t0 = G.time; for (const r of deltas) advance(r, Math.min(.05, r));
+            held.fwd = false; return { u: +Math.hypot(P.x - 5.5, P.y - 2.5).toFixed(3), t: +(G.time - t0).toFixed(3) }; };
+          const fine = run(Array(120).fill(1/60));                                   // 2s at 60Hz
+          const coarse = run(Array(20).fill(0).flatMap(() => [0, 0, 0, 0, 0, .1]));  // the same 2s, 100ms buckets
+          const stall = run([3]);                                                    // one 3s stall
+          ok('clock: a 100ms-bucketed rAF moves the world as far as a fine one, and a stall is capped alike',
+             Math.abs(coarse.u - fine.u) < fine.u * .03 && Math.abs(coarse.t - fine.t) < .01 &&
+             Math.abs(stall.t - .5) < 1e-6 && stall.u > fine.u * .2,
+             'fine ' + fine.u + 'u/' + fine.t + 's · coarse ' + coarse.u + 'u/' + coarse.t + 's · 3s stall ' + stall.u + 'u/' + stall.t + 's');
+          clearInput(); G.tscale = ts0; G.cheats.god = g0; selLevel = sel0; loadLevel(0, d0); G.state = st0; }
+
         /* a fast flick is a fast flick: the captured path CLAMPS an outsized
            event, it does not throw it away. The old raw-count guard dropped
            anything past 3000, so movementX 2999 turned 1.2449 rad and 3001
@@ -10362,6 +10406,22 @@ function loop(t){
   const raw = last ? (t-last)/1000 : .016;
   const dt = Math.min(.05, raw);
   last = t; G.lastDt = dt;
+  advance(raw, dt);
+  loopTail();
+}
+/* One frame's worth of simulation. The 0.05s physics step is a STABILITY
+   bound — a 300ms hitch must not walk the agent through a wall — and it used
+   to double as the forgiveness rule: a frame longer than 50ms simulated 50ms
+   and scored up to 500ms. That is exactly wrong on a browser that coarsens
+   rAF timestamps to 100ms (Firefox resistFingerprinting, Tor): the deltas
+   arrive as 0, 0, 0.1, 0, 0.1 … and half of every 0.1 was thrown away, so the
+   agent walked 2.35u where a fine clock walks 4.7u, the reload took 2.2s
+   wall instead of 1.15s, hostiles crawled — and the SLA clock ran at full
+   speed. Par was halved and the clock was honest about it. Now the elapsed
+   time is simulated in sub-steps of at most 0.05s, up to the same 0.5s
+   ceiling the scored clock has always had, so the two clocks agree and one
+   pathological stall still cannot invent time. */
+function advance(raw, dt){
   /* inside the guard: loop() splits step and render into separate try blocks
      precisely so a throw cannot stop the frame chain, and this touches the DOM
      (visualViewport, documentElement, styles) which throws outright in an
@@ -10371,7 +10431,12 @@ function loop(t){
      interaction and the meltdown timer every frame while the game still looked
      alive, and the one-shot latch hid every repeat. */
   try {
-    if (G.state === 'play') step(dt * G.tscale, Math.min(.5, raw) * G.tscale);
+    if (G.state === 'play'){
+      let left = Math.min(.5, raw) * G.tscale;
+      const h = .05 * G.tscale;
+      if (left <= 0) step(0, 0);
+      while (left > 1e-9){ const k = Math.min(h, left); step(k, k); left -= k; }
+    }
     else {
       M.dx = 0; M.dy = 0;
       /* ...and never while a menu opened FROM the pause is up: the heading
@@ -10381,6 +10446,8 @@ function loop(t){
       if (G.shake) G.shake = Math.max(0, G.shake - dt*22);   // a death blast must not jitter the debrief forever
     }
   } catch (err){ fault('step', err); }
+}
+function loopTail(){
   try { render(); } catch (err){ fault('render', err); }
   requestAnimationFrame(loop);
 }

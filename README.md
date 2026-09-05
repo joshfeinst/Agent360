@@ -195,6 +195,20 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.48
+
+A browser that coarsens timestamps to 100ms (Firefox resistFingerprinting,
+Tor) ran the world at half speed while the SLA clock ran full: physics was
+clamped to 0.05s a frame and half of every 0.1s delta was thrown away. The
+frame is now simulated in sub-steps up to the same 0.5s ceiling both clocks
+share. The mission-start tap swallow compared an event timestamp with
+performance.now(); on an engine where those differ it lasted 1.6s, or never
+held. And the installed app could be held hostage by a network that stalls
+rather than fails — 25.1s to boot with the whole shell cached, most of it a
+render-blocking font stylesheet — and lost outright to one missing icon,
+since cache.addAll() is all-or-nothing. Both race a 3-second timeout now.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.47
 
 A stylus on a Windows or ChromeOS tablet sends pointer events and compat
