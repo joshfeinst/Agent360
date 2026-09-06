@@ -42,7 +42,9 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
   const boot = async (ctx) => {
     const page = await ctx.newPage();
     page.on('pageerror', e => errs.push(String(e)));
-    await page.goto('file://' + path.resolve(FILE));
+    /* domcontentloaded: the font sheet is no longer render-blocking, so the
+       splash is already over by the time an offline CDN fetch fails (12s) */
+    await page.goto('file://' + path.resolve(FILE), { waitUntil:'domcontentloaded' });
     await page.waitForFunction(() => typeof G !== 'undefined' && G.state === 'boot', null, { timeout:25000 });
     return page;
   };

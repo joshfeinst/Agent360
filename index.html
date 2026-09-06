@@ -14,7 +14,15 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
+<!-- Not render-blocking: it loads as a print sheet and is promoted on
+     arrival, so a first visit paints the splash the moment the HTML lands —
+     it used to be a blank tab for as long as the font CDN stalled (42.7s on
+     a train profile, first-paint measured), with nothing to click and no
+     CLICK TO SKIP. display=optional: a face that misses its window is not
+     swapped in later, so the watch's buttons never slide under a thumb
+     mid-mission (RESUME's old span became RESTART, no confirm, run gone). -->
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Chakra+Petch:wght@400;600;700&display=optional" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Chakra+Petch:wght@400;600;700&display=optional" rel="stylesheet"></noscript>
 <style>
 :root{
   --void:#05070c; --steel:#16202e; --steel2:#0c141f;
@@ -253,7 +261,11 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
 
 <div id="stage">
   <div id="frame">
-    <canvas id="view" width="384" height="216" tabindex="-1" aria-label="Agent 360 game viewport"></canvas>
+    <!-- role="application": a screen reader in browse mode eats single letters
+         as quick-nav keys (D landmark, F form field, R radio, Space activates)
+         before onKey ever sees them, so every mission key was dead under NVDA
+         until the player knew to switch modes. The role hands the keys over. -->
+    <canvas id="view" width="384" height="216" tabindex="-1" role="application" aria-label="Agent 360 game viewport"></canvas>
     <div id="scan"></div><div id="vig"></div>
 
     <!-- BOOT -->
@@ -369,43 +381,43 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
       switch them between turning and strafing under <b>Movement keys</b> in Options.
       Keys are bound by <b>position</b>, not by letter: the movement cluster is the same four keys under your left
       hand on every layout, and the names below follow <span id="ctl-layout">a US keyboard</span>.</p>
-      <div class="grid2 panel touch-only" id="ctl-touch">
-        <div class="ctl"><span>Move / strafe</span><span>Left pad — speed follows deflection</span></div>
-        <div class="ctl"><span>Sprint</span><span>Push the pad all the way to its rim</span></div>
-        <div class="ctl"><span>Look / turn</span><span>Right pad — or drag anywhere on the view</span></div>
-        <div class="ctl"><span>Fire</span><span>FIRE — hold for automatics — or tap the view</span></div>
-        <div class="ctl"><span>Aim mode (zoom)</span><span>AIM — tap on, tap off</span></div>
-        <div class="ctl"><span>Reload</span><span>RLD</span></div>
-        <div class="ctl"><span>Next weapon</span><span>GUN</span></div>
-        <div class="ctl"><span>Interact &amp; hack</span><span>Hold USE</span></div>
-        <div class="ctl"><span>Crouch</span><span>CRCH — tap on, tap off</span></div>
-        <div class="ctl"><span>Pause / floor plan</span><span>❚❚ — top right</span></div>
+      <div class="grid2 panel touch-only" id="ctl-touch" role="list">
+        <div class="ctl" role="listitem"><span>Move / strafe</span><span>Left pad — speed follows deflection</span></div>
+        <div class="ctl" role="listitem"><span>Sprint</span><span>Push the pad all the way to its rim</span></div>
+        <div class="ctl" role="listitem"><span>Look / turn</span><span>Right pad — or drag anywhere on the view</span></div>
+        <div class="ctl" role="listitem"><span>Fire</span><span>FIRE — hold for automatics — or tap the view</span></div>
+        <div class="ctl" role="listitem"><span>Aim mode (zoom)</span><span>AIM — tap on, tap off</span></div>
+        <div class="ctl" role="listitem"><span>Reload</span><span>RLD</span></div>
+        <div class="ctl" role="listitem"><span>Next weapon</span><span>GUN</span></div>
+        <div class="ctl" role="listitem"><span>Interact &amp; hack</span><span>Hold USE</span></div>
+        <div class="ctl" role="listitem"><span>Crouch</span><span>CRCH — tap on, tap off</span></div>
+        <div class="ctl" role="listitem"><span>Pause / floor plan</span><span>❚❚ — top right</span></div>
       </div>
       <!-- no-touch, like the pointer-lock paragraph and the right-hand-mirror
            line above it: on a phone this table is 19 rows of bindings for
            hardware that is not there, and it pushed BACK 617px below the fold -->
-      <div class="grid2 panel no-touch">
+      <div class="grid2 panel no-touch" role="list">
         <!-- the arrow rows follow the live layout (body.keys-arrows): one static
              table promised that ← → both turned AND strafed, whichever was true -->
-        <div class="ctl" data-row="move"><span>Move / strafe</span><span><span class="kb-wasd"><b data-code="KeyW">W</b> <b data-code="KeyA">A</b> <b data-code="KeyS">S</b> <b data-code="KeyD">D</b> · ↑ ↓</span> <span class="kb-arrows">↑ ↓ ← →</span></span></div>
-        <div class="ctl" data-row="turn"><span>Turn</span><span>Mouse · <b data-code="Comma">,</b> and <b data-code="Period">.</b> <span class="kb-wasd">· ← →</span></span></div>
-        <div class="ctl"><span>Fire</span><span>Click · Space · <b data-code="KeyX">X</b></span></div>
-        <div class="ctl"><span>Aim mode (zoom)</span><span>Right click · <b data-code="KeyZ">Z</b> · <b data-code="Backslash">\</b></span></div>
-        <div class="ctl"><span>Aim assist</span><span>Options · auto-aim, GoldenEye style</span></div>
-        <div class="ctl"><span>Reload</span><span><b data-code="KeyR">R</b> · <b data-code="Slash">/</b></span></div>
-        <div class="ctl"><span>Interact &amp; hack</span><span>Hold <b data-code="KeyF">F</b> · hold <b data-code="Quote">'</b></span></div>
-        <div class="ctl"><span>Crouch</span><span><b data-code="KeyC">C</b> · <b data-code="Semicolon">;</b></span></div>
-        <div class="ctl"><span>Hold or tap</span><span>Options · aim, crouch and sprint</span></div>
-        <div class="ctl"><span>Sprint</span><span>Either Shift</span></div>
-        <div class="ctl"><span>Next / prev weapon</span><span><b data-code="KeyQ">Q</b> <b data-code="KeyE">E</b> · <b data-code="BracketLeft">[</b> <b data-code="BracketRight">]</b> · wheel · <b data-code="Digit1">1</b> <b data-code="Digit2">2</b> <b data-code="Digit3">3</b> <b data-code="Digit4">4</b></span></div>
-        <div class="ctl"><span>Corner radar</span><span><b data-code="KeyN">N</b></span></div>
-        <div class="ctl"><span>Floor plan / pause</span><span>Tab opens · Esc resumes</span></div>
-        <div class="ctl"><span>Reset stuck input</span><span>Backspace</span></div>
-        <div class="ctl"><span>Input diagnostics</span><span>F3</span></div>
-        <div class="ctl"><span>Raw input trace</span><span>F2</span></div>
-        <div class="ctl"><span>Run self test</span><span>F4</span></div>
-        <div class="ctl"><span>Mute music</span><span><b data-code="KeyM">M</b></span></div>
-        <div class="ctl"><span>Toggle scanlines</span><span><b data-code="KeyP">P</b></span></div>
+        <div class="ctl" role="listitem" data-row="move"><span>Move / strafe</span><span><span class="kb-wasd"><b data-code="KeyW">W</b> <b data-code="KeyA">A</b> <b data-code="KeyS">S</b> <b data-code="KeyD">D</b> · ↑ ↓</span> <span class="kb-arrows">↑ ↓ ← →</span></span></div>
+        <div class="ctl" role="listitem" data-row="turn"><span>Turn</span><span>Mouse · <b data-code="Comma">,</b> and <b data-code="Period">.</b> <span class="kb-wasd">· ← →</span></span></div>
+        <div class="ctl" role="listitem"><span>Fire</span><span>Click · Space · <b data-code="KeyX">X</b></span></div>
+        <div class="ctl" role="listitem"><span>Aim mode (zoom)</span><span>Right click · <b data-code="KeyZ">Z</b> · <b data-code="Backslash">\</b></span></div>
+        <div class="ctl" role="listitem"><span>Aim assist</span><span>Options · auto-aim, GoldenEye style</span></div>
+        <div class="ctl" role="listitem"><span>Reload</span><span><b data-code="KeyR">R</b> · <b data-code="Slash">/</b></span></div>
+        <div class="ctl" role="listitem"><span>Interact &amp; hack</span><span>Hold <b data-code="KeyF">F</b> · hold <b data-code="Quote">'</b></span></div>
+        <div class="ctl" role="listitem"><span>Crouch</span><span><b data-code="KeyC">C</b> · <b data-code="Semicolon">;</b></span></div>
+        <div class="ctl" role="listitem"><span>Hold or tap</span><span>Options · aim, crouch and sprint</span></div>
+        <div class="ctl" role="listitem"><span>Sprint</span><span>Either Shift</span></div>
+        <div class="ctl" role="listitem"><span>Next / prev weapon</span><span><b data-code="KeyQ">Q</b> <b data-code="KeyE">E</b> · <b data-code="BracketLeft">[</b> <b data-code="BracketRight">]</b> · wheel · <b data-code="Digit1">1</b> <b data-code="Digit2">2</b> <b data-code="Digit3">3</b> <b data-code="Digit4">4</b></span></div>
+        <div class="ctl" role="listitem"><span>Corner radar</span><span><b data-code="KeyN">N</b></span></div>
+        <div class="ctl" role="listitem"><span>Floor plan / pause</span><span>Tab opens · Esc resumes</span></div>
+        <div class="ctl" role="listitem"><span>Reset stuck input</span><span>Backspace</span></div>
+        <div class="ctl" role="listitem"><span>Input diagnostics</span><span>F3</span></div>
+        <div class="ctl" role="listitem"><span>Raw input trace</span><span>F2</span></div>
+        <div class="ctl" role="listitem"><span>Run self test</span><span>F4</span></div>
+        <div class="ctl" role="listitem"><span>Mute music</span><span><b data-code="KeyM">M</b></span></div>
+        <div class="ctl" role="listitem"><span>Toggle scanlines</span><span><b data-code="KeyP">P</b></span></div>
       </div>
       <p class="hint no-touch">Click the viewport and the mouse is <b>captured</b>: it disappears, raw movement turns the view, and
       <b>Esc</b> hands it back (and pauses). That is the default and it works exactly like a native FPS. If the page is
@@ -512,7 +524,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.52';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.53';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -2830,7 +2842,7 @@ function loadLevel(li, di){
      painted. And resetLookState clears lockT — the same stale reference, but the
      one render() projects into the world. startMission never called it, so an
      unfinished mission's hostile came along to the next one. */
-  P.bob=0; P.useTarget=null; P.shootTarget=null; P.useDenied=null;
+  P.bob=0; P.useTarget=null; P.shootTarget=null; P.useDenied=null; P.said=null; P.saidLost=0;
   P.lockSX=0; P.lockSY=0;
   /* speed is what hostiles read to decide how much a moving target dodges
      (aimPenalty) and what the gun sways by, turnAt is the reticle's turn-zone
@@ -3084,6 +3096,23 @@ function usePrompt(t){
     /* the terminal's job is whatever its objective says — M04's stairwell
        terminal is a hack, and the prompt used to sell it as a deployment */
     : hf+' 1.9s — '+(G.objs.some(o => o.kind==='term' && /^hack/i.test(o.text)) ? 'HACK TERMINAL' : 'DEPLOY AGENT');
+}
+const shootPrompt = t => 'SHOOT IT — ' + (t.sub==='ap' ? 'ROGUE ACCESS POINT' : 'INFECTED ENDPOINT');
+/* The prompt is the one line that teaches the hack, and it was painted on the
+   canvas only: a reader at the first terminal heard nothing and never learned
+   to hold F. Spoken once per target — the aim wobbling off and back within
+   six seconds is the same terminal, not a new prompt. */
+function sayTarget(){
+  const t = P.useTarget || P.shootTarget;
+  if (!t){
+    if (P.said && !P.saidLost) P.saidLost = G.time;
+    if (P.said && G.time - P.saidLost > 6) P.said = null;
+    return;
+  }
+  P.saidLost = 0;
+  if (t === P.said) return;
+  P.said = t;
+  say(P.useTarget ? usePrompt(t) : shootPrompt(t), 3000);
 }
 const objsLeft = () => G.objs.filter(o => !o.done && o.kind!=='exit');
 /* The HUD's objective line, as a value so it can be asserted rather than read
@@ -3971,6 +4000,7 @@ function step(dt, scored){
   }
   if (!P.shootTarget) P.useDenied = null;
   else if (useHeld() && P.useDenied !== P.shootTarget){ P.useDenied = P.shootTarget; sfx('denied'); }
+  sayTarget();
 
   /* meltdown */
   if (G.meltdown > 0){
@@ -4959,8 +4989,7 @@ function drawHUD(horizon){
     bar((RW>>1)-50, RH-54, 100, 5, P.useTarget.prog, '#4ade80');
   } else if (P.shootTarget){
     /* the objective says destroy, and the player is standing there holding USE */
-    txtP('SHOOT IT — ' + (P.shootTarget.sub==='ap' ? 'ROGUE ACCESS POINT' : 'INFECTED ENDPOINT'),
-         RW>>1, RH-57, '#ffb02e', 7);
+    txtP(shootPrompt(P.shootTarget), RW>>1, RH-57, '#ffb02e', 7);
   }
 
   /* control state — keyboard only reaches a focused frame, so say so plainly */
@@ -5413,6 +5442,11 @@ function pause(){
     '<dt>Elapsed</dt><dd>'+fmt(G.time)+'</dd>'+
     '<dt>SLA window</dt><dd>'+fmt(G.L.par)+'</dd>'+
     '<dt>Health</dt><dd>'+Math.round(P.hp)+'% · armour '+Math.round(P.armor)+'%</dd>'+
+    /* the gun and its magazine had no route off the canvas: a reader could
+       learn an empty gun only from OUT OF AMMUNITION, which waits for the
+       reserve to be empty too */
+    '<dt>Weapon</dt><dd>'+WEAPS[P.w].hud+' · '+P.mag[P.w]+' of '+WEAPS[P.w].mag+' in the magazine · '+
+      (G.cheats.ammo ? 'unlimited' : P.ammo[WEAPS[P.w].ammo]+' in reserve')+'</dd>'+
     '<dt>Hostiles down</dt><dd>'+G.kills+'</dd>'+
     '<dt>Accuracy</dt><dd>'+(G.shots?Math.round(G.hits/G.shots*100):0)+'%</dd>'+
     /* the toast that announced the fuse is wiped by this very pause, and the
@@ -8669,6 +8703,61 @@ function selfTestBody(runSim){
              'focus '+(document.activeElement.textContent||document.activeElement.tagName).trim().slice(0,8)+' state '+G.state);
           resume(false); clearInput(); }
 
+        /* Enter resumes from the watch whatever holds focus: a click on the
+           stats panel (the come-back reflex after an alt-tab) put focus on
+           the body, and Enter went nowhere */
+        { G.state = 'play'; pause();
+          document.getElementById('p-meta').focus({ preventScroll:true });   // a click on the panel
+          if (document.activeElement && document.activeElement.tagName === 'BUTTON') document.activeElement.blur();
+          const fe = document.activeElement ? document.activeElement.tagName : 'none';
+          dispatchEvent(new KeyboardEvent('keydown', { code:'Enter', key:'Enter', bubbles:true, cancelable:true }));
+          ok('watch: Enter resumes even when a click on the panel took focus off RESUME',
+             G.state === 'play', 'focus was '+fe+', state '+G.state);
+          if (G.state !== 'play') resume(false);
+          clearInput(); }
+
+        /* every dialog wraps like the watch: on the title, Tab past the last
+           button used to land on the body — nothing focused for a reader, the
+           address bar on the next Tab */
+        { const st0 = G.state, sc0 = G.screenId;
+          G.state = 'title'; show('s-title');
+          const tab = shift => dispatchEvent(new KeyboardEvent('keydown', { code:'Tab', key:'Tab', shiftKey:!!shift, bubbles:true, cancelable:true }));
+          const fs = [...document.querySelectorAll('#s-title button')].filter(b => !b.disabled && b.offsetParent !== null);
+          const seen = [];
+          for (let i = 0; i < fs.length + 1; i++){ tab(false); seen.push(document.activeElement); }
+          const wrapped = fs.length >= 2 && seen[fs.length] === seen[0] && seen.every(el => fs.includes(el));
+          ok('title: Tab walks the dialog\'s buttons and wraps, never onto the body', wrapped,
+             'visited '+seen.map(e => (e.textContent||e.tagName).trim().slice(0,7)).join(' > '));
+          ok('viewport: the canvas is an application to a screen reader',
+             document.getElementById('view').getAttribute('role') === 'application');
+          /* the font sheet never blocks the first paint and never swaps a
+             face into a live screen: the cold splash was blank for as long
+             as the CDN stalled, and a late face slid RESTART under RESUME */
+          { const fl = document.querySelector('link[rel="stylesheet"][href*="fonts.googleapis.com"]');
+            ok('fonts: the stylesheet is promoted on arrival, not render-blocking, and display=optional',
+               !!fl && /print|all/.test(fl.getAttribute('media') || '') && !!fl.getAttribute('onload') && /display=optional/.test(fl.href),
+               fl ? 'media='+fl.getAttribute('media')+' onload='+!!fl.getAttribute('onload')+' '+fl.href.slice(-16) : 'no link'); }
+          /* the scanline period equals the game pixel at an inexact zoom
+             ratio: 67% is 0.6666666865…, and a stripe recomputed from the
+             snapped quotient floored 3/dpr*dpr to 2 — a 2-device-px stripe
+             over 3-px rows, beating every third game row */
+          { let slips = 0, n = 0, detail = '';
+            for (const dpr of [0.6666666865348816, 0.8999999761581421, 1.25, 1.5, 2])
+              for (const w of [1740, 1760, 1920, 2560, 3440, 5120]){
+                const r = fitSnap(Math.min(w / RW, (w * 9 / 16) / RH), dpr);
+                if (r.s * dpr < 2) continue;
+                n++;
+                const game = r.s * dpr, stripe = r.scan * dpr;
+                if (Math.abs(game - stripe) > 1e-6 || Math.abs(game - Math.round(game)) > 1e-6){ slips++; detail += ' '+w+'@'+dpr.toFixed(2)+' game '+game.toFixed(4)+' stripe '+stripe.toFixed(4); } }
+            ok('fit: the scanline period is the game pixel at inexact zoom ratios', n >= 20 && slips === 0, n+' shapes'+(detail || ' all in step')); }
+          const lists = [...document.querySelectorAll('#s-controls .grid2')];
+          const rows = [...document.querySelectorAll('#s-controls .ctl')];
+          ok('controls: the manual\'s rows are list items, not loose text',
+             lists.length >= 2 && lists.every(l => l.getAttribute('role') === 'list') &&
+             rows.length >= 20 && rows.every(r => r.getAttribute('role') === 'listitem'),
+             lists.length+' lists, '+rows.filter(r => r.getAttribute('role') === 'listitem').length+'/'+rows.length+' rows');
+          G.state = st0; show(sc0); clearInput(); }
+
         /* forced-colors (Windows High Contrast) drops background IMAGES: with
            only a gradient behind them every menu floated over the live mission
            at full colour, and the worst text run fell to 1.68:1 */
@@ -9047,6 +9136,29 @@ function selfTestBody(runSim){
           for (const k in BEST) delete BEST[k];
           Object.assign(BEST, JSON.parse(b0));
           Object.assign(G.cheats, ch0); G.tainted = t0; selLevel = sl0;
+          loadLevel(0,1); G.state = 'play'; clearInput(); }
+
+        /* the interact prompt reaches the reader: it was canvas-only, and a
+           blind player at the first terminal heard nothing and never learned
+           to hold F. Once per target — the aim wandering off and back within
+           six seconds is the same terminal, not a new prompt. */
+        { loadLevel(0,1); G.state = 'play'; P.alive = true; P.ang = 0; held.use = false;
+          const sayEl = document.getElementById('say'); sayEl.textContent = '';
+          const term = { kind:'prop', sub:'term', x:P.x+.5, y:P.y, r:.3, prog:0 };
+          G.ents.push(term);
+          step(1/60); step(1/60); step(1/60);
+          const lines = () => [...sayEl.children].map(l => l.textContent);
+          const once = lines().filter(l => /^HOLD .* 1\.9s — /.test(l)).length;
+          P.ang = Math.PI; step(1/60);                     // look away...
+          P.ang = 0; step(1/60); step(1/60);               // ...and back within a second
+          const still = lines().filter(l => /^HOLD .* 1\.9s — /.test(l)).length;
+          ok('reader: the interact prompt is spoken once when a terminal comes into reach',
+             once === 1 && still === 1, 'spoken '+once+' then '+still+' — '+lines().join(' | ').slice(0,80));
+          const ap = { kind:'prop', sub:'ap', x:P.x+.5, y:P.y+.05, r:.3, hp:30 };
+          G.ents.splice(G.ents.indexOf(term), 1); G.ents.push(ap); P.said = null;
+          step(1/60);
+          ok('reader: ...and so is the shoot-it prompt', lines().some(l => /^SHOOT IT — ROGUE/.test(l)), lines().join(' | ').slice(0,80));
+          sayEl.textContent = '';
           loadLevel(0,1); G.state = 'play'; clearInput(); }
 
         /* The Klobb's cadence has to be the weapon's, not the frame rate's. An
@@ -9936,6 +10048,8 @@ function selfTestBody(runSim){
           pause();
           const meta = document.getElementById('p-meta').textContent;
           ok('watch: the meltdown countdown is on the watch', /0:37/.test(meta), meta.replace(/\s+/g,' ').slice(-60));
+          ok('watch: the gun and its magazine are on the watch',
+             new RegExp(WEAPS[P.w].hud+' · '+P.mag[P.w]+' of '+WEAPS[P.w].mag).test(meta), meta.replace(/\s+/g,' ').slice(0,140));
           resume(false); G.meltdown = 0; selLevel = sel1; loadLevel(0,1); G.state = 'play'; show(null); clearInput(); }
 
         /* the watch's floor plan draws a hostile with a keyline and a glyph,
@@ -10513,9 +10627,14 @@ function onKey(e){
      — onto the canvas underneath, where the next Tab read as "close the
      watch" and quietly resumed the mission with the clock running. Esc and
      RESUME are the ways out, as the field manual says. */
-  if (e.code==='Tab' && G.state==='pause'){
+  /* ...and every other dialog keeps the same rule: they are all aria-modal,
+     yet Tab past BACK on the title, the options, the select and the debrief
+     fell onto the body — nothing focused, and the next Tab was the address
+     bar. Whatever screen is open, Tab walks its controls and wraps. */
+  if (e.code==='Tab' && G.screenId && G.screenId !== 's-boot' && G.state !== 'play'){
     e.preventDefault();
-    const fs = [...document.querySelectorAll('#s-pause button')].filter(b => !b.disabled && b.offsetParent !== null);
+    const fs = [...document.querySelectorAll('#'+G.screenId+' button, #'+G.screenId+' input, #'+G.screenId+' select, #'+G.screenId+' a[href], #'+G.screenId+' [tabindex]:not([tabindex="-1"])')]
+      .filter(b => !b.disabled && b.offsetParent !== null);
     if (fs.length){
       const i = fs.indexOf(document.activeElement);
       const n = i < 0 ? (e.shiftKey ? fs.length - 1 : 0) : (i + (e.shiftKey ? -1 : 1) + fs.length) % fs.length;
@@ -10615,6 +10734,11 @@ function onKey(e){
       const go = document.querySelector('#s-result .row button');
       if (go){ sfx('click'); go.click(); } else act('abort');
     }
+    /* ...and the watch's is RESUME. It was the one screen where Enter needed
+       the button still focused: the "click the game to come back" reflex after
+       an alt-tab lands on the stats panel, focus falls to the body, and Enter
+       did nothing until the player found Esc. */
+    else if (G.state==='pause'){ sfx('click'); resume(true); }
   }
   /* Esc pressed as you die is inert by design — the beat owns that second —
      but it stayed inert on the debrief too, so the key was never acknowledged
@@ -10828,7 +10952,13 @@ function fit(){
      pixels at 125%/150% display scaling, and the uneven columns came back. */
   const dpr = devicePixelRatio || 1;
   FIT_DPR = dpr;
-  if (s * dpr >= 2) s = Math.floor(s * dpr) / dpr;
+  /* The game pixel in DEVICE pixels, taken once as an integer: the scanline
+     below used to recompute floor(s*dpr) from the snapped quotient, and at a
+     browser zoom whose ratio is not exact (67% is 0.6666666865…, 90% is
+     0.8999999761…) 6/dpr*dpr came back 5.9999… — a 5-device-px stripe over
+     6-px rows, beating every fifth game row, at 14 of 88 zoom×window shapes. */
+  const snap = fitSnap(s, dpr);
+  s = snap.s;
   view.style.width = (RW*s)+'px';
   view.style.height = (RH*s)+'px';
   /* A viewport that changed moved the pads: let go of the thumbs on them.
@@ -10852,8 +10982,12 @@ function fit(){
      period (it beats against the pixel grid). Under 2x a per-row stripe is
      half the display — keep the classic 3px look there. */
   const scan = document.getElementById('scan');
-  if (scan) scan.style.backgroundSize = '100% ' +
-    (s * dpr >= 2 ? (Math.floor(s * dpr) / dpr) : 3) + 'px';
+  if (scan) scan.style.backgroundSize = '100% ' + snap.scan + 'px';
+}
+/* the snap and the scanline from ONE integer, so they cannot disagree */
+function fitSnap(s, dpr){
+  const px = s * dpr >= 2 ? Math.floor(s * dpr) : 0;
+  return px ? { s: px / dpr, scan: px / dpr } : { s, scan: 3 };
 }
 /* devicePixelRatio can change with no CSS-size change at all — the window
    dragged to a screen with different scaling, or the OS display-scale slider

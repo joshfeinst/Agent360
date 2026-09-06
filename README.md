@@ -195,6 +195,24 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.53
+
+A screen-reader player walked M01 keyboard-only and found the one line the
+game never spoke: the interact prompt was painted on the canvas and nowhere
+else, so a blind player at the first terminal never learned to hold F. It is
+announced now, once per target, and the watch names the gun and its magazine,
+which had no route off the canvas either. The viewport is an `application`
+so a reader hands the keys over, Tab wraps inside every dialog instead of
+falling onto the body, and the controls card is a list a reader can walk row
+by row. An alt-tab player added one: Enter resumes from the watch even after
+the come-back click landed on its stats panel. A player on a train found the
+font stylesheet blocking the first paint — a blank tab for as long as the CDN
+stalled, 42.7 s measured — and a late face sliding RESTART under RESUME
+mid-mission; the sheet is non-blocking now and a face that misses its window
+stays out. And an ultrawide player at 67% zoom found the scanline a device
+pixel short of the game pixel; both now come from one integer.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.52
 
 A player on old engines — a 2017 Android whose Chrome stopped updating, an

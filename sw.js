@@ -4,7 +4,7 @@
    installed app keeps its faces with no network. Bump CACHE on every release —
    activate() deletes the old one, and verify.js fails if this drifts from the
    VERSION constant in index.html. */
-const CACHE = 'agent360-v1.52';
+const CACHE = 'agent360-v1.53';
 /* SHELL is what the app cannot boot without, and its precache must succeed.
    ICONS are decoration, and they are precached one at a time, best effort:
    addAll() is all-or-nothing, so a transient 404 on ONE icon used to reject
@@ -14,7 +14,7 @@ const CACHE = 'agent360-v1.52';
 const SHELL = [ './', './index.html', './manifest.webmanifest' ];
 const ICONS = [ './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png' ];
 const NET_MS = 3000;   // how long the shell waits for a stalled network before the cache answers
-const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Chakra+Petch:wght@400;600;700&display=swap';
+const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Chakra+Petch:wght@400;600;700&display=optional';
 
 /* Only a good response is worth keeping: caching a 404 or an opaque 5xx would
    serve the failure forever once the network went away. */
