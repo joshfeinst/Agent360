@@ -116,6 +116,12 @@ function sourceCheck() {
   const clamps = (css.match(/font-size:clamp\(/g) || []).length;
   const clampOK = clamps > 0 && (css.match(/font-size:[0-9.]+px; font-size:clamp\(/g) || []).length === clamps;
   console.log('CSS fallbacks beside inset (' + insets + ') and clamp() font sizes (' + clamps + ') ' + (insetOK && clampOK ? '— yes' : '— NO'));
+  /* the font sheet: one URL in the page and the worker's precache, loaded as a
+     print sheet promoted on arrival (never render-blocking), display=optional */
+  const fontLink = html.match(/<link href="(https:\/\/fonts\.googleapis\.com[^"]+)" rel="stylesheet" media="print" onload="this\.media='all'">/);
+  const swFont = sw.match(/const FONT_CSS = '([^']+)'/);
+  const fontOK = !!fontLink && !!swFont && fontLink[1] === swFont[1] && /display=optional/.test(fontLink[1]);
+  console.log('FONTS non-blocking link, display=optional, one URL shared with sw.js ' + (fontOK ? '— yes' : '— NO'));
   const swIcons = /const ICONS = \[/.test(sw) && /allSettled\(ICONS\.map/.test(sw) && !/icons\/icon-[^']*'\s*\]\s*;?\s*\n?[^\n]*\n?[\s\S]{0,40}addAll/.test(sw) &&
                   !/SHELL = \[[^\]]*icons\//.test(sw);
   console.log('SW icons precache best-effort, apart from the shell ' + (swIcons ? '— yes' : '— NO, ONE MISSING ICON REJECTS THE INSTALL'));
@@ -128,7 +134,7 @@ function sourceCheck() {
   const stat = (html.match(/id="titlehint">([^<]+)</) || [])[1];
   const hOK = !!cap && !!stat && stat.indexOf(cap) === 0;
   console.log('TITLE HINT static default ' + (hOK ? 'matches the shipped look mode' : 'DRIFTED from TITLE_HINT.capture'));
-  return vOK && hOK && swScoped && swClone && sfxOK && swFresh && swIcons && swRace && !es2020 && insetOK && clampOK;
+  return vOK && hOK && swScoped && swClone && sfxOK && swFresh && swIcons && swRace && !es2020 && insetOK && clampOK && fontOK;
 }
 
 async function wirePage(page, errors, resourceErrs) {
@@ -453,7 +459,10 @@ async function runTouchDrive(page) {
     const dpage = await dctx.newPage();
     const derrs = [];
     dpage.on('pageerror', e => derrs.push(e.message));
-    await dpage.goto('file://' + target);
+    /* domcontentloaded, not load: the font sheet is no longer render-blocking,
+       so the game boots while the CDN fetch is still failing (12s offline
+       here) — waiting for load read the toast six seconds after it expired */
+    await dpage.goto('file://' + target, { waitUntil: 'domcontentloaded' });
     await dpage.waitForFunction(() => typeof G !== 'undefined' && typeof selfTest === 'function', { timeout: 15000 });
     await dpage.waitForTimeout(600);
     const r = await dpage.evaluate(() => {
@@ -488,7 +497,7 @@ async function runTouchDrive(page) {
     const cpage = await cctx.newPage();
     const cerrs = [];
     cpage.on('pageerror', e => cerrs.push(e.message));
-    await cpage.goto('file://' + target);
+    await cpage.goto('file://' + target, { waitUntil: 'domcontentloaded' });   // as above: read the toast while it is up
     await cpage.waitForFunction(() => typeof G !== 'undefined' && typeof selfTest === 'function', { timeout: 15000 });
     await cpage.waitForTimeout(600);
     const r = await cpage.evaluate(() => {
