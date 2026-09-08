@@ -1,217 +1,12 @@
-# Agent 360 — GoldenShare
+# Changelog
 
-Somebody at Riverbend Logistics propped the server-room door open. Somebody at
-Meridian Freight clicked the link. Somebody stopped paying for cage 40 at the
-Northpoint colo, and the crew that noticed is exfiltrating through it tonight.
-Somebody bolted a mast to the roof of the parking deck, and every rogue access
-point on this contract answers to it.
-And somewhere under a building nobody has the keys to, a domain controller
-with twenty-two years of uptime has decided that migration is an attack. You are the MSP's field agent. Deploy the agent,
-walk the CFO off the floor, decommission the machine, and be out before the
-night shift arrives.
+Every shipped version of Agent 360, newest first. Each is a git tag, so
+`git show v1.54:index.html` is that exact build; the ledger behind each
+entry is [NIGHT_LOG.md](NIGHT_LOG.md).
 
-It's a GoldenEye-era first-person shooter about managed IT services, rendered
-with GoldenEye-era technology: a software raycaster writing into a 384×216
-pixel buffer, textured floor and ceiling casting, billboard sprites with a
-per-column depth buffer, and a procedurally synthesised soundtrack. No assets,
-no libraries, no build step — the whole game is one HTML file. Its sibling
-project [Managed](https://github.com/joshfeinst/Managed) covers the desk job;
-this is the desk job seen from the field.
+Play the current build: <https://joshfeinst.github.io/Agent360/>
 
-Five missions on three clearances, GoldenEye-style aim assist, cheats
-unlocked from the start (the results screen just gets an asterisk), and a
-face-upload option so every hostile in the building can wear a colleague's
-photo. The photo never leaves the browser tab.
-
-## Play it
-
-| | |
-|---|---|
-| **In a browser** | [joshfeinst.github.io/Agent360](https://joshfeinst.github.io/Agent360/) — installs as an app, works offline after the first load |
-| **From a file** | Download `index.html` and double-click it. That's the whole game. Chrome or Edge recommended — the mouse locks the moment you hit ACCEPT. |
-| **Locally** | `python3 -m http.server` in the repo, then `http://localhost:8000` |
-
-Every push to `main` deploys within a minute or two. The service worker is
-network-first, so an installed copy picks the new build up on its next launch.
-
-## Controls
-
-Move **WASD** · look **mouse** (pointer lock; Esc releases and pauses) · fire
-**click / Space** · aim-zoom **right-click / Z** · interact **hold F** · reload
-**R** · weapons **Q/E, wheel, 1–4** · floor plan **Tab** · radar **N** ·
-self-test **F4** · input diagnostics **F3 / F2**. Every action has a
-right-hand mirror for left-handed mouse users; the in-game CONTROLS screen has
-the full list.
-
-**On a phone it works out that it's a phone.** Two pads: the left one moves —
-push it to the rim and you sprint — and the right one looks, so you can walk
-and turn at once instead of choosing. Dragging the view still looks if you
-prefer it, a tap on the view shoots, and FIRE, AIM, RLD, GUN, USE, CRCH and
-❚❚ (pause) cluster around whichever pad the thumb is already on, every one of
-them at least 44px. The pause screen's field watch stands in for Tab's floor plan. Landscape
-is the better way to hold it; installed from *Add to Home Screen*, it launches
-fullscreen. Settings and per-mission bests survive reloads, and cheated runs
-are never recorded.
-
-## Packaging story
-
-The single HTML file **is** the build artifact — for a zero-dependency game
-that is a feature, not a limitation. The repo packages *distribution* around
-it:
-
-- **`index.html`** — the game. Also runs bare from disk; the PWA hooks
-  (manifest link + guarded service-worker registration) deliberately no-op on
-  `file://`.
-- **`manifest.webmanifest` + `icons/` + `sw.js`** — installable PWA with
-  offline support. The service worker is network-first for the shell and
-  caches the fonts at install. `VERSION` in `index.html` must match the
-  `CACHE` name in `sw.js`; `tools/verify.js` fails the build if they drift.
-- **`.github/workflows/pages.yml`** — deploys the repo to GitHub Pages on every
-  push to `main`.
-- **Releases** — tag a version (`git tag v1.10 && git push --tags`), create a
-  GitHub Release, and attach `index.html` renamed to `Agent360.html` as the
-  downloadable build. That is this project's "package registry".
-
-## Roadmap — SharePoint and multiplayer
-
-The eventual goal is colleagues playing this from the team's M365 world.
-
-**Getting it into SharePoint.** Modern SharePoint will not execute an uploaded
-`.html` file, so the realistic paths are, in order of sanity:
-
-1. **Embed web part** (recommended first step): host the game at a real URL —
-   the GitHub Pages setup here, or an Azure Static Web App if it should live
-   inside the company's Azure tenancy — and embed that URL in a SharePoint
-   page. A tenant admin must allow-list the domain (SharePoint admin center →
-   Settings → HTML field security). The game already tolerates iframes: where
-   the frame refuses pointer lock it falls back to free-look, and giving the
-   iframe `allow="pointer-lock"` restores full mouse capture.
-2. **SPFx web part**: wrap the game in a SharePoint Framework `.sppkg` package
-   — the "proper" M365 route, deployable through the tenant App Catalog.
-3. **Legacy `.aspx` upload**: works only where the tenant still allows custom
-   script; most don't. Not worth chasing.
-
-**Multiplayer, smallest first.** None of this is built yet; each step stands
-alone:
-
-1. **Shared leaderboard** — everyone plays solo, mission time / accuracy / rank
-   post to one board. Cheapest backends: a SharePoint List written via Graph, a
-   tiny Azure Function, or zero-infrastructure shared state on a hosted
-   artifact. Days of work; passes every corporate firewall.
-2. **Ghost racing** — record a run (position/yaw stream, a few KB of JSON),
-   share it, race the colleague's translucent ghost. The billboard-sprite
-   pipeline already in the engine renders the ghost; no netcode, no servers,
-   and combined with (1) the sharing is automatic. Best fun-per-effort.
-3. **Real-time deathmatch / co-op (2–8 players)** — a WebSocket relay over 443
-   (survives corporate networks; peer-to-peer WebRTC usually doesn't without a
-   TURN server anyway): ~100-line Node relay on Azure/Fly plus lobby UI, player
-   sprites and name tags, interpolation, respawns. Deathmatch first — it needs
-   no enemy-AI syncing, each client simulates itself and broadcasts
-   position/fire events. Co-op adds host-authoritative enemy state on top.
-
-## v1.10
-
-A full TLC pass over v1.04, run the way Managed's overnight rounds were run:
-measure first, change second, and a self-test for everything that broke on the
-way. The short version — the game now plays properly on a phone, the three
-missions stopped sharing one grey wall texture, getting shot tells you where
-from, dying gets a beat before the debrief, the finale duel got a checkpoint, the
-soundtrack learned the difference between a menu and a meltdown, and every
-mission hides one cache behind a wall that doesn't advertise itself. The long
-version, with the measurements that forced each change, is
-[NIGHT_LOG.md](NIGHT_LOG.md).
-
-## v1.20
-
-The campaign grew from three missions to five. Two landed between the phishing floor and the
-finale — a colo at 03:15 and a parking-deck roof at dusk, the game's first
-open sky — and a scripted objective-chain bot now proves every mission humanly
-winnable end to end from a cold pistol start, on every clearance, with each
-new mission's par calibrated from its own measured run. Same ledger:
-[NIGHT_LOG.md](NIGHT_LOG.md).
-
-## v1.21
-
-An adversarial bug hunt: four probe-driven finders, twenty-two reproduced
-fixes. The ones a player would have met first: a tap on the letterbox no
-longer fires the gun or silently drops your AIM, a laggy frame can no longer
-eat a tap or a flick, checkpoint wins stopped overwriting honest best times,
-the aim assist stopped courting an invulnerable boss, and secret caches
-stopped advertising themselves on the radar. Ledger as always:
-[NIGHT_LOG.md](NIGHT_LOG.md).
-
-## v1.22 · v1.23
-
-Ten player sessions, each handed the game cold and told to play it, then every
-anomaly they filed cross-examined by a paired skeptic: 39 reported, 29
-confirmed, 10 refuted. The phone half landed first — a reachable pause screen,
-menus that answer a finger with a thumb already on the glass, one owner per
-look drag, held keys that survive a pause, twin-pad tuning. The desk half
-followed: the title screen stopped teaching a control scheme it does not ship,
-MISSION SELECT stopped promising objective counts three of the five missions
-never had, your clearance survives a reload (and stops hiding your own best
-times), P actually turns the scanlines off for good, the menus gave up a
-blur that cost 38fps at 720p and showed nothing, the mission clock stopped
-under-counting on a slow device, and the radar and floor plan gave five
-different things five different shapes. Ledger:
-[NIGHT_LOG.md](NIGHT_LOG.md).
-
-## v1.24
-
-Housekeeping with teeth. Two of the fixes are things a player would have felt
-without ever knowing why: a mission no longer starts with the last one's walk
-cycle, footstep and aim-assist lock still attached, and on a tablet with a
-keyboard a tap on MISSION SELECT stopped killing the ENTER shortcut the gold
-row advertises. The rest is the test suite growing the habit of asking
-generic questions instead of remembered ones — *does any field of the player
-survive a mission load*, rather than *did we remember crouch* — which is how
-the first two were found. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
-
-## v1.25
-
-A round spent asking whether the game's own promises are kept. The field
-manual lists thirty-seven keys; a test now presses every one of them, parsed
-out of the screen itself rather than a list beside it, so a row that starts
-naming a new key is checked the day it is written. Every character a mission
-map uses has to leave a mark on the level, because one the loader does not
-answer becomes floor in silence — a medkit that simply is not there. Every
-sound the code plays has to exist in the sound table, because `sfx()` on a
-missing name is not an error, it is quiet. And the one real defect: a stored
-best time was checked for a floor but not a ceiling, so a corrupted save could
-put `BEST 1.66e+306:56` on MISSION SELECT. Ledger:
-[NIGHT_LOG.md](NIGHT_LOG.md).
-
-## v1.26
-
-Score tables are where a typo hides from a soak: every frame still runs,
-nothing throws, and the only symptom is that the middle clearance punishes
-harder than the top one, or that missing more shots earns a better review. So
-this round asked the *shape* of each table rather than any number in it — no
-rung softer than the one below, the roster and task list never shrinking as
-clearance rises, and playing worse on any axis never earning a better
-performance review, over 240 combinations. That found one latent fault: the
-rank ladder's ceiling was the literal `7` rather than the ladder's own length,
-so adding a rung would have silently pinned every player to the old top. Six
-other reports were chased and refuted. Ledger:
-[NIGHT_LOG.md](NIGHT_LOG.md).
-
-## Versions
-
-The build is named in three places, kept in step by `tools/verify.js`: the
-`VERSION` constant in `index.html`, the `CACHE` name in `sw.js`, and the
-plain-text `VERSION` file. Every shipped version is a git tag as well, so
-`git tag` is the release list and `git show v1.54:index.html` is that exact
-build. [CHANGELOG.md](CHANGELOG.md) carries the notes for all of them.
-
-Three tools keep that true, and each is safe to re-run:
-
-| | |
-|---|---|
-| `tools/tag-releases.sh` | rebuilds a tag for every version found in history, and checks that each tag really carries its own version in both files |
-| `tools/changelog.py` | rebuilds `CHANGELOG.md` from the tag headlines and this file's own release sections |
-| `tools/publish-releases.sh` | pushes the tags and creates the matching GitHub Releases, with each version's changelog section as the body (needs `GH_TOKEN` and a credential that may write `refs/tags/*`) |
-
-## v1.54
+## v1.54 — a muted player, a back button, a high-DPI phone, a power user
 
 Four players at once. A muted player found that after another window turned
 the soundtrack off, MUSIC ON flipped the label and left the bus at zero. A
@@ -223,9 +18,9 @@ the glass, so a thumb on the look pad fired a round. And a power user with
 every browser setting changed found a blocked manifest taking the whole
 service worker with it, the gold buttons invisible in Windows High Contrast,
 and holes in the music whenever the browser throttled its timers.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.54/NIGHT_LOG.md).
 
-## v1.53
+## v1.53 — a screen reader, an alt-tab, a slow network, an ultrawide
 
 A screen-reader player walked M01 keyboard-only and found the one line the
 game never spoke: the interact prompt was painted on the canvas and nowhere
@@ -241,9 +36,9 @@ stalled, 42.7 s measured — and a late face sliding RESTART under RESUME
 mid-mission; the sheet is non-blocking now and a face that misses its window
 stays out. And an ultrawide player at 67% zoom found the scanline a device
 pixel short of the game pixel; both now come from one integer.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.53/NIGHT_LOG.md).
 
-## v1.52
+## v1.52 — an old device
 
 A player on old engines — a 2017 Android whose Chrome stopped updating, an
 iPad on iOS 12–14, a Chromebook past its update date — found two things that
@@ -253,9 +48,9 @@ static splash up forever. And `inset:0` with no four-side fallback put every
 screen below the fold on Chrome 80–86 and Safari 13.4–14 and collapsed the
 touch cluster to nothing. The file is ES2018 again and the stylesheet carries
 fallbacks an old parser keeps, and verify.js now holds both.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.52/NIGHT_LOG.md).
 
-## v1.51
+## v1.51 — the eleventh round, parts one and two
 
 Two windows of the game on one profile: a setting chosen in one was erased by
 the other's next save, because the v1.37 merge folded in only bests — and the
@@ -266,9 +61,9 @@ the watch's ABORT button under a text-gated restore, so on a translated phone
 it read "tap again" forever; the arm comes down by state now, keycaps carry
 translate="no" so "A" is no longer "UM", and F4 no longer shows four red rows
 that were only the suite reading Portuguese.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.51/NIGHT_LOG.md).
 
-## v1.50
+## v1.50 — a controller in the hand
 
 A phone paired with a controller that Android registers as a pointing device
 answers "fine pointer, hover", and the game dressed it as a desktop: no touch
@@ -277,9 +72,9 @@ chooser back below the fold. A phone-sized screen with touch points is a
 touch device now whatever its primary pointer says; touchscreen laptops keep
 the mouse profile. And the finger that opens hybrid no longer spends a round
 doing it. The game itself ignores a gamepad, and nothing breaks when one is
-plugged in. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+plugged in. Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.50/NIGHT_LOG.md).
 
-## v1.49
+## v1.49 — what the screens never said, and 360 frames a second
 
 A player who acted only on what the screen had said found that thirty-six
 lines of text between the cold load and the first fight never named a
@@ -291,9 +86,9 @@ A player on a 360 Hz monitor drove the real frame loop at every cadence from
 20 to 360 and through a wandering dt: every quantity held except aim and
 crouch, which eased with a per-frame fraction and so took 10% longer at
 360 Hz than at 30 — now a frame-rate-independent ease.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.49/NIGHT_LOG.md).
 
-## v1.48
+## v1.48 — the clocks that lie, and the network that stalls
 
 A browser that coarsens timestamps to 100ms (Firefox resistFingerprinting,
 Tor) ran the world at half speed while the SLA clock ran full: physics was
@@ -305,9 +100,9 @@ held. And the installed app could be held hostage by a network that stalls
 rather than fails — 25.1s to boot with the whole shell cached, most of it a
 render-blocking font stylesheet — and lost outright to one missing icon,
 since cache.addAll() is all-or-nothing. Both race a 3-second timeout now.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.48/NIGHT_LOG.md).
 
-## v1.47
+## v1.47 — the ninth player-session round
 
 A stylus on a Windows or ChromeOS tablet sends pointer events and compat
 mouse events and no TouchEvents, and a touch-profile game threw the lot away:
@@ -325,9 +120,9 @@ collapse; the one near miss, the amber cue against the red pain arc under
 deuteranopia, now has a different stroke as well as a different radius. And
 the economy is sound — no mission can be starved — but a crate refused a
 player whose cannon was dry, in silence, and "dry" was never said.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.47/NIGHT_LOG.md).
 
-## v1.46
+## v1.46 — two seams in my own work
 
 Two seams between the last three releases, found before the round's players
 reported. Opening the field watch wiped the screen reader's live region along
@@ -335,9 +130,9 @@ with the toast column, though every reason for that clear is about paint; and
 the hold/toggle row's keyboard latch and the touch AIM button were two latches
 over one zoom, so on a touchscreen laptop a Z tap and an AIM tap-off left the
 view fully zoomed under a lamp that said off. Both are one latch now.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.46/NIGHT_LOG.md).
 
-## v1.45
+## v1.45 — the hold/toggle row
 
 Options gains **Aim / crouch / sprint · HOLD · TOGGLE**. On a keyboard these
 three have always been holds, which asks for two keys at once — aim and fire,
@@ -345,9 +140,9 @@ crouch and walk, sprint and walk — so a player who can only ever have one key
 down lost three of the game's verbs: a tap-then-press measures P.aim 0.01
 where an aimed shot needs 0.5, P.crouch 0.00, P.speed 1.00. The touch build
 has latched AIM and CRCH since v1.20; this is the same offer to a keyboard.
-HOLD stays the default. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+HOLD stays the default. Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.45/NIGHT_LOG.md).
 
-## v1.44
+## v1.44 — the seventh player-session round
 
 A player brought a 16000-dpi mouse with side buttons. Two things broke. The
 captured look path dropped any single event past 3000 raw counts instead of
@@ -358,9 +153,9 @@ is now half a turn, in radians, so it scales with the sensitivity. And the
 thumb button, which every mouse maps to browser BACK, was swallowed whole by
 the pointer lock during play — so the first press that ever landed was the one
 on the field watch, where BACK ends the run.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.44/NIGHT_LOG.md).
 
-## v1.43
+## v1.43 — what you cannot hear, and what one hand cannot reach
 
 The game had been audited for colour and never for sound. A player with the
 volume at zero enumerated all 31 sounds and found two that were the only notice
@@ -371,9 +166,9 @@ amber arc on the reticle ring, pointing where the noise came from, and only
 when the source is off screen. A player with one hand found two more: Sticky
 Keys could not reach sprint (1.000 against 1.480), and the promise that every
 action has a right-hand mirror was false for aim.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.43/NIGHT_LOG.md).
 
-## v1.42
+## v1.42 — the reader hears the settings, and hears them from inside the room
 
 A player drove the whole game through the accessibility tree with Tab, Enter,
 Space and the arrows. Two things broke. Tabbing the Options panel announced
@@ -383,18 +178,18 @@ now answers to its own row's label. And every menu toast was raised outside the
 dialog that was open, which `aria-modal` tells a screen reader not to render —
 including the warning that your save could not be read. There is now one live
 region, and it travels into whichever screen is open.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.42/NIGHT_LOG.md).
 
-## v1.41
+## v1.41 — the other place a key is named
 
 v1.40 taught the CONTROLS card to name the keys on the player's own keyboard
 and left the same lie in the place it costs most: the green band at a terminal,
 the prompt that teaches the whole hack, said HOLD F on every keyboard on earth.
 On Dvorak that physical key prints U, so after v1.40 the card and the prompt
 disagreed with each other on the same board. The prompt now reads the layout
-too. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+too. Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.41/NIGHT_LOG.md).
 
-## v1.40
+## v1.40 — the manual reads the player's own keyboard
 
 The field manual named every key by the glyph a US keyboard prints on it,
 while the game binds the physical key — which is why the movement cluster is
@@ -406,9 +201,9 @@ prints, so the card now asks it: on a French layout it reads Z Q S D, aim W,
 weapons A E · ^ $ · & É " '. Where a browser will not say, the US glyphs stand
 and the card admits they are US — and a new line explains that the binding is
 positional, which is the part that makes any layout playable.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.40/NIGHT_LOG.md).
 
-## v1.39
+## v1.39 — the sixth player-session round
 
 Four ways to lose a run without being told, each with a message or a rule
 already written for it that never ran. A save that cannot be read is stashed
@@ -419,9 +214,9 @@ swallowed whole: the debrief printed a rank over a run already lost. BACK from
 OPTIONS opened over the field watch fell through every branch, spending the
 history entry so the next BACK left the page. And the watch's two-tap ABORT
 was armed globally, so an arming tap, a RESUME and a second graze of the pause
-button threw the run away on one tap. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+button threw the run away on one tap. Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.39/NIGHT_LOG.md).
 
-## v1.38
+## v1.38 — two halves of two fixes
 
 Two players found halves of fixes. v1.32 ruled that a Ctrl, Alt or Meta chord
 is the browser's and never a game key, and put the guard in one of the two
@@ -431,9 +226,9 @@ chord, put them into a sprint. And the rule that a re-fitted frame lets go of
 the thumbs on its pads asked only whether the picture had changed width, which
 portrait never does: a phone browser sliding its URL bar back in moved the
 stick 39.6px under a motionless thumb, and forward became backward. Ledger:
-[NIGHT_LOG.md](NIGHT_LOG.md).
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.38/NIGHT_LOG.md).
 
-## v1.37
+## v1.37 — the one weapon that did not get the memo
 
 v1.33 made the CFO you are escorting a body rather than a window, so a round
 into him stops and the agent is told. It fixed the path every weapon uses
@@ -443,18 +238,18 @@ the guard behind for 82.5 HP, said nothing, and counted as a hit. It obeys the
 same contract now. Also: USE never checks the wall between you and the
 terminal, and every hackable prop in the campaign was measured unreachable
 through one by a margin of 0.21u — a level-design margin the maps are now held
-to. Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+to. Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.37/NIGHT_LOG.md).
 
-## v1.36
+## v1.36 — a cache you have opened stays open
 
 A secret cache's wall could slide shut with the agent still inside it. The
 tight hold radius that keeps a hidden door disguised — 1.10u, against an
 ordinary door's 1.61u — stayed tight after the door was found, and the caches
 behind those doors run deeper than that: 2.21u to the far corner of M03's. A
 found secret now holds on 2.50u, which covers every cache in the game.
-Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.36/NIGHT_LOG.md).
 
-## v1.35
+## v1.35 — high contrast and the click shield
 
 In Windows High Contrast every menu floated over the live mission, because the
 backdrop was a gradient and forced-colors drops background images; the worst
@@ -464,9 +259,9 @@ zoom the Music and Scanlines sliders could be seen and not pressed. The
 Reduce Motion row said OFF while the operating system was forcing it on. And
 the debrief, which takes focus when it opens, had no role and no name to
 announce. Ledger, including what browser zoom can and cannot do for a
-low-vision player: [NIGHT_LOG.md](NIGHT_LOG.md).
+low-vision player: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.35/NIGHT_LOG.md).
 
-## v1.34
+## v1.34 — the render round
 
 The frame got 27% cheaper without a pixel moving. The floor caster looked its
 map cell up once per pixel where the cell only changes where the walk crosses
@@ -477,9 +272,9 @@ exact key rather than the proposed hash, because the hash collided and drew
 the chevron somewhere else in 20 of those poses. Ledger, including the earlier
 performance verdict that turned out to be measurement noise, and the five
 candidate optimisations that lose:
-[NIGHT_LOG.md](NIGHT_LOG.md).
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.34/NIGHT_LOG.md).
 
-## v1.33
+## v1.33 — the grace is the banner
 
 The mission banner promises you a moment to read it, and v1.32's grace was
 seven tenths of a second shorter than the banner itself — long enough for a
@@ -491,9 +286,9 @@ at a hardcoded 8px. And now that rounds stop on the CFO, the aim assist was
 still locking through him and feeding every round into his back. Ledger,
 including the escape route, the objective orders, the ammo economy and the
 duel that were measured and left alone:
-[NIGHT_LOG.md](NIGHT_LOG.md).
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.33/NIGHT_LOG.md).
 
-## v1.32
+## v1.32 — the fifth player-session round
 
 A level auditor, a gun nut, a streamer at 1080p, a kid mashing a phone, a
 low-vision player and a performance reviewer. Ctrl+P turned the scanlines
@@ -504,9 +299,9 @@ thumb; rounds passed through the CFO in silence; a near-full crate vanished
 for one round; the aimed crosshair lied about its cone; a phish fired at the
 spawn during the mission banner; health had no number. The performance
 reviewer's variant measured slower and did not ship. Ledger:
-[NIGHT_LOG.md](NIGHT_LOG.md).
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.32/NIGHT_LOG.md).
 
-## v1.31
+## v1.31 — the suite, the pixels, and the copy
 
 Two reviewers on ground nobody had audited — the self-test suite itself and
 what the HUD draws, pixel by pixel — and four players: a touchscreen laptop
@@ -520,9 +315,9 @@ finger on the view now opens the cluster beside the mouse. The waypoint
 label covered the crosshair the moment you aimed at its target, and the
 chevron pointed through locked doors. The clearance blurbs promised a
 tasking difference three missions do not have. Ledger:
-[NIGHT_LOG.md](NIGHT_LOG.md).
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.31/NIGHT_LOG.md).
 
-## v1.30
+## v1.30 — the fourth player-session round
 
 Six more players on ground the first twelve had not covered: a returning
 player over http with the service worker live, an Android phone whose browser
@@ -536,9 +331,9 @@ a Mac mouse's small notches collapsed into one weapon step; F4 threw out of
 its own suite when site data was blocked, and went red with infinite ammo on;
 the finale opened in boss-fight music with the boss unmet; Shift held through
 RESTART walked instead of sprinting. Ledger, including
-what was reported and did not survive: [NIGHT_LOG.md](NIGHT_LOG.md).
+what was reported and did not survive: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.30/NIGHT_LOG.md).
 
-## v1.29
+## v1.29 — the third player-session round
 
 Six more scripted players, told to play rather than probe: an explorer in an
 iframe that refuses pointer lock, a commuter holding the phone in portrait, a
@@ -551,9 +346,9 @@ picture under a rotate chip that covered them; free look drew two crosshairs
 250px apart; the frame that refused the mouse went back to a title screen
 that taught mouse capture; a second vest promised +60 for +40. Ledger,
 including the two reports that were the harness and not the game:
-[NIGHT_LOG.md](NIGHT_LOG.md).
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.29/NIGHT_LOG.md).
 
-## v1.28
+## v1.28 — the corners round
 
 Four reviewers were each handed one section of the file and told to find
 what was reproducible, and every claim was reproduced headlessly before it
@@ -566,9 +361,9 @@ everywhere else, F4 on a debrief brought back a different mission's, a
 checkpoint duel was ranked against the whole mission's clock, a key held
 through the briefing's ENTER walked nowhere, and free look hitched every
 time the cursor crossed onto the letterbox. Ledger, including what was
-reported and did not survive: [NIGHT_LOG.md](NIGHT_LOG.md).
+reported and did not survive: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.28/NIGHT_LOG.md).
 
-## v1.27
+## v1.27 — player sessions II
 
 Six scripted players were handed the game cold — a first-timer on a laptop, a
 speedrunner chasing M03, a commuter on a landscape phone, someone who rotates
@@ -585,7 +380,7 @@ sprint or a crouch the thumb was still holding — and Backspace, the key the
 manual sells as "Reset stuck input", was what killed the stick. A swipe on the
 black surround navigated the browser away mid-run. Ledger, including what was
 reported and did not survive:
-[NIGHT_LOG.md](NIGHT_LOG.md).
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.27/NIGHT_LOG.md).
 
 ## Development
 
@@ -635,4 +430,140 @@ reported and did not survive:
   AGENT time: `node tools/runthrough.js "$(pwd)/index.html" all all`.
 - The game has been through repeated adversarial review rounds — independent
   finders cross-examined by paired skeptics — and every confirmed regression
-  became an F4 assertion. [NIGHT_LOG.md](NIGHT_LOG.md) is the ledger.
+  became an F4 assertion. [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.27/NIGHT_LOG.md) is the ledger.
+
+## v1.26 — the tables round
+
+Score tables are where a typo hides from a soak: every frame still runs,
+nothing throws, and the only symptom is that the middle clearance punishes
+harder than the top one, or that missing more shots earns a better review. So
+this round asked the *shape* of each table rather than any number in it — no
+rung softer than the one below, the roster and task list never shrinking as
+clearance rises, and playing worse on any axis never earning a better
+performance review, over 240 combinations. That found one latent fault: the
+rank ladder's ceiling was the literal `7` rather than the ladder's own length,
+so adding a rung would have silently pinned every player to the old top. Six
+other reports were chased and refuted. Ledger:
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.26/NIGHT_LOG.md).
+
+## Versions
+
+The build is named in three places, kept in step by `tools/verify.js`: the
+`VERSION` constant in `index.html`, the `CACHE` name in `sw.js`, and the
+plain-text `VERSION` file. Every release is also a git tag, so `git tag` lists
+them and `git show v1.54:index.html` is that build; `tools/tag-releases.sh`
+rebuilds the set from history and `tools/tag-releases.sh --push` publishes it.
+
+## v1.25 — the promises round
+
+A round spent asking whether the game's own promises are kept. The field
+manual lists thirty-seven keys; a test now presses every one of them, parsed
+out of the screen itself rather than a list beside it, so a row that starts
+naming a new key is checked the day it is written. Every character a mission
+map uses has to leave a mark on the level, because one the loader does not
+answer becomes floor in silence — a medkit that simply is not there. Every
+sound the code plays has to exist in the sound table, because `sfx()` on a
+missing name is not an error, it is quiet. And the one real defect: a stored
+best time was checked for a floor but not a ceiling, so a corrupted save could
+put `BEST 1.66e+306:56` on MISSION SELECT. Ledger:
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.25/NIGHT_LOG.md).
+
+## v1.24 — the phone-fairness and method rounds
+
+Housekeeping with teeth. Two of the fixes are things a player would have felt
+without ever knowing why: a mission no longer starts with the last one's walk
+cycle, footstep and aim-assist lock still attached, and on a tablet with a
+keyboard a tap on MISSION SELECT stopped killing the ENTER shortcut the gold
+row advertises. The rest is the test suite growing the habit of asking
+generic questions instead of remembered ones — *does any field of the player
+survive a mission load*, rather than *did we remember crouch* — which is how
+the first two were found. Ledger: [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.24/NIGHT_LOG.md).
+
+## v1.23 — Merge pull request #5 from joshfeinst/claude/agent-360-tlc-4e10um
+
+Ten player sessions, each handed the game cold and told to play it, then every
+anomaly they filed cross-examined by a paired skeptic: 39 reported, 29
+confirmed, 10 refuted. The phone half landed first — a reachable pause screen,
+menus that answer a finger with a thumb already on the glass, one owner per
+look drag, held keys that survive a pause, twin-pad tuning. The desk half
+followed: the title screen stopped teaching a control scheme it does not ship,
+MISSION SELECT stopped promising objective counts three of the five missions
+never had, your clearance survives a reload (and stops hiding your own best
+times), P actually turns the scanlines off for good, the menus gave up a
+blur that cost 38fps at 720p and showed nothing, the mission clock stopped
+under-counting on a slow device, and the radar and floor plan gave five
+different things five different shapes. Ledger:
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.23/NIGHT_LOG.md).
+
+## v1.22 — Twin-pad touch controls: a right look pad, tap-to-fire, regrouped cluster (v1.22)
+
+Ten player sessions, each handed the game cold and told to play it, then every
+anomaly they filed cross-examined by a paired skeptic: 39 reported, 29
+confirmed, 10 refuted. The phone half landed first — a reachable pause screen,
+menus that answer a finger with a thumb already on the glass, one owner per
+look drag, held keys that survive a pause, twin-pad tuning. The desk half
+followed: the title screen stopped teaching a control scheme it does not ship,
+MISSION SELECT stopped promising objective counts three of the five missions
+never had, your clearance survives a reload (and stops hiding your own best
+times), P actually turns the scanlines off for good, the menus gave up a
+blur that cost 38fps at 720p and showed nothing, the mission clock stopped
+under-counting on a slow device, and the radar and floor plan gave five
+different things five different shapes. Ledger:
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.22/NIGHT_LOG.md).
+
+## v1.21 — Merge pull request #4 from joshfeinst/claude/agent-360-tlc-4e10um
+
+An adversarial bug hunt: four probe-driven finders, twenty-two reproduced
+fixes. The ones a player would have met first: a tap on the letterbox no
+longer fires the gun or silently drops your AIM, a laggy frame can no longer
+eat a tap or a flick, checkpoint wins stopped overwriting honest best times,
+the aim assist stopped courting an invulnerable boss, and secret caches
+stopped advertising themselves on the radar. Ledger as always:
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.21/NIGHT_LOG.md).
+
+## v1.20 — Merge pull request #3 from joshfeinst/claude/agent-360-tlc-4e10um
+
+The campaign grew from three missions to five. Two landed between the phishing floor and the
+finale — a colo at 03:15 and a parking-deck roof at dusk, the game's first
+open sky — and a scripted objective-chain bot now proves every mission humanly
+winnable end to end from a cold pistol start, on every clearance, with each
+new mission's par calibrated from its own measured run. Same ledger:
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.20/NIGHT_LOG.md).
+
+## v1.12 — New mission: M04 · SHADOW UPLINK — the campaign grows to five
+
+The last insertion before the finale, and the first open-air map: the
+Riverbend parking deck at roof level, 19:40. Every rogue AP the contract
+has pulled was checking in with one mast up here, so the job is the
+campaign's connective tissue — kill three uplinks, lift the crew's
+credential case, cut the mast before LEGACY-DC01 gets its last sync.
+Most of the deck is ceiling 255 under a new two-stop sky band (L.sky2):
+violet zenith blending into an amber horizon, because one colour can only
+ramp brightness and dusk is a ramp of hue. Dusk grade to match — violet
+tint over plum fog, the warmth kept in the sky so M05 keeps sole claim on
+hot amber. New texture 21: parking-deck slab with expansion joints, oil
+stains and a faded stall stripe per cell.
+
+## v1.11 — New mission: M03 · THE COLD AISLE — the campaign grows to four
+
+The mission the scaffolding round was built to receive: a Northpoint Data
+colo at 03:15, inserted between M02 and the finale. Long cage-bar aisles
+with rack rows behind them, a glass meet-me room off the staging floor, a
+NOC office (carpet and drop-tile under the colo's ducts, keycard on the
+desk), and a hazard-slab loading bay behind the L door with the exit and a
+drone over it. New COLD grade: pale blue-white tint with near-white fog
+that reads as CRAC mist — nothing like M01's dark cyan night (judged
+against an M01 control shot). Grate floor zones run the three cold aisles,
+tile elsewhere.
+
+## v1.10 — full TLC: mobile parity, mission identity, game feel, audio
+
+A full TLC pass over v1.04, run the way Managed's overnight rounds were run:
+measure first, change second, and a self-test for everything that broke on the
+way. The short version — the game now plays properly on a phone, the three
+missions stopped sharing one grey wall texture, getting shot tells you where
+from, dying gets a beat before the debrief, the finale duel got a checkpoint, the
+soundtrack learned the difference between a menu and a meltdown, and every
+mission hides one cache behind a wall that doesn't advertise itself. The long
+version, with the measurements that forced each change, is
+[NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.10/NIGHT_LOG.md).
