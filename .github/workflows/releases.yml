@@ -30,6 +30,11 @@ jobs:
           # commit's index.html to find where a version first landed, and it
           # must see the tags that are already published to skip them
           fetch-depth: 0
+      - name: Identify the tagger
+        # an annotated tag needs an author; a bare runner has no git identity
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
       - name: Tag each version and publish its release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
