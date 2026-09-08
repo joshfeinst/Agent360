@@ -727,4 +727,9 @@ API calls at all.
   the balance instrument) · `tools/runthrough.js` (objective-chain bot, every
   mission × clearance end to end — 14/15 WIN, M05/00 the documented ceiling)
 - **Versions:** game `VERSION = '1.54'` (index.html) ↔ `agent360-v1.54`
-  (sw.js CACHE), enforced by verify.js
+  (sw.js CACHE) ↔ the plain-text `VERSION` file at the repo root, all three
+  enforced by verify.js. Every shipped version is also a git tag, so `git tag`
+  is the release list and `git show v1.54:index.html` is that exact build —
+  `tools/tag-releases.sh` rebuilds the whole set from history (idempotent, and
+  it checks that every tag really carries its own version) and `--push`
+  publishes them

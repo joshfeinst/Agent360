@@ -195,6 +195,14 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## Versions
+
+The build is named in three places, kept in step by `tools/verify.js`: the
+`VERSION` constant in `index.html`, the `CACHE` name in `sw.js`, and the
+plain-text `VERSION` file. Every release is also a git tag, so `git tag` lists
+them and `git show v1.54:index.html` is that build; `tools/tag-releases.sh`
+rebuilds the set from history and `tools/tag-releases.sh --push` publishes it.
+
 ## v1.54
 
 Four players at once. A muted player found that after another window turned
