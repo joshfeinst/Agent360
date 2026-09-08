@@ -32,6 +32,10 @@ function sourceCheck() {
   const sw = fs.readFileSync(path.join(path.dirname(target), 'sw.js'), 'utf8');
   const hv = (html.match(/const VERSION = '([^']+)'/) || [])[1];
   const sv = (sw.match(/const CACHE = 'agent360-v([^']+)'/) || [])[1];
+  /* ...and the plain-text file, so `git show <ref>:VERSION` names the build at
+     any point in history without parsing a 12,000-line document */
+  let fv = null;
+  try { fv = fs.readFileSync(path.join(path.dirname(target), 'VERSION'), 'utf8').trim(); } catch(_){}
   /* A Cache Storage bucket is per-ORIGIN: this game shares its host with a
      sibling project, so the service worker must only ever delete its OWN
      buckets. Unscoped cleanup threw away the neighbour's offline cache on
@@ -135,8 +139,8 @@ function sourceCheck() {
                   /const SHELL = \[ '\.\/', '\.\/index\.html' \];/.test(sw) &&
                   !/SHELL = \[[^\]]*(icons\/|webmanifest)/.test(sw);
   console.log('SW precache best-effort apart from the document itself ' + (swIcons ? '— yes' : '— NO, ONE MISSING FILE REJECTS THE INSTALL'));
-  const vOK = hv && sv && hv === sv;
-  console.log('VERSION index.html v' + hv + ' / sw.js v' + sv + (vOK ? ' — in step' : ' — MISMATCH'));
+  const vOK = hv && sv && fv && hv === sv && hv === fv;
+  console.log('VERSION index.html v' + hv + ' / sw.js v' + sv + ' / VERSION ' + (fv ? 'v' + fv : 'MISSING') + (vOK ? ' — in step' : ' — MISMATCH'));
   /* syncTitleHint() rewrites the title how-to the moment scripts run, but the
      FIRST paint is the static string — and that string described DRAG while
      desktop ships CAPTURE. The F4 suite can only see the rewritten one. */
