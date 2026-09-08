@@ -33,8 +33,13 @@ if not tags:
 # two versions that shipped together, e.g. "## v1.22 · v1.23")
 readme = (ROOT / 'README.md').read_text(encoding='utf-8')
 notes = {}
-parts = re.split(r'^## (v[0-9.][0-9. ·v]*)$', readme, flags=re.M)
+# split on EVERY heading, then keep the ones that name versions: splitting on
+# version headings alone let a neighbouring prose section (README's own
+# "## Versions") ride along inside the previous release's notes
+parts = re.split(r'^## (.+)$', readme, flags=re.M)
 for head, body in zip(parts[1::2], parts[2::2]):
+    if not re.fullmatch(r'v[0-9.]+(\s*·\s*v[0-9.]+)*', head.strip()):
+        continue
     body = body.strip()
     if not body:
         continue

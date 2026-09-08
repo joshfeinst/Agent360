@@ -1,0 +1,37 @@
+name: Publish releases
+
+# Every shipped version becomes a git tag and a GitHub Release, with that
+# version's CHANGELOG.md section as its body. The runner's own GITHUB_TOKEN may
+# write refs/tags/*, which is what a session credential scoped to branches
+# cannot do — so this is the thing that actually publishes them.
+#
+# Idempotent by design: tools/publish-releases.sh skips every tag and release
+# that already exists, so a push that changes no version does nothing at all.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: releases
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # the whole history and every existing tag: the script reads each
+          # commit's index.html to find where a version first landed, and it
+          # must see the tags that are already published to skip them
+          fetch-depth: 0
+      - name: Tag each version and publish its release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: bash tools/publish-releases.sh

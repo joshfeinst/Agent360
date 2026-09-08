@@ -17,7 +17,9 @@ repo=${REPO:-joshfeinst/Agent360}
 token=${GH_TOKEN:-${GITHUB_TOKEN:-}}
 
 bash tools/tag-releases.sh || exit 1
-[ -f CHANGELOG.md ] || python3 tools/changelog.py
+# Always rebuild, never just when the file is missing: a version whose notes
+# were not regenerated before the merge would otherwise get an empty release.
+python3 tools/changelog.py || exit 1
 
 echo "== pushing tags to $remote"
 if ! git push "$remote" --tags; then
