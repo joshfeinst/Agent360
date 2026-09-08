@@ -122,9 +122,19 @@ function sourceCheck() {
   const swFont = sw.match(/const FONT_CSS = '([^']+)'/);
   const fontOK = !!fontLink && !!swFont && fontLink[1] === swFont[1] && /display=optional/.test(fontLink[1]);
   console.log('FONTS non-blocking link, display=optional, one URL shared with sw.js ' + (fontOK ? '— yes' : '— NO'));
-  const swIcons = /const ICONS = \[/.test(sw) && /allSettled\(ICONS\.map/.test(sw) && !/icons\/icon-[^']*'\s*\]\s*;?\s*\n?[^\n]*\n?[\s\S]{0,40}addAll/.test(sw) &&
-                  !/SHELL = \[[^\]]*icons\//.test(sw);
-  console.log('SW icons precache best-effort, apart from the shell ' + (swIcons ? '— yes' : '— NO, ONE MISSING ICON REJECTS THE INSTALL'));
+  /* the worker is not armed by `load` alone: a manifest a content blocker
+     aborts, or a font CDN that stalls, kept that event pending and the app
+     was never installed on a page that plays perfectly */
+  const swArm = /addEventListener\('load', swInstall\);\s*\n\s*setTimeout\(swInstall, (\d+)\);/.exec(html);
+  const swArmOK = !!swArm && +swArm[1] > 0 && +swArm[1] <= 10000;
+  console.log('SW REGISTER armed by load AND a ' + (swArm ? swArm[1] + 'ms' : 'missing') + ' fallback ' + (swArmOK ? '— yes' : '— NO'));
+  /* the all-or-nothing list holds the document and nothing else: an icon or a
+     manifest that 404s (or that a content blocker aborts) must not reject the
+     install and leave the player with no offline app at all */
+  const swIcons = /const EXTRA = \[/.test(sw) && /allSettled\(EXTRA\.map/.test(sw) &&
+                  /const SHELL = \[ '\.\/', '\.\/index\.html' \];/.test(sw) &&
+                  !/SHELL = \[[^\]]*(icons\/|webmanifest)/.test(sw);
+  console.log('SW precache best-effort apart from the document itself ' + (swIcons ? '— yes' : '— NO, ONE MISSING FILE REJECTS THE INSTALL'));
   const vOK = hv && sv && hv === sv;
   console.log('VERSION index.html v' + hv + ' / sw.js v' + sv + (vOK ? ' — in step' : ' — MISMATCH'));
   /* syncTitleHint() rewrites the title how-to the moment scripts run, but the
@@ -134,7 +144,7 @@ function sourceCheck() {
   const stat = (html.match(/id="titlehint">([^<]+)</) || [])[1];
   const hOK = !!cap && !!stat && stat.indexOf(cap) === 0;
   console.log('TITLE HINT static default ' + (hOK ? 'matches the shipped look mode' : 'DRIFTED from TITLE_HINT.capture'));
-  return vOK && hOK && swScoped && swClone && sfxOK && swFresh && swIcons && swRace && !es2020 && insetOK && clampOK && fontOK;
+  return vOK && hOK && swScoped && swClone && sfxOK && swFresh && swIcons && swRace && !es2020 && insetOK && clampOK && fontOK && swArmOK;
 }
 
 async function wirePage(page, errors, resourceErrs) {

@@ -195,6 +195,20 @@ so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](NIGHT_LOG.md).
 
+## v1.54
+
+Four players at once. A muted player found that after another window turned
+the soundtrack off, MUSIC ON flipped the label and left the bus at zero. A
+player who uses the browser's back button found the gesture leaving the site
+from the mission list on a first visit, a dead press on the title, and an iOS
+edge swipe turning the agent before the browser took it. A player on a folding
+phone found the touch cluster laid out in percentages of a frame squarer than
+the glass, so a thumb on the look pad fired a round. And a power user with
+every browser setting changed found a blocked manifest taking the whole
+service worker with it, the gold buttons invisible in Windows High Contrast,
+and holes in the music whenever the browser throttled its timers.
+Ledger: [NIGHT_LOG.md](NIGHT_LOG.md).
+
 ## v1.53
 
 A screen-reader player walked M01 keyboard-only and found the one line the
