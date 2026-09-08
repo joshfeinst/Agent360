@@ -559,7 +559,7 @@ const pack = (r,g,b,a=255) => ((a<<24)|(b<<16)|(g<<8)|r)>>>0;
 /* ---------------------------------- input -------------------------------- */
 const keys = new Set();
 const M = { locked:false, dragging:false, dx:0, dy:0, tdx:0, tdy:0, fire:false, aim:false, sens:.7, tsens:1, wheel:0, wheelAt:0,
-            justLocked:0, moved:0, downT:0, lx:null, ly:null, tapDone:false, fireEdge:0, fireBuf:0, pressNew:false, tlook:false,
+            justLocked:0, moved:0, downT:0, lx:null, ly:null, tapDone:false, fireEdge:0, fireBuf:0, pressNew:false, tlook:false, titlePopAt:0,
             /* pointer-lock bookkeeping */
             lockPending:false, lockPromise:false, lockAt:0, unlockAt:0, lockFails:0,
             lockNagged:false, lockErr:'', raw:false, lockTimer:0,
@@ -1260,6 +1260,7 @@ function unlock(){
      the handlers happened to run: on a janky frame the delivery clock counted
      a 150ms tap as 300ms and deleted it. */
   const TAP_MS = 600;               // above the 500ms long-press norm; a parked thumb is not a tap
+  const EDGE_PX = 20;               // the browser's edge-swipe lane on either side of the glass
   const TAP_SWALLOW_MS = 600;
   const viewTap = (s, e) => {
     if (e.type !== 'touchend' || s.moved >= 12 || e.timeStamp - s.t0 >= TAP_MS) return;
@@ -1339,7 +1340,13 @@ function unlock(){
        v1.32 fixed put seven rounds into the spawn wall again. */
     const at = performance.now();
     for (const t of e.changedTouches){
-      if (T.look){ if (!T.tap) T.tap={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp,at,opened}; }
+      /* the outermost 20px of glass belong to the browser's back and forward
+         swipes: in portrait the picture reaches the edge, and the first 40px
+         of an iOS back swipe turned the agent 9 degrees before the browser
+         took the gesture and cancelled it. A finger landing there may still
+         tap; it never drags the view. */
+      const edge = t.clientX < EDGE_PX || t.clientX > innerWidth - EDGE_PX;
+      if (T.look || edge){ if (!T.tap) T.tap={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp,at,opened}; }
       else { T.look={id:t.identifier,x:t.clientX,y:t.clientY,moved:0,t0:e.timeStamp,at,opened}; M.tlook = true; }
     }
     e.preventDefault(); }, {passive:false});
@@ -5155,6 +5162,21 @@ function show(id){
      seeds RESUME itself, after this. */
   if (id && id !== 's-pause'){ const el = document.getElementById(id);
     if (el){ el.tabIndex = -1; el.focus({ preventScroll:true }); } }
+  /* Every sheet over the title, and the debrief, owns a history entry, so
+     BACK closes it. Only a mission armed one, and the popstate branches for
+     SELECT, OPTIONS, CONTROLS and the briefing ran by luck: on a fresh visit
+     the back gesture from SELECT MISSION left the site, and after one
+     mission the same gesture closed the sheet. The title is where BACK is
+     allowed to leave. */
+  if (id && id !== 's-boot' && id !== 's-title') armBack();
+  /* ...and the title spends one it finds on arrival. The entry survives a
+     reload and an ABORT from the watch, and the next BACK on the title used
+     to pop it and do nothing — a dead press, then the second one left. The
+     popstate it raises is its own; the handler ignores it. */
+  if (id === 's-title' && history.state && history.state.a360 && SAVE_KEY !== SAVE_KEY_TEST){
+    M.titlePopAt = performance.now();
+    try { history.back(); } catch(_){}
+  }
   /* the persisted campaign flag earns the title screen a permanent gold line */
   if (id === 's-title') syncTitleLine();
   /* "no screen" means play — except for the F4 report, which is painted on the
@@ -5346,8 +5368,13 @@ addEventListener('popstate', () => {
      also navigates for that button depends on the pointer lock, so the press
      owns its own popstate rather than being handled twice and going home */
   if (M.thumbBackAt && performance.now() - M.thumbBackAt < 500){ M.thumbBackAt = 0; armBack(); return; }
+  if (M.titlePopAt && performance.now() - M.titlePopAt < 500){ M.titlePopAt = 0; return; }   // the title spending its own entry
   if (G.state === 'play'){ pause(); armBack(); }
-  else if (G.state === 'pause' || G.state === 'result'){ sfx('click'); abortToTitle(); }
+  else if (G.state === 'pause'){ sfx('click'); abortToTitle(); }
+  /* the debrief's arm holds for BACK as it does for Enter and Esc: a thumb
+     still pressing for the watch landed here inside the beat and went to
+     the title before the cause line was ever read */
+  else if (G.state === 'result'){ if (!resultArmed()){ armBack(); return; } sfx('click'); abortToTitle(); }
   /* A sheet is a sheet, and BACK closes a sheet. OPTIONS opened from the
      WATCH used to fall through every branch here: the entry armBack() had
      pushed was spent on a gesture that did nothing, and the next BACK was a
@@ -7614,6 +7641,26 @@ function selfTestBody(runSim){
           ok('touch: a tap in the first moments of a mission is the finger that started it, not a shot',
              early === 7 && P.mag[0] === 6, 'at start mag='+early+', a second later '+P.mag[0]);
           G.startAt = 0; P.fireCd = 0; }
+
+        /* the outermost 20px of glass are the browser's back swipe: a finger
+           landing there never drags the view (in portrait the picture reaches
+           the edge, and an iOS back swipe turned the agent 9 degrees before
+           the browser took it) — it may still tap */
+        { M.tdx = 0; M.tdy = 0; const a0 = P.ang;
+          tev('touchstart', view, [{ identifier:95, clientX:5, clientY:vy }]);
+          const edgeLook = M.tlook, edgeTap = !!(TIN && TIN.tap && TIN.tap.id === 95);
+          tev('touchmove', null, [{ identifier:95, clientX:45, clientY:vy }]); step(1/60);
+          const edgeTurn = Math.abs(M.tdx) + Math.abs(angDiff(a0, P.ang));
+          const cev = new Event('touchcancel', { bubbles:true, cancelable:true }); cev.changedTouches = [{ identifier:95, clientX:45, clientY:vy }]; cev.touches = []; window.dispatchEvent(cev);
+          tev('touchstart', view, [{ identifier:96, clientX:vx, clientY:vy }]);
+          const midLook = M.tlook;
+          tev('touchmove', null, [{ identifier:96, clientX:vx + 40, clientY:vy }]);
+          const midTurn = Math.abs(M.tdx);
+          tev('touchend', null, [{ identifier:96, clientX:vx + 40, clientY:vy }]); step(1/60);
+          ok('touch: a finger landing in the browser\'s edge-swipe lane never drags the view',
+             !edgeLook && edgeTap && edgeTurn < 1e-9 && midLook && midTurn > 1,
+             'edge look '+edgeLook+' tap-slot '+edgeTap+' turned '+edgeTurn.toFixed(3)+' · mid-glass look '+midLook+' dx '+midTurn.toFixed(1));
+          M.tdx = 0; M.tdy = 0; clearInput(); }
         /* the glass is empty, nothing is held: a finger the OS never lifted
            left FIRE lit and dead with no Backspace to reset it */
         { const fire = document.getElementById('tfire'); const fr = fire.getBoundingClientRect();
@@ -8545,6 +8592,40 @@ function selfTestBody(runSim){
 
         /* BACK holds a mission: in play it opens the watch, on the watch it goes
            home, and only then does it leave the page */
+        /* every sheet over the title owns a history entry, so BACK closes it
+           on a fresh visit too — only a mission used to arm one, and the back
+           gesture from SELECT MISSION left the site until one had been played */
+        { const st0 = G.state, sc0 = G.screenId;
+          try { if (history.state && history.state.a360) history.replaceState(null, ''); } catch(_){}
+          G.state = 'title'; show('s-title');
+          const bare = !(history.state && history.state.a360);
+          act('missions');
+          const armed = !!(history.state && history.state.a360);
+          dispatchEvent(new PopStateEvent('popstate', { state: null }));
+          const closed = G.state === 'title';
+          ok('history: SELECT MISSION arms BACK on a fresh visit, and BACK closes it to the title',
+             bare && armed && closed, 'bare '+bare+' armed '+armed+' after BACK '+G.state);
+          /* ...and the debrief keeps its arm against BACK as it does against Enter */
+          G.state = 'result'; show('s-result'); G.resultAt = performance.now();
+          dispatchEvent(new PopStateEvent('popstate', { state: null }));
+          const held = G.state === 'result' && !!(history.state && history.state.a360);
+          G.resultAt = 0;
+          dispatchEvent(new PopStateEvent('popstate', { state: null }));
+          ok('history: BACK inside the debrief\'s beat is not an answer; after it, it leaves',
+             held && G.state === 'title', 'inside the beat '+(held ? 'held' : 'left')+', after it '+G.state);
+          /* ...and the title spends an entry it finds on arrival (a reload keeps
+             one, so did ABORT), or the next BACK was a dead press */
+          { let popped = 0; const k0 = SAVE_KEY;
+            Object.defineProperty(history, 'back', { value: () => { popped++; }, configurable: true });
+            try { armBack(); SAVE_KEY = SAVE_KEY_REAL; G.state = 'title'; show('s-title'); }
+            finally { SAVE_KEY = k0; delete history.back; }
+            const own = M.titlePopAt > 0;
+            dispatchEvent(new PopStateEvent('popstate', { state: null }));
+            ok('history: the title spends a leftover entry on arrival, and ignores the popstate it raises',
+               popped === 1 && own && G.state === 'title' && M.titlePopAt === 0, 'back() called '+popped+'× own '+own+' state '+G.state);
+            M.titlePopAt = 0; }
+          G.state = st0; show(sc0); clearInput(); }
+
         { G.state = 'play'; show(null); armBack();
           const armed = !!(history.state && history.state.a360);
           dispatchEvent(new PopStateEvent('popstate', { state: null }));
