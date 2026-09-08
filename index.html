@@ -524,7 +524,7 @@ body.keys-arrows .kb-wasd, body:not(.keys-arrows) .kb-arrows{display:none}
    ========================================================================== */
 
 /* ---------------------------------- config ------------------------------- */
-const VERSION = '1.53';            // keep in step with CACHE in sw.js — verify.js checks
+const VERSION = '1.54';            // keep in step with CACHE in sw.js — verify.js checks
 const RW = 384, RH = 216;          // internal render resolution (N64-ish)
 const HALFH = RH >> 1;
 const FOV_N = 0.66;                // plane length -> ~66 degrees
@@ -6483,7 +6483,10 @@ function selfTestBody(runSim){
       ok('save writes the blob', blob.length > 0);
       ok('save carries schema v2 and code-keyed bests',
          blob.indexOf('"v":2') >= 0 && blob.indexOf('"M01:2"') >= 0);
-      ok('cheats never persisted', !/cheat|taint|god/i.test(blob));
+      /* the random base-36 stamp is not the blob's business: `god` landed in
+         it about once per 5,000 loads and this line went red on a clean save */
+      { let noStamp = blob; try { const b = JSON.parse(blob); delete b.stamp; noStamp = JSON.stringify(b); } catch(_){}
+        ok('cheats never persisted', !/cheat|taint|god/i.test(noStamp)); }
       /* The bug class this block has shipped twice: a field is added to
          saveSettings() and forgotten in s0, so the probe loads below leave it
          clobbered for the rest of the session — which is how Reduce Motion was
@@ -8716,6 +8719,19 @@ function selfTestBody(runSim){
           if (G.state !== 'play') resume(false);
           clearInput(); }
 
+        /* MUSIC ON raises the bus: a setting adopted from another window
+           zeroes the music gain, and the toggle used to flip only the flag */
+        if (A.mus){
+          const on0 = A.musOn, g0 = A.mus.gain.value, v0 = A.musVol;
+          A.musVol = .34; A.musOn = false; A.mus.gain.value = 0;      // what adoptSettings leaves behind
+          act('togglemus');
+          const up = A.musOn && Math.abs(A.mus.gain.value - .34) < 1e-6;
+          act('togglemus');
+          const down = !A.musOn && A.mus.gain.value === 0;
+          ok('music: the M toggle raises and lowers the bus, not only the flag', up && down,
+             'gain after ON '+A.mus.gain.value.toFixed(2)+', after OFF '+A.mus.gain.value.toFixed(2));
+          A.musOn = on0; A.musVol = v0; A.mus.gain.value = g0; syncMusLabel(); clearToasts(); }
+
         /* every dialog wraps like the watch: on the title, Tab past the last
            button used to land on the body — nothing focused for a reader, the
            address bar on the next Tab */
@@ -10530,6 +10546,10 @@ function act(a){
       break;
     case 'togglemus':                /* KeyM for touch players — same state, same blob */
       A.musOn = !A.musOn; syncMusLabel(); saveSettings();
+      /* the bus too, not only the flag: a setting adopted from another window
+         zeroes the music gain, and ON here flipped the flag, toasted MUSIC ON,
+         and scheduled seven notes onto a bus at 0 */
+      if (A.mus) A.mus.gain.value = A.musOn ? A.musVol : 0;
       toast(A.musOn ? 'MUSIC ON' : 'MUSIC OFF', 'cyan', 1400);
       break;
     case 'togglehold': {
