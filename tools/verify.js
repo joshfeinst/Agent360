@@ -431,7 +431,12 @@ async function runTouchDrive(page) {
 
 (async () => {
   let bad = 0;
-  if (!sourceCheck()) bad++;
+  /* Name what failed. "VERIFY FAILED" on its own sent me hunting through 500
+     lines of output for a run I could not reproduce. */
+  const gates = [];
+  const flunk = g => { bad++; gates.push(g); };
+  const tally = (g, n) => { if (n){ bad += n; gates.push(g + ' \u00d7' + n); } };
+  if (!sourceCheck()) flunk('source checks');
 
   const browser = await launch();
 
@@ -439,12 +444,12 @@ async function runTouchDrive(page) {
   const page = await browser.newPage();
   const errors = [], resourceErrs = [];
   await wirePage(page, errors, resourceErrs);
-  bad += await runSelfTest(page, 'desktop');
-  bad += await runSoak(page, SOAK_FRAMES, 'desktop 60Hz', [1 / 60]);
+  tally('selftest desktop', await runSelfTest(page, 'desktop'));
+  tally('soak desktop 60Hz', await runSoak(page, SOAK_FRAMES, 'desktop 60Hz', [1 / 60]));
 
   /* frame-rate invariance: same combos, half the stretch at 144Hz and half at
      30Hz — the loop caps dt at .05 so 30Hz is the worst honest frame */
-  bad += await runSoak(page, Math.min(SOAK_FRAMES, 500), 'dt 1/144 + 1/30', [1 / 144, 1 / 30]);
+  tally('soak 144/30Hz', await runSoak(page, Math.min(SOAK_FRAMES, 500), 'dt 1/144 + 1/30', [1 / 144, 1 / 30]));
 
   /* ---------------- phone pass ---------------- */
   const mctx = await browser.newContext({
@@ -453,10 +458,10 @@ async function runTouchDrive(page) {
   });
   const mpage = await mctx.newPage();
   await wirePage(mpage, errors, resourceErrs);
-  bad += await runTouchDrive(mpage);
-  bad += await runPenDrive(mpage);
-  bad += await runSelfTest(mpage, 'mobile');
-  bad += await runSoak(mpage, Math.min(SOAK_FRAMES, 600), 'mobile 60Hz', [1 / 60]);
+  tally('touch drive', await runTouchDrive(mpage));
+  tally('pen drive', await runPenDrive(mpage));
+  tally('selftest mobile', await runSelfTest(mpage, 'mobile'));
+  tally('soak mobile 60Hz', await runSoak(mpage, Math.min(SOAK_FRAMES, 600), 'mobile 60Hz', [1 / 60]));
   await mctx.close();
 
   /* ---------------- storage-denied pass ---------------- */
@@ -493,7 +498,7 @@ async function runTouchDrive(page) {
     console.log('STORAGE DENIED (' + shape + ') F4 report ' + (r.report ? 'shown' : 'MISSING') + ' · ' + r.tests + ' tests, ' +
                 r.fails.length + ' failed' + (r.fails.length ? ' [' + r.fails.slice(0, 3).join(' | ') + ']' : '') +
                 ' · back on ' + r.state + ' · page errors ' + derrs.length + ' · warned ' + (warned ? 'yes' : 'NO') + (ok ? '' : ' — FAILED'));
-    if (!ok) bad++;
+    if (!ok) flunk('storage-denied (' + shape + ')');
     await dctx.close();
   }
 
@@ -524,7 +529,7 @@ async function runTouchDrive(page) {
     const ok = told && kept && cerrs.length === 0;
     console.log('CORRUPT SAVE the player is told ' + (told ? 'yes' : 'NO — WIPED IN SILENCE') +
                 ' · bytes kept aside ' + (kept ? 'yes' : 'NO') + ' · page errors ' + cerrs.length + (ok ? '' : ' — FAILED'));
-    if (!ok) bad++;
+    if (!ok) flunk('corrupt save');
     await cctx.close();
   }
 
@@ -560,14 +565,15 @@ async function runTouchDrive(page) {
               ' · above toasts ' + (portrait.aboveToasts ? 'yes' : 'NO') + ' · toast ' + portrait.fontPx + 'px type, ' +
               portrait.toastH.toFixed(0) + 'px of a ' + portrait.frameH.toFixed(0) + 'px frame · chip gone after ' + '6s ' +
               (portrait.gone ? 'yes' : 'NO') + (pOK ? '' : ' — FAILED'));
-  if (!pOK) bad++;
+  if (!pOK) flunk('portrait');
   await pctx.close();
 
   console.log('PAGE ERRORS ' + errors.length + (errors.length ? '\n  ' + errors.join('\n  ') : ''));
   if (resourceErrs.length) console.log('(resource-load errors, non-fatal: ' + resourceErrs.length + ' — fonts/CDN offline)');
 
+  if (errors.length) gates.push('page errors (' + errors.length + ')');
   const okAll = bad === 0 && errors.length === 0;
-  console.log(okAll ? 'VERIFY OK' : 'VERIFY FAILED');
+  console.log(okAll ? 'VERIFY OK' : 'VERIFY FAILED — ' + gates.join(', '));
   await browser.close();
   process.exit(okAll ? 0 : 1);
 })().catch(e => { console.error('HARNESS ERROR', e); process.exit(2); });

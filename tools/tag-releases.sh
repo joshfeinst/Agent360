@@ -7,11 +7,18 @@
 set -u   # not pipefail-strict: `git show | grep -m1` exits on SIGPIPE by design
 cd "$(dirname "$0")/.."
 remote=${REMOTE:-origin}
-git fetch -q "$remote" main
+git fetch -q "$remote" main 2>/dev/null || true
+
+# The release line, however this clone is checked out: a CI runner may hold no
+# remote-tracking ref, only what the fetch above left in FETCH_HEAD.
+base=$(git rev-parse -q --verify "$remote/main" \
+    || git rev-parse -q --verify FETCH_HEAD \
+    || git rev-parse -q --verify main \
+    || git rev-parse HEAD)
 
 pick() {  # version -> commit, first-parent (the release point) wins
-  git rev-list --reverse --first-parent "$remote/main"
-  git rev-list --reverse --topo-order "$remote/main"
+  git rev-list --reverse --first-parent "$base"
+  git rev-list --reverse --topo-order "$base"
 }
 declare -A seen=()
 while read -r c; do

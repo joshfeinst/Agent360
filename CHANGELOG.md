@@ -382,56 +382,6 @@ black surround navigated the browser away mid-run. Ledger, including what was
 reported and did not survive:
 [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.27/NIGHT_LOG.md).
 
-## Development
-
-- **F4** runs the in-game self-test suite — **465 assertions** (457 in a touch
-  context): level reachability audits, input
-  model invariants (pointer-lock linearity, free-look symmetry, aim-assist
-  never fighting the player's turn), movement isotropy and collision, the
-  player and audio state a mission load has to hand back, touch-cluster
-  behaviour, palette and zone rendering, secrets, checkpoint and music-state
-  logic.
-- `tools/verify.js` runs that suite headlessly plus a randomized-input soak
-  of 600 frames per mission/difficulty combination — the campaign's own
-  length, so a new mission is soaked the day it lands —
-  then does it all again in a phone context (844×390, touch events driving
-  the real cluster) and once more stepping the sim at 144 Hz and 30 Hz to
-  prove frame-rate invariance. It also reads the source for the things that
-  have to be right before a script runs — the `index.html`/`sw.js` version
-  lockstep, the title screen's static how-to matching the look mode the build
-  ships, the service worker's cache scoping, clone timing and precache
-  freshness, every sound name the code plays existing in the sound table, and
-  F4 on a debrief handing that debrief back — then a portrait pass at 390×844
-  measuring the rotate chip and the toast type against the real frame, a
-  storage-denied pass, the suite run with the cheat menu's toggles on, F4 from
-  the watch keeping its mission, and a seeded soak that prints its seed: `npm i playwright && node tools/verify.js "$(pwd)/index.html"`.
-- `tools/touch.js` is a phone-finger walkthrough: boot skipped, every menu
-  visited, a mission started, walked, fired, paused and resumed by taps
-  alone, with 44px tap-target and screen-utilization measurements. It also
-  proves the paused watch shows its way out without scrolling, and that a menu
-  row still answers a finger while a second one rests on the glass.
-- `tools/visual.js` measures the rendered glyph boxes of every text element
-  on every DOM overlay screen — zero-height, clipped or painted-over text
-  fails the run — at desktop and phone viewports.
-- `tools/playtest.js` pits a deliberately mediocre scripted bot (bounded turn
-  rate, aim jitter, no cheats, no cover play) against the finale boss and then the
-  meltdown escape: `node tools/playtest.js "$(pwd)/index.html" 0 30`. Balance
-  changes are judged by its win rate — the AGENT duel is tuned so this bot wins
-  ~93% of runs; on SECRET AGENT and 00 AGENT it dies, as it should.
-- `tools/runthrough.js` is the proof a mission is humanly playable: an
-  objective-chain bot loads each mission cold (no cheats, pistol start),
-  BFS-walks the watch's own objective order through live physics, and reports
-  time against par. It finishes 14 of the 15 mission x clearance pairs at
-  0.27-0.52 of par; the fifteenth is the finale duel on 00 AGENT, the same
-  wall the playtest bot measures its 0/8 against, and the campaign's
-  deliberate ceiling. `--thumb` re-runs the table with a phone's reflexes —
-  stop-and-turn steering at the look pad's own rate — so a map that only works
-  with a mouse fails here. New missions calibrate their par from the SECRET
-  AGENT time: `node tools/runthrough.js "$(pwd)/index.html" all all`.
-- The game has been through repeated adversarial review rounds — independent
-  finders cross-examined by paired skeptics — and every confirmed regression
-  became an F4 assertion. [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.27/NIGHT_LOG.md) is the ledger.
-
 ## v1.26 — the tables round
 
 Score tables are where a typo hides from a soak: every frame still runs,
@@ -445,14 +395,6 @@ rank ladder's ceiling was the literal `7` rather than the ladder's own length,
 so adding a rung would have silently pinned every player to the old top. Six
 other reports were chased and refuted. Ledger:
 [NIGHT_LOG.md](https://github.com/joshfeinst/Agent360/blob/v1.26/NIGHT_LOG.md).
-
-## Versions
-
-The build is named in three places, kept in step by `tools/verify.js`: the
-`VERSION` constant in `index.html`, the `CACHE` name in `sw.js`, and the
-plain-text `VERSION` file. Every release is also a git tag, so `git tag` lists
-them and `git show v1.54:index.html` is that build; `tools/tag-releases.sh`
-rebuilds the set from history and `tools/tag-releases.sh --push` publishes it.
 
 ## v1.25 — the promises round
 
