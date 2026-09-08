@@ -36,10 +36,21 @@ for v in $(printf '%s\n' "${!seen[@]}" | sort -V); do
   # version range, and a trailing PR number are all noise in a tag message
   subj=$(git log -1 --format=%s "$c" \
     | sed -E 's/^Merge [^\xe2]*\xe2\x80\x94 //; s/^Agent 360 //; s/^v[0-9.]+(-v[0-9.]+)?( \xe2\x80\x94|:)? *//; s/ \(#[0-9]+\)$//')
-  git tag -a "$t" -m "Agent 360 $t — ${subj}" "$c"
+  if ! git tag -a "$t" -m "Agent 360 $t — ${subj}" "$c"; then
+    echo "!! could not create $t — an annotated tag needs git user.name and user.email" >&2
+    exit 1
+  fi
   made=$((made+1))
 done
-echo "tags: $(git tag | wc -l) total, $made new"
+total=$(git tag | wc -l)
+echo "tags: $total total, $made new"
+# a run that creates nothing and finds nothing has not verified anything: the
+# check below would pass an empty list in silence, which is how a CI run that
+# tagged nothing at all still called itself green
+if [ "$total" -eq 0 ]; then
+  echo "!! no tags exist and none could be made" >&2
+  exit 1
+fi
 
 # every tag must actually carry its own version, in both files and the marker
 bad=0
