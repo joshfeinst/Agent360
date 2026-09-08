@@ -142,11 +142,18 @@ body.reduce .blink{animation:none}
 .mi[disabled]{opacity:.35; cursor:not-allowed}
 .row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
 #difflist .mi{justify-content:center; white-space:nowrap; font-size:7px; font-size:clamp(7px,1.2vh,10px)}
-.btn{font-family:var(--pix); font-size:8px; font-size:clamp(8px,1.35vh,11px); padding:10px 16px; cursor:pointer;
-  background:var(--gold); color:#231300; border:0; letter-spacing:.05em}
+/* A 1px border, transparent by default, and the padding gives back the 2px
+   it costs so every button's outer box is the size it always was. Under
+   forced-colors (Windows High Contrast) a background is repainted with the
+   system canvas colour, so `border:0` left ACCEPT and RESUME as invisible
+   rectangles — measured: background and screen both rgb(255,255,255), 0px of
+   border. A border box is the one thing forced colours will always draw. */
+.btn{font-family:var(--pix); font-size:8px; font-size:clamp(8px,1.35vh,11px); padding:9px 15px; cursor:pointer;
+  background:var(--gold); color:#231300; border:1px solid transparent; letter-spacing:.05em}
 .btn.ghost{background:#0b1421; color:var(--paper); border:1px solid var(--line)}
 .btn:hover{filter:brightness(1.12)}
 .btn:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+@media (forced-colors: active){ .btn{border-color:ButtonText} }
 
 .dossier{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:clamp(10px,2vw,22px);
   width:min(900px,94vw); text-align:left; align-items:start}
@@ -167,9 +174,12 @@ kbd{font-family:var(--pix); font-size:.72em; background:#101c2c; border:1px soli
    clip at both edges under the screen's overflow-x:hidden. */
 .grid2,.dossier,.menu,.panel{max-width:100%}
 .grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px 22px; text-align:left; width:min(760px,92vw)}
-.ctl{display:flex; justify-content:space-between; gap:10px; font-size:11px; font-size:clamp(11px,1.6vh,14px); border-bottom:1px dotted #1e3a52; padding:5px 0}
+/* wrap, or a browser's minimum-font-size setting spills the slider sideways
+   into the NEXT column's rows: at an 18px floor the sensitivity slider ran
+   36px into "Look mode" and the scanline slider into "Reduce motion" */
+.ctl{display:flex; flex-wrap:wrap; justify-content:space-between; gap:10px; font-size:11px; font-size:clamp(11px,1.6vh,14px); border-bottom:1px dotted #1e3a52; padding:5px 0}
 .ctl span:last-child{color:var(--dim); text-align:right}
-input[type=range]{accent-color:var(--cyan); width:150px}
+input[type=range]{accent-color:var(--cyan); width:150px; max-width:100%; min-width:0}
 .ctl .sv{font-family:var(--pix); font-size:.78em; color:var(--cyan); display:inline-block;
   min-width:3.4em; text-align:right; font-variant-numeric:tabular-nums; vertical-align:middle}
 /* The shared .touch-only rule below restores display:grid, which stacks a .ctl
@@ -207,15 +217,20 @@ body.touch #touch.on, body.hybrid #touch.on{display:block}
    scale) and the ammo plate the bottom-right corner. FIRE and USE sit INBOARD
    of their pads, where each thumb rocks in without leaving its pad; the rest
    climb the flanks clear of both. */
-#tfire{right:calc(27% + env(safe-area-inset-right,0px)); bottom:6%; width:17vmin; height:17vmin}
-#tuse{left:calc(27% + env(safe-area-inset-left,0px)); bottom:6%; width:14vmin; height:14vmin}
+/* FIRE and USE stand off their pad by the PAD'S size, and AIM and SWAP off
+   the trigger by the trigger's: on an open Galaxy Fold (841×673, a 16:9
+   frame 738 wide inside a 673 vmin) 27% of the frame was inside a 31vmin
+   pad — look/FIRE overlapped 31×114px and a thumb on the pad's inboard edge
+   fired a round; FIRE/AIM overlapped 94×23. No phone shape overlapped. */
+#tfire{right:calc(3% + 34vmin + env(safe-area-inset-right,0px)); bottom:6%; width:17vmin; height:17vmin}
+#tuse{left:calc(3% + 34vmin + env(safe-area-inset-left,0px)); bottom:6%; width:14vmin; height:14vmin}
 /* Each hand's buttons hug ITS pad rather than sharing one row at eye level:
    the in-fight pair (FIRE, AIM / USE, GUN) climbs inboard where a thumb rocks
    off the pad and back, and the between-fight one (RLD / CRCH) sits out on the
    flank. A mid-screen row measured pretty and reached badly. */
-#taim{right:calc(28% + env(safe-area-inset-right,0px)); bottom:28%; width:14vmin; height:14vmin}
+#taim{right:calc(3% + 34vmin + env(safe-area-inset-right,0px)); bottom:calc(6% + 19vmin); width:14vmin; height:14vmin}
 #trel{right:calc(4% + env(safe-area-inset-right,0px)); bottom:50%; width:14vmin; height:14vmin}
-#tswap{left:calc(28% + env(safe-area-inset-left,0px)); bottom:28%; width:14vmin; height:14vmin}
+#tswap{left:calc(3% + 34vmin + env(safe-area-inset-left,0px)); bottom:calc(6% + 19vmin); width:14vmin; height:14vmin}
 #tcrouch{left:calc(4% + env(safe-area-inset-left,0px)); bottom:50%; width:14vmin; height:14vmin}
 /* Portrait is the letterboxed strip the rotate chip apologises for. The cluster
    is positioned against the FRAME, which there is only ~219px tall — two rows
@@ -230,9 +245,12 @@ body.touch #touch.on, body.hybrid #touch.on{display:block}
   #tstick,#tlook,#tfire,#tuse{bottom:-26vh}
   #tstick{left:calc(3% + env(safe-area-inset-left,0px))}
   #tlook{right:calc(3% + env(safe-area-inset-right,0px))}
-  #tfire{right:calc(31% + env(safe-area-inset-right,0px)); width:15vmin; height:15vmin}
-  #tuse{left:calc(31% + env(safe-area-inset-left,0px)); width:15vmin; height:15vmin}
-  #taim,#trel,#tswap,#tcrouch{bottom:-7vh; width:13vmin; height:13vmin}
+  #tfire{right:calc(3% + 29vmin + env(safe-area-inset-right,0px)); width:15vmin; height:15vmin}
+  #tuse{left:calc(3% + 29vmin + env(safe-area-inset-left,0px)); width:15vmin; height:15vmin}
+  /* the modifier row sits on the pads' top edge, not at a vh the pads may
+     reach: on the open fold's portrait (vh 8.4, vmin 6.7) the pads rose
+     through -7vh and stick/CRCH, look/AIM overlapped 88×15 */
+  #taim,#trel,#tswap,#tcrouch{bottom:calc(-26vh + 28vmin); width:13vmin; height:13vmin}
   #taim{right:calc(3% + env(safe-area-inset-right,0px))}
   #trel{right:calc(27% + env(safe-area-inset-right,0px))}
   #tswap{left:calc(27% + env(safe-area-inset-left,0px))}
@@ -1576,16 +1594,29 @@ function musNote(t, f, dur, type, peak, dest){
   const lp = A.ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value = type==='sawtooth'?900:2400;
   o.connect(lp); lp.connect(g); g.connect(dest); o.start(t); o.stop(t+dur+.05);
 }
+/* two of the longest tick actually seen, so the next one cannot arrive after
+   the notes ran out, with a floor at the old fixed lookahead, a 4s ceiling so
+   a pathological clamp cannot queue a minute of song, and a slow decay back
+   to the floor once the ticks are healthy again */
+const musLook = (gap, prev) => Math.min(4, Math.max(.25, gap * 2 + .1, (prev || .25) * .98));
 function musicStart(){
   if (!A.ctx || A.timer) return;
   A.next = A.ctx.currentTime + .1; A.step = 0;
+  A.tickAt = 0; A.look = .25;
   A.timer = setInterval(() => {
     if (!A.ctx || document.hidden) return;
     const spb = 60/104/4;               // 16th note
+    /* How far ahead to write follows the tick that actually arrives. A
+       throttled tab clamps setInterval to 1s while the audio clock runs on,
+       and a fixed 0.25s lookahead left three quarters of every second empty:
+       65% of the song missing, measured against the audio clock. */
+    const nowT = A.ctx.currentTime;
+    A.look = musLook(A.tickAt ? nowT - A.tickAt : 0, A.look);
+    A.tickAt = nowT;
     /* Never schedule into the past: a throttled tab would dump the whole
        backlog at once, which the spec plays instantly as one clustered burst. */
     if (A.next < A.ctx.currentTime) A.next = A.ctx.currentTime + .05;
-    while (A.next < A.ctx.currentTime + .25) {
+    while (A.next < A.ctx.currentTime + A.look) {
       const s = A.step % 32, t = A.next;
       const m = musMood(), combat = m.combat;
       const BB = m.bar2 ? BASS2 : BASS, LL = m.bar2 ? LEAD2 : LEAD;
@@ -5198,8 +5229,12 @@ function syncRotHint(){
      under the PAUSE button, and it stayed up for the whole mission of a player
      who would not rotate — so every objective toast lost its first line. */
   if (want && el.hidden){ clearTimeout(rotHintT); rotHintT = setTimeout(() => { el.hidden = true; }, ROT_HINT_MS); }
+  el.textContent = rotHintText(document.getElementById('frame').clientWidth);
   el.hidden = !want;
 }
+/* the long line ran under PAUSE on a 373px cover screen (chip to 218, PAUSE
+   from 213) and on a Pixel at display Large; the short one clears both */
+const rotHintText = w => w < 430 ? 'ROTATE PHONE' : 'ROTATE FOR A WIDER VIEW';
 const ROT_HINT_MS = 6000;
 try { portMQ.addEventListener('change', syncRotHint); }
 catch(_){ if (portMQ.addListener) portMQ.addListener(syncRotHint); }   // pre-2019 WebKit
@@ -6458,9 +6493,12 @@ function selfTestBody(runSim){
         /* and the scanline period follows the frame, or the stripes beat
            against the pixel grid at the size the game is actually drawn */
         const per = scanEl ? parseFloat(scanEl.style.backgroundSize.split(' ')[1]) : 3;
-        const sSmall = small[0] / RW, dpr2 = devicePixelRatio || 1;
+        /* rounded to a millionth before the 2x test: on a Pixel 8 Pro held
+           landscape the width read back as 1.995 device px per game px where
+           fit() had seen 2.000, and this row was red on a working phone */
+        const sSmall = parseFloat(view.style.width) / RW, dpr2 = devicePixelRatio || 1, sd = Math.round(sSmall * dpr2 * 1e6) / 1e6;
         ok('fit: the scanline period follows the frame it just set',
-           Math.abs(per - (sSmall * dpr2 >= 2 ? Math.floor(sSmall * dpr2) / dpr2 : 3)) < .02,
+           Math.abs(per - (sd >= 2 ? Math.floor(sd) / dpr2 : 3)) < .02,
            'period=' + per + ' scale=' + sSmall.toFixed(3));
       } else ok('fit: the wiring drives the clamp', true, 'visualViewport is not overridable here');
       if (vvDesc) Object.defineProperty(window, 'visualViewport', vvDesc);
@@ -7546,6 +7584,30 @@ function selfTestBody(runSim){
           ok('touch: the rotate chip is clear of PAUSE and above the toast column',
              c.width > 0 && !hit && c.bottom <= t.top,
              'chip '+[c.left,c.top,c.right,c.bottom].map(v=>v|0)+' pause '+[p.left,p.top,p.right,p.bottom].map(v=>v|0)+' toasts top '+(t.top|0)); }
+        /* ...and on a narrow cover screen, where the long line ran under PAUSE */
+        if (isTouch){ const chip = document.getElementById('rothint'), pb = document.getElementById('tpause'), fr = document.getElementById('frame');
+          const h0 = chip.hidden, w0 = fr.style.width, t0 = chip.textContent;
+          fr.style.width = '250px'; chip.hidden = false; chip.textContent = rotHintText(fr.clientWidth);
+          const c = chip.getBoundingClientRect(), p = pb.getBoundingClientRect();
+          const hit = !(c.right <= p.left || c.left >= p.right || c.bottom <= p.top || c.top >= p.bottom);
+          chip.hidden = h0; chip.textContent = t0; fr.style.width = w0;
+          ok('touch: the rotate chip clears PAUSE on a 250px frame', c.width > 0 && !hit,
+             'chip to '+(c.right|0)+' pause from '+(p.left|0)+' — "'+rotHintText(250)+'"'); }
+        /* no two cluster controls share a pixel, on a frame squarer than the
+           glass: the open fold put 27% of a 738px frame inside a 31vmin pad */
+        if (isTouch){ const fr = document.getElementById('frame'), tc = document.getElementById('touch');
+          const w0 = fr.style.width, h0 = fr.style.height, on0 = tc.classList.contains('on');
+          fr.style.width = '480px'; fr.style.height = '270px'; tc.classList.add('on');
+          const ids = ['tstick','tlook','tfire','tuse','taim','trel','tswap','tcrouch','tpause'];
+          const rects = ids.map(id => { const el = document.getElementById(id); const r = el ? el.getBoundingClientRect() : null; return r && r.width > 0 ? { id, r } : null; }).filter(Boolean);
+          const pairs = [];
+          for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++){
+            const a = rects[i].r, b = rects[j].r;
+            const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left), oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+            if (ox > 0 && oy > 0) pairs.push(rects[i].id+'/'+rects[j].id+' '+(ox|0)+'x'+(oy|0)); }
+          fr.style.width = w0; fr.style.height = h0; tc.classList.toggle('on', on0); fit();
+          ok('touch: no two cluster controls overlap on a frame squarer than the glass',
+             rects.length >= 8 && pairs.length === 0, rects.length+' controls'+(pairs.length ? ' — '+pairs.join(', ') : ' clear')); }
         /* the skip tap's own click is swallowed whenever it lands, and only
            once: at 24x CPU it arrived 372ms after the skip, past the old
            350ms window, and pressed CONTROLS under the finger */
@@ -8867,6 +8929,51 @@ function selfTestBody(runSim){
           }
           ok('screens: every menu has a solid backdrop, not only a gradient image',
              gradOnly.length === 0, gradOnly.join(' | ') || SCREENS.length+' screens');
+          /* ...and every button keeps a BORDER BOX, because that is the one
+             thing forced colours will always draw: a background is repainted
+             with the system canvas colour, so the gold primary buttons —
+             ACCEPT on the briefing, RESUME on the watch — were invisible
+             rectangles, measured at 0px of border with background and screen
+             both rgb(255,255,255) */
+          { const bare = [];
+            for (const b of document.querySelectorAll('.btn')){
+              const cs = getComputedStyle(b);
+              const w = ['Top','Right','Bottom','Left'].map(e => parseFloat(cs['border'+e+'Width']) || 0);
+              if (cs.borderTopStyle === 'none' || Math.min.apply(null, w) < 1) bare.push((b.textContent||'').trim().slice(0,10)+' '+w.join('/'));
+            }
+            ok('screens: every button has a border box, the one thing forced colours will draw',
+               bare.length === 0, bare.join(' | ') || document.querySelectorAll('.btn').length+' buttons'); }
+          /* the music scheduler's lookahead follows the tick that arrives: a
+             tab throttled to one tick a second left 65% of the song unwritten */
+          { const idle = musLook(.04, .25), slow = musLook(1, .25), cap = musLook(30, .25);
+            let back = musLook(1, .25); for (let i = 0; i < 400; i++) back = musLook(.04, back);
+            ok('music: the lookahead covers the tick that actually arrives, and comes back down',
+               idle === .25 && slow >= 2 && cap <= 4 && Math.abs(back - .25) < 1e-9,
+               'idle '+idle+' · 1s tick '+slow.toFixed(2)+' · capped '+cap+' · settles at '+back.toFixed(3)); }
+          /* an OPTIONS row wraps rather than spilling into the next column: a
+             browser minimum-font-size of 18px ran the sensitivity slider 36px
+             into "Look mode" and the scanline slider into "Reduce motion" */
+          { const st0 = G.state, sc0 = G.screenId;
+            G.state = 'options'; show('s-options');
+            /* the floor is what a browser's minimum-font-size setting does —
+               every descendant, the readout included — and the wide fallback
+               is what a changed default font does */
+            const floor = document.createElement('style');
+            floor.textContent = '#s-options .ctl,#s-options .ctl *{font-size:18px !important;font-family:Georgia,"Times New Roman",serif !important}';
+            document.head.appendChild(floor);
+            const spills = [];
+            for (const row of document.querySelectorAll('#s-options .ctl')){
+              const rr = row.getBoundingClientRect(); if (rr.width < 2) continue;
+              for (const c of row.querySelectorAll('input, span, b')){
+                const cr = c.getBoundingClientRect(); if (cr.width < 1) continue;
+                if (cr.right > rr.right + 1 || cr.left < rr.left - 1)
+                  spills.push((row.textContent||'').trim().slice(0,18)+' '+Math.round(Math.max(cr.right - rr.right, rr.left - cr.left))+'px');
+              }
+            }
+            floor.remove();
+            G.state = st0; show(sc0);
+            ok('options: no row spills out of its own box at an 18px font floor',
+               spills.length === 0, spills.slice(0,4).join(' | ') || 'every row inside its box'); }
           /* ...and a pinned row is a fade, not a lid: its transparent top used
              to swallow the clicks meant for the controls seen through it */
           const rows = [...document.querySelectorAll('#s-pause>.row:last-child, #s-brief>.row:last-child, .screen.pinrow>.row:last-child')];
@@ -11112,8 +11219,20 @@ if ('serviceWorker' in navigator &&
   /* `in` is a prototype test and never invokes the getter: under
      sandbox="allow-scripts" the READ throws SecurityError, before there is a
      promise for the .catch to attach to. */
-  addEventListener('load', () => {
+  /* `load` is not the only arming. It waits on every subresource, so a
+     manifest a content blocker aborts (or a host 404s) and a font CDN that
+     stalls both kept the event pending and the worker was NEVER registered —
+     measured: registration false, 0 cache entries, on a page that plays
+     perfectly. The timer installs the app anyway; whichever fires first wins,
+     and SW_DONE makes the other a no-op. */
+  let SW_DONE = false;
+  const swInstall = () => {
+    if (SW_DONE) return false;
+    SW_DONE = true;
     try { navigator.serviceWorker.register('sw.js').catch(()=>{}); } catch(_){}
-  });
+    return true;
+  };
+  addEventListener('load', swInstall);
+  setTimeout(swInstall, 3000);
 }
 </script>

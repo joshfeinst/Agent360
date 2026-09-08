@@ -6,13 +6,20 @@
    VERSION constant in index.html. */
 const CACHE = 'agent360-v1.54';
 /* SHELL is what the app cannot boot without, and its precache must succeed.
-   ICONS are decoration, and they are precached one at a time, best effort:
+   EXTRA is decoration — the manifest and the icons — precached one at a time,
+   best effort:
    addAll() is all-or-nothing, so a transient 404 on ONE icon used to reject
    the whole install — no service worker registered, an empty bucket, and no
    offline app at all — measured: a missing icon-maskable-512.png left
    registered:false, 0 entries, and an offline reload that never came back. */
-const SHELL = [ './', './index.html', './manifest.webmanifest' ];
-const ICONS = [ './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png' ];
+/* The manifest is decoration too, and it was in the all-or-nothing list: a
+   content blocker with a *.webmanifest rule, or a host that 404s it, rejected
+   addAll() and took the whole install with it — measured registered:false,
+   0 entries, on a page that plays perfectly. Only the document itself is
+   something the app cannot boot without. */
+const SHELL = [ './', './index.html' ];
+const EXTRA = [ './manifest.webmanifest',
+                './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png' ];
 const NET_MS = 3000;   // how long the shell waits for a stalled network before the cache answers
 const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Chakra+Petch:wght@400;600;700&display=optional';
 
@@ -27,7 +34,7 @@ self.addEventListener('install', e => {
        file the PREVIOUS index.html under the new bucket name, and the
        installed app carried the wrong build until its next online visit. */
     await c.addAll(SHELL.map(u => new Request(u, { cache:'reload' })));
-    await Promise.allSettled(ICONS.map(u =>
+    await Promise.allSettled(EXTRA.map(u =>
       fetch(new Request(u, { cache:'reload' })).then(r => putOk(c, u, r)).catch(() => {})));
     /* Best-effort font precache: fetch the CSS, then the woff2 files it names,
        so the HUD face survives offline even if the first play session never
